@@ -1,0 +1,13 @@
+{
+  "profiles": {
+    "Windows Machine": {
+      "commandName": "Project",
+      "nativeDebugging": true,
+      "remoteDebugEnabled": false
+    },
+    "WSL": {
+      "commandName": "WSL2",
+      "distributionName": ""
+    }
+  }
+}

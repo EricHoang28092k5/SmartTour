@@ -1,0 +1,11 @@
+<ContentPage
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:maps="http://schemas.microsoft.com/dotnet/2021/maui/maps"
+    x:Class="SmartTourApp.Pages.MapPage">
+
+    <maps:Map
+        x:Name="map"
+        IsShowingUser="True"/>
+
+</ContentPage>
