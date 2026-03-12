@@ -44,7 +44,13 @@ public partial class MainPage : ContentPage
 
     private void InitMap()
     {
+    #if !DEBUG
+        Mapsui.Logging.Logger.LogDelegate = null;
+    #endif
+
         TourMap.Map = new Mapsui.Map();
+        TourMap.Map.Widgets.Clear();
+
         TourMap.Map.Layers.Add(OpenStreetMap.CreateTileLayer());
     }
 

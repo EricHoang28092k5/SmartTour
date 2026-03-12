@@ -3,7 +3,7 @@
     "Windows Machine": {
       "commandName": "Project",
       "nativeDebugging": true,
-      "remoteDebugEnabled": false
+      "remoteDebugEnabled": true
     },
     "WSL": {
       "commandName": "WSL2",

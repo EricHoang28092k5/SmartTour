@@ -1,6 +1,4 @@
 ﻿using Microsoft.Extensions.Logging;
-using Microsoft.Maui.Controls.Maps;
-using Microsoft.Maui.Maps;
 using SmartTourApp.Services;
 using SkiaSharp.Views.Maui.Controls.Hosting;
 using SmartTourApp.Data;
@@ -15,7 +13,6 @@ public static class MauiProgram
 
         builder
             .UseMauiApp<App>()
-            .UseMauiMaps()
             .UseSkiaSharp()   
             .ConfigureFonts(fonts =>
             {

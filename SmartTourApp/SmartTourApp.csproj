@@ -1,11 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net8.0-android;net8.0-windows10.0.19041.0</TargetFrameworks>
+    <TargetFrameworks>net10.0-android;net10.0-windows10.0.19041.0</TargetFrameworks>
 
     <OutputType>Exe</OutputType>
     <RootNamespace>SmartTourApp</RootNamespace>
     <UseMaui>true</UseMaui>
+	<SkipValidateMauiImplicitPackageReferences>true</SkipValidateMauiImplicitPackageReferences>
     <MauiVersion>8.0.100</MauiVersion>
     <SingleProject>true</SingleProject>
 
@@ -53,13 +54,12 @@
   <ItemGroup>
 
     <!-- MAUI -->
-    <PackageReference Include="Mapsui" Version="4.1.9" />
-    <PackageReference Include="Mapsui.Maui" Version="4.1.9" />
-    <PackageReference Include="Microsoft.Maui.Controls" Version="8.0.100" />
+    <PackageReference Include="Mapsui" Version="5.0.0" />
+    <PackageReference Include="Mapsui.Maui" Version="5.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="8.0.0" />
-    <PackageReference Include="Microsoft.Maui.Controls.Maps" Version="8.0.80" />
-    <PackageReference Include="Microsoft.Maui.Essentials" Version="8.0.100" />
-
+    <PackageReference Include="Microsoft.Maui.Controls" Version="9.0.50" />
+    <PackageReference Include="Microsoft.Maui.Controls.Maps" Version="9.0.50" />
+	
     <!-- Audio -->
     <PackageReference Include="Plugin.Maui.Audio" Version="3.0.0" />
 
@@ -67,7 +67,7 @@
     <PackageReference Include="SQLite-net-pcl" Version="1.9.172" />
 
     <!-- QR / Barcode -->
-    <PackageReference Include="ZXing.Net.Maui" Version="0.4.0" />
+    <PackageReference Include="ZXing.Net.Maui" Version="0.5.0" />
 
   </ItemGroup>
 

@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations.Schema;
+using SQLite;
 
 namespace SmartTour.Shared.Models;
 
@@ -33,6 +34,7 @@ public class Poi
     // Thuộc tính này dùng để map với PostGIS trong Database
     // [NotMapped] có nghĩa là App di động sẽ không cần quan tâm đến nó, 
     // chỉ Backend dùng để tính toán không gian.
+    [Ignore]
     [NotMapped]
     public object? GeoLocation { get; set; }
 }

@@ -1,4 +1,4 @@
-namespace SmartTour.Shared.Models
+﻿namespace SmartTourCMS.Models
 {
     public class ErrorViewModel
     {

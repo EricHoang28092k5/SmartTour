@@ -1,5 +1,4 @@
-﻿using SmartTourApp.Models;
-
+﻿using SmartTour.Shared.Models;
 namespace SmartTourApp.Services;
 
 public class LogService
