@@ -1,5 +1,6 @@
 ﻿using SQLite;
 using SmartTour.Shared.Models;
+
 namespace SmartTourApp.Data;
 
 public class Database
@@ -17,6 +18,8 @@ public class Database
 
         db.CreateTable<Poi>();
         db.CreateTable<PlayLog>();
+        db.CreateTable<UserLocationLog>();
+        db.CreateTable<AppSetting>();
     }
 
     public List<Poi> GetPois()
@@ -34,8 +37,36 @@ public class Database
         db.Insert(log);
     }
 
-    public List<PlayLog> GetLogs()
+    public void AddLocation(UserLocationLog log)
     {
-        return db.Table<PlayLog>().ToList();
+        db.Insert(log);
+    }
+
+    public void SaveSetting(string key, string value)
+    {
+        var existing = db.Table<AppSetting>()
+            .FirstOrDefault(x => x.SettingKey == key);
+
+        if (existing == null)
+        {
+            db.Insert(new AppSetting
+            {
+                SettingKey = key,
+                SettingValue = value
+            });
+        }
+        else
+        {
+            existing.SettingValue = value;
+            db.Update(existing);
+        }
+    }
+
+    public string GetSetting(string key, string defaultValue)
+    {
+        var s = db.Table<AppSetting>()
+            .FirstOrDefault(x => x.SettingKey == key);
+
+        return s?.SettingValue ?? defaultValue;
     }
 }

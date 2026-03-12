@@ -87,7 +87,7 @@ public partial class MainPage : ContentPage
                 if (location != null)
                 {
                     UpdateUserMarker(location);
-                    var poi = geofencing.FindNearest(location, pois);
+                    var poi = geofencing.FindBestPoi(location, pois);
                     HighlightPoi(poi);
                     await narration.Play(poi, location);
                 }

@@ -1,11 +1,39 @@
 <ContentPage
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-    xmlns:maps="http://schemas.microsoft.com/dotnet/2021/maui/maps"
+    xmlns:mapsui="clr-namespace:Mapsui.UI.Maui;assembly=Mapsui.UI.Maui"
     x:Class="SmartTourApp.Pages.MapPage">
 
-    <maps:Map
-        x:Name="map"
-        IsShowingUser="True"/>
+    <Grid>
+
+        <mapsui:MapControl
+            x:Name="TourMap"/>
+
+        <Border
+            BackgroundColor="#CCFFFFFF"
+            Margin="15"
+            Padding="12"
+            VerticalOptions="End">
+
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="20" />
+            </Border.StrokeShape>
+
+            <VerticalStackLayout>
+
+                <Label
+                    Text="POI gần nhất"
+                    FontSize="18"
+                    FontAttributes="Bold"/>
+
+                <Label
+                    x:Name="NearestPoiLabel"
+                    FontSize="16"/>
+
+            </VerticalStackLayout>
+
+        </Border>
+
+    </Grid>
 
 </ContentPage>

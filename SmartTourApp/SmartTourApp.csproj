@@ -57,7 +57,7 @@
     <PackageReference Include="Mapsui" Version="5.0.0" />
     <PackageReference Include="Mapsui.Maui" Version="5.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="8.0.0" />
-    <PackageReference Include="Microsoft.Maui.Controls" Version="9.0.50" />
+    <PackageReference Include="Microsoft.Maui.Controls" Version="10.0.0" />
     <PackageReference Include="Microsoft.Maui.Controls.Maps" Version="9.0.50" />
 	
     <!-- Audio -->
@@ -67,12 +67,31 @@
     <PackageReference Include="SQLite-net-pcl" Version="1.9.172" />
 
     <!-- QR / Barcode -->
-    <PackageReference Include="ZXing.Net.Maui" Version="0.5.0" />
+    <PackageReference Include="ZXing.Net.Maui" Version="0.7.4" />
+    <PackageReference Include="ZXing.Net.Maui.Controls" Version="0.7.4" />
 
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\SmartTour.Shared\SmartTour.Shared\SmartTour.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <MauiXaml Update="Pages\PoiDetailPage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </MauiXaml>
+    <MauiXaml Update="Pages\QrScannerPage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </MauiXaml>
+    <MauiXaml Update="Pages\SettingsPage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </MauiXaml>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Pages\PoiDetailPage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </None>
   </ItemGroup>
 
 </Project>

@@ -1,15 +1,15 @@
 ﻿using Microsoft.Maui.Devices.Sensors;
-using SmartTour.Shared.Models; // Quan trọng nhất là dòng này
+using SmartTour.Shared.Models;
 
 namespace SmartTourApp.Services;
 
 public class GeofencingEngine
 {
-    public Poi? FindNearest(Location user, List<Poi> pois)
+    public Poi? FindBestPoi(Location user, List<Poi> pois)
     {
-        Poi? nearest = null;
+        Poi? best = null;
 
-        double min = double.MaxValue;
+        double minDistance = double.MaxValue;
 
         foreach (var poi in pois)
         {
@@ -21,43 +21,20 @@ public class GeofencingEngine
                     poi.Lng,
                     DistanceUnits.Kilometers);
 
-            double distanceMeters = distanceKm * 1000;
+            var meters = distanceKm * 1000;
 
-            if (distanceMeters < poi.Radius && distanceMeters < min)
+            if (meters <= poi.Radius)
             {
-                nearest = poi;
-                min = distanceMeters;
+                if (best == null ||
+                    poi.Priority > best.Priority ||
+                    meters < minDistance)
+                {
+                    best = poi;
+                    minDistance = meters;
+                }
             }
         }
 
-        return nearest;
-    }
-
-    public Poi? GetNearest(Location user, List<Poi> pois)
-    {
-        Poi? nearest = null;
-
-        double min = double.MaxValue;
-
-        foreach (var poi in pois)
-        {
-            var distanceKm =
-                Location.CalculateDistance(
-                    user.Latitude,
-                    user.Longitude,
-                    poi.Lat,
-                    poi.Lng,
-                    DistanceUnits.Kilometers);
-
-            double meters = distanceKm * 1000;
-
-            if (meters < min)
-            {
-                min = meters;
-                nearest = poi;
-            }
-        }
-
-        return nearest;
+        return best;
     }
 }
