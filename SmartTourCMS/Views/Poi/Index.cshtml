@@ -4,52 +4,30 @@
     <div class="card shadow">
         <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
             <h4 class="mb-0"><i class="fa-solid fa-map-location-dot me-2"></i>Quản lý Địa điểm (POI)</h4>
-            <a asp-action="Create" class="btn btn-light btn-sm font-weight-bold">
-                <i class="fa-solid fa-plus me-1"></i> Thêm mới
-            </a>
+            <a asp-action="Create" class="btn btn-light btn-sm font-weight-bold"><i class="fa-solid fa-plus me-1"></i> Thêm mới</a>
         </div>
-        
         <div class="card-body border-bottom bg-light">
-            <div class="row">
-                <div class="col-md-4">
-                    <div class="input-group shadow-sm">
-                        <span class="input-group-text bg-white border-end-0">
-                            <i class="fa-solid fa-magnifying-glass text-muted"></i>
-                        </span>
-                        <input type="text" id="searchInput" class="form-control border-start-0 ps-0" 
-                               placeholder="Tìm tên địa điểm..." onkeyup="filterTable()">
-                    </div>
-                </div>
-            </div>
+            <div class="row"><div class="col-md-4"><div class="input-group shadow-sm"><span class="input-group-text bg-white border-end-0"><i class="fa-solid fa-magnifying-glass text-muted"></i></span><input type="text" id="searchInput" class="form-control border-start-0 ps-0" placeholder="Tìm tên địa điểm..." onkeyup="filterTable()"></div></div></div>
         </div>
-
         <div class="card-body p-0">
             <table class="table table-hover mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th><i class="fa-solid fa-tag me-1"></i> Tên</th>
-                        <th><i class="fa-solid fa-location-crosshairs me-1"></i> Vĩ độ</th>
-                        <th><i class="fa-solid fa-location-dot me-1"></i> Kinh độ</th>
-                        <th><i class="fa-solid fa-circle-nodes me-1"></i> Bán kính</th>
-                        <th class="text-center">Thao tác</th>
+                        <th>Tên</th><th>Vĩ độ</th><th>Kinh độ</th><th>Bán kính</th><th class="text-center">Thao tác</th>
                     </tr>
                 </thead>
                 <tbody>
                     @foreach (var item in Model) {
                         <tr>
                             <td class="fw-bold text-primary">@item.Name</td>
-                            <td>@item.Lat</td>
-                            <td>@item.Lng</td>
+                            <td>@item.Lat</td><td>@item.Lng</td>
                             <td><span class="badge bg-info text-dark">@item.Radius m</span></td>
                             <td class="text-center">
-                                <a asp-action="Edit" asp-route-id="@item.Id" class="btn btn-outline-warning btn-sm me-1" title="Sửa">
-                                    <i class="fa-solid fa-pen-to-square"></i>
-                                </a>
-                                <a asp-action="Delete" asp-route-id="@item.Id" 
-                                   onclick="return confirm('Xác nhận xoá?')" 
-                                   class="btn btn-outline-danger btn-sm" title="Xóa">
-                                    <i class="fa-solid fa-trash-can"></i>
-                                </a>
+                                <button class="btn btn-outline-info btn-sm me-1" onclick="showMap(@item.Lat, @item.Lng, '@item.Name')">
+                                    <i class="fa-solid fa-earth-asia"></i>
+                                </button>
+                                <a asp-action="Edit" asp-route-id="@item.Id" class="btn btn-outline-warning btn-sm me-1"><i class="fa-solid fa-pen-to-square"></i></a>
+                                <a asp-action="Delete" asp-route-id="@item.Id" onclick="return confirm('Xác nhận xoá?')" class="btn btn-outline-danger btn-sm"><i class="fa-solid fa-trash-can"></i></a>
                             </td>
                         </tr>
                     }
@@ -59,27 +37,55 @@
     </div>
 </div>
 
+<div class="modal fade" id="mapModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg border-0">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title" id="mapTitle">Vị trí địa điểm</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div id="map" style="height: 450px; width: 100%;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
 @section Scripts {
-    @if (TempData["success"] != null)
-    {
-        <script>
-            toastr.options = { "closeButton": true, "progressBar": true, "positionClass": "toast-top-right", "timeOut": "3000" };
-            toastr.success('@TempData["success"]');
-        </script>
-    }
-
     <script>
-        function filterTable() {
-            let input = document.getElementById("searchInput");
-            let filter = input.value.toLowerCase();
-            let tr = document.querySelectorAll("tbody tr");
+        let map;
+        let marker;
 
-            tr.forEach(row => {
-                let nameColumn = row.getElementsByTagName("td")[0];
-                if (nameColumn) {
-                    let textValue = nameColumn.textContent || nameColumn.innerText;
-                    row.style.display = textValue.toLowerCase().includes(filter) ? "" : "none";
+        function showMap(lat, lng, name) {
+            // Hiện Modal
+            var myModal = new bootstrap.Modal(document.getElementById('mapModal'));
+            myModal.show();
+
+            // Đợi Modal hiện xong mới vẽ bản đồ (tránh lỗi bị xám màn hình)
+            document.getElementById('mapModal').addEventListener('shown.bs.modal', function () {
+                document.getElementById('mapTitle').innerText = "Vị trí: " + name;
+                
+                if (!map) {
+                    map = L.map('map').setView([lat, lng], 15);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+                } else {
+                    map.setView([lat, lng], 15);
                 }
+
+                if (marker) map.removeLayer(marker);
+                marker = L.marker([lat, lng]).addTo(map).bindPopup(name).openPopup();
+                
+                // Fix lỗi bản đồ không load hết các ô gạch
+                setTimeout(() => { map.invalidateSize(); }, 200);
+            }, { once: true });
+        }
+
+        // Logic tìm kiếm (giữ nguyên của cu)
+        function filterTable() {
+            let input = document.getElementById("searchInput").value.toLowerCase();
+            document.querySelectorAll("tbody tr").forEach(row => {
+                let name = row.getElementsByTagName("td")[0].innerText.toLowerCase();
+                row.style.display = name.includes(input) ? "" : "none";
             });
         }
     </script>
