@@ -1,25 +1,32 @@
+using Microsoft.EntityFrameworkCore;
+using SmartTourBackend.Data;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// 1. Thêm dịch vụ giao diện MVC (Cái này cu có rồi)
 builder.Services.AddControllersWithViews();
+
+// 2. KẾT NỐI DATABASE (Phải có cái này nó mới lấy được dữ liệu POI từ Neon)
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// Cấu hình môi trường
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
 
 app.UseHttpsRedirection();
+app.UseStaticFiles(); // Phải để trước UseRouting
 app.UseRouting();
-
 app.UseAuthorization();
 
-app.UseStaticFiles();
-app.MapControllers();
-
+// 3. ĐỊNH TUYẾN WEB (Thay vì MapControllers, dùng cái này để chạy View)
+app.MapControllerRoute(
+    name: "default",
+    pattern: "{controller=Poi}/{action=Index}/{id?}");
 
 app.Run();

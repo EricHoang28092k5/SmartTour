@@ -1,0 +1,22 @@
+﻿@model SmartTour.Shared.Models.Poi
+<div class="container mt-4">
+    <div class="card shadow">
+        <div class="card-header bg-warning text-dark"><h4>Chỉnh sửa Địa điểm</h4></div>
+        <div class="card-body">
+            <form asp-action="Edit" method="post">
+                <input type="hidden" asp-for="Id" />
+                <div class="mb-3">
+                    <label class="form-label">Tên địa điểm</label>
+                    <input asp-for="Name" class="form-control" required />
+                </div>
+                <div class="row">
+                    <div class="col-6 mb-3"><label>Vĩ độ</label><input asp-for="Lat" class="form-control" type="number" step="any" required /></div>
+                    <div class="col-6 mb-3"><label>Kinh độ</label><input asp-for="Lng" class="form-control" type="number" step="any" required /></div>
+                </div>
+                <div class="mb-3"><label>Bán kính (m)</label><input asp-for="Radius" class="form-control" type="number" /></div>
+                <button type="submit" class="btn btn-success"><i class="fa-solid fa-floppy-disk me-1"></i> Lưu lại</button>
+                <a asp-action="Index" class="btn btn-secondary"><i class="fa-solid fa-arrow-rotate-left me-1"></i> Quay lại</a>
+            </form>
+        </div>
+    </div>
+</div>
