@@ -31,7 +31,7 @@
                                     <i class="fa-solid fa-pen-to-square"></i>
                                 </a>
                                 <a asp-action="Delete" asp-route-id="@item.Id" 
-                                   onclick="return confirm('Xóa thật hả cu?')" 
+                                   onclick="return confirm('Xác nhận xoá?')" 
                                    class="btn btn-outline-danger btn-sm" title="Xóa">
                                     <i class="fa-solid fa-trash-can"></i>
                                 </a>
@@ -43,3 +43,24 @@
         </div>
     </div>
 </div>
+@section Scripts {
+    @if (TempData["success"] != null)
+    {
+        <script type="text/javascript">
+            toastr.options = {
+                "closeButton": true,
+                "progressBar": true,
+                "positionClass": "toast-top-right",
+                "showDuration": "300",
+                "hideDuration": "1000",
+                "timeOut": "5000",
+                "extendedTimeOut": "1000",
+                "showEasing": "swing",
+                "hideEasing": "linear",
+                "showMethod": "fadeIn",
+                "hideMethod": "fadeOut"
+            };
+            toastr.success('@TempData["success"]');
+        </script>
+    }
+}

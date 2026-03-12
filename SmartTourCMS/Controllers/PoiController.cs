@@ -10,20 +10,23 @@ namespace SmartTourCMS.Controllers
         private readonly AppDbContext _context;
         public PoiController(AppDbContext context) => _context = context;
 
-        // XEM DANH SÁCH
+        // 1. XEM DANH SÁCH
         public async Task<IActionResult> Index() => View(await _context.Pois.ToListAsync());
 
-        // THÊM MỚI
+        // 2. THÊM MỚI (Giao diện)
         public IActionResult Create() => View();
+
+        // 3. THÊM MỚI (Xử lý lưu)
         [HttpPost]
         public async Task<IActionResult> Create(Poi poi)
         {
             _context.Add(poi);
             await _context.SaveChangesAsync();
+            TempData["success"] = "Thêm mới địa điểm thành công rồi cu ơi!";
             return RedirectToAction(nameof(Index));
         }
 
-        // SỬA (GET: Hiển thị form với dữ liệu cũ)
+        // 4. SỬA (Giao diện hiển thị dữ liệu cũ)
         public async Task<IActionResult> Edit(int? id)
         {
             if (id == null) return NotFound();
@@ -32,17 +35,19 @@ namespace SmartTourCMS.Controllers
             return View(poi);
         }
 
-        // SỬA (POST: Lưu dữ liệu mới)
+        // 5. SỬA (Xử lý lưu dữ liệu mới)
         [HttpPost]
         public async Task<IActionResult> Edit(int id, Poi poi)
         {
             if (id != poi.Id) return NotFound();
+
             _context.Update(poi);
             await _context.SaveChangesAsync();
+            TempData["success"] = "Cập nhật dữ liệu xong xuôi rồi nhé!";
             return RedirectToAction(nameof(Index));
         }
 
-        // XÓA (Chơi kiểu xóa luôn không cần hỏi nhiều cho nó máu)
+        // 6. XÓA (Xử lý xóa luôn)
         public async Task<IActionResult> Delete(int id)
         {
             var poi = await _context.Pois.FindAsync(id);
@@ -50,6 +55,7 @@ namespace SmartTourCMS.Controllers
             {
                 _context.Pois.Remove(poi);
                 await _context.SaveChangesAsync();
+                TempData["success"] = "Đã xóa sạch sành sanh địa điểm này!";
             }
             return RedirectToAction(nameof(Index));
         }
