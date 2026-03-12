@@ -8,13 +8,28 @@
                 <i class="fa-solid fa-plus me-1"></i> Thêm mới
             </a>
         </div>
+        
+        <div class="card-body border-bottom bg-light">
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="input-group shadow-sm">
+                        <span class="input-group-text bg-white border-end-0">
+                            <i class="fa-solid fa-magnifying-glass text-muted"></i>
+                        </span>
+                        <input type="text" id="searchInput" class="form-control border-start-0 ps-0" 
+                               placeholder="Tìm tên địa điểm..." onkeyup="filterTable()">
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="card-body p-0">
             <table class="table table-hover mb-0">
                 <thead class="table-light">
                     <tr>
                         <th><i class="fa-solid fa-tag me-1"></i> Tên</th>
-                        <th><i class="fa-solid fa-location-crosshairs me-1"></i> Vĩ độ (Lat)</th>
-                        <th><i class="fa-solid fa-location-dot me-1"></i> Kinh độ (Lng)</th>
+                        <th><i class="fa-solid fa-location-crosshairs me-1"></i> Vĩ độ</th>
+                        <th><i class="fa-solid fa-location-dot me-1"></i> Kinh độ</th>
                         <th><i class="fa-solid fa-circle-nodes me-1"></i> Bán kính</th>
                         <th class="text-center">Thao tác</th>
                     </tr>
@@ -43,24 +58,29 @@
         </div>
     </div>
 </div>
+
 @section Scripts {
     @if (TempData["success"] != null)
     {
-        <script type="text/javascript">
-            toastr.options = {
-                "closeButton": true,
-                "progressBar": true,
-                "positionClass": "toast-top-right",
-                "showDuration": "300",
-                "hideDuration": "1000",
-                "timeOut": "5000",
-                "extendedTimeOut": "1000",
-                "showEasing": "swing",
-                "hideEasing": "linear",
-                "showMethod": "fadeIn",
-                "hideMethod": "fadeOut"
-            };
+        <script>
+            toastr.options = { "closeButton": true, "progressBar": true, "positionClass": "toast-top-right", "timeOut": "3000" };
             toastr.success('@TempData["success"]');
         </script>
     }
+
+    <script>
+        function filterTable() {
+            let input = document.getElementById("searchInput");
+            let filter = input.value.toLowerCase();
+            let tr = document.querySelectorAll("tbody tr");
+
+            tr.forEach(row => {
+                let nameColumn = row.getElementsByTagName("td")[0];
+                if (nameColumn) {
+                    let textValue = nameColumn.textContent || nameColumn.innerText;
+                    row.style.display = textValue.toLowerCase().includes(filter) ? "" : "none";
+                }
+            });
+        }
+    </script>
 }

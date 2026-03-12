@@ -43,7 +43,7 @@ namespace SmartTourCMS.Controllers
 
             _context.Update(poi);
             await _context.SaveChangesAsync();
-            TempData["success"] = "Cập nhật dữ liệu xong xuôi rồi nhé!";
+            TempData["success"] = "Cập nhật dữ liệu thành công!";
             return RedirectToAction(nameof(Index));
         }
 
@@ -55,7 +55,7 @@ namespace SmartTourCMS.Controllers
             {
                 _context.Pois.Remove(poi);
                 await _context.SaveChangesAsync();
-                TempData["success"] = "Đã xóa sạch sành sanh địa điểm này!";
+                TempData["success"] = "Đã xóa sạch địa điểm này!";
             }
             return RedirectToAction(nameof(Index));
         }
