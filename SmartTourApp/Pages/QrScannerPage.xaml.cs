@@ -21,21 +21,21 @@ public partial class QrScannerPage : ContentPage
     private async void OnDetected(
         object sender,
         ZXing.Net.Maui.BarcodeDetectionEventArgs e)
-    {
-        var value = e.Results.First().Value;
+        {
+            var value = e.Results.First().Value;
 
-        var poi =
-            repo.GetPois()
-            .FirstOrDefault(x =>
+            var pois = await repo.GetPois();
+
+            var poi = pois.FirstOrDefault(x =>
                 x.Id.ToString() == value);
 
-        if (poi != null)
-        {
-            await narration.Play(
-                poi,
-                new Location(poi.Lat, poi.Lng));
-        }
+            if (poi != null)
+            {
+                await narration.Play(
+                    poi,
+                    new Location(poi.Lat, poi.Lng));
+            }
 
-        await DisplayAlertAsync("QR", "Đã kích hoạt POI", "OK");
+            await DisplayAlertAsync("QR", "Đã kích hoạt POI", "OK");
     }
 }

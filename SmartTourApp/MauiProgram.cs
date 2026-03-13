@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 using SkiaSharp.Views.Maui.Controls.Hosting;
+using SmartTour.Services;
 using SmartTourApp.Data;
 using SmartTourApp.Pages;
 using SmartTourApp.Services;
@@ -37,7 +38,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<LanguageService>();
         builder.Services.AddSingleton<QrScannerPage>();
         builder.Services.AddSingleton<SettingsPage>();
-
+        builder.Services.AddSingleton<ApiService>();
         builder.Services.AddSingleton<MainPage>();
 
 #if DEBUG

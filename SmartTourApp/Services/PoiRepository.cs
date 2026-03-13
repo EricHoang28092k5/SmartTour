@@ -1,4 +1,5 @@
-﻿using SmartTour.Shared.Models;
+﻿using SmartTour.Services;
+using SmartTour.Shared.Models;
 using SmartTourApp.Data;
 
 namespace SmartTourApp.Services;
@@ -6,40 +7,28 @@ namespace SmartTourApp.Services;
 public class PoiRepository
 {
     private readonly Database db;
+    private readonly ApiService api;
 
-    public PoiRepository()
+    public PoiRepository(Database db, ApiService api)
     {
-        db = new Database();
-
-        Seed();
+        this.db = db;
+        this.api = api;
     }
 
-    public List<Poi> GetPois()
+    public async Task<List<Poi>> GetPois()
     {
-        return db.GetPois();
-    }
+        var local = db.GetPois();
 
-    private void Seed()
-    {
-        if (db.GetPois().Count > 0)
-            return;
+        if (local.Count > 0)
+            return local;
 
-        db.AddPoi(new Poi
+        var server = await api.GetPois();
+
+        foreach (var poi in server)
         {
-            Name = "Bến Nhà Rồng",
-            Lat = 10.7690,
-            Lng = 106.7050,
-            Radius = 80,
-            AudioUrl = "ben_nha_rong.mp3"
-        });
+            db.AddPoi(poi);
+        }
 
-        db.AddPoi(new Poi
-        {
-            Name = "Bảo Tàng Hồ Chí Minh",
-            Lat = 10.7702,
-            Lng = 106.7061,
-            Radius = 80,
-            AudioUrl = "bao_tang.mp3"
-        });
+        return server;
     }
 }

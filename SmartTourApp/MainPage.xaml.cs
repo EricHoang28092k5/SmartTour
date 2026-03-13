@@ -26,20 +26,33 @@ public partial class MainPage : ContentPage
         GeofencingEngine geofencing,
         NarrationEngine narration,
         PoiRepository repo)
+        {
+            InitializeComponent();
+
+            this.locationService = locationService;
+            this.geofencing = geofencing;
+            this.narration = narration;
+            this.repo = repo;
+
+            InitMap();
+
+            LoadPois();   // gọi async
+    }
+
+    private async void LoadPois()
     {
-        InitializeComponent();
+        try
+        {
+            pois = await repo.GetPois() ?? new List<SharedPoi>();
 
-        this.locationService = locationService;
-        this.geofencing = geofencing;
-        this.narration = narration;
-        this.repo = repo;
+            DrawPoiMarkers();
 
-        // Lấy dữ liệu POI từ Repository
-        pois = repo.GetPois() ?? new List<SharedPoi>();
-
-        InitMap();
-        DrawPoiMarkers();
-        StartTracking();
+            StartTracking();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Load POI error: {ex.Message}");
+        }
     }
 
     private void InitMap()

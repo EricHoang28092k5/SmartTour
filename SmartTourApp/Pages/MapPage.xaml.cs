@@ -28,14 +28,14 @@ public partial class MapPage : ContentPage
         Task.Run(tracking.Start);
     }
 
-    private void InitMap()
+    private async void InitMap()
     {
         TourMap.Map = new Mapsui.Map();
 
         TourMap.Map.Layers.Add(
             OpenStreetMap.CreateTileLayer());
 
-        var pois = repo.GetPois();
+        var pois = await repo.GetPois();
 
         vm.LoadPois(TourMap.Map, pois);
 
