@@ -1,92 +1,43 @@
 @model IEnumerable<SmartTour.Shared.Models.Poi>
 
-<div class="container mt-4">
-    <div class="card shadow">
-        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-            <h4 class="mb-0"><i class="fa-solid fa-map-location-dot me-2"></i>Quản lý Địa điểm (POI)</h4>
-            <a asp-action="Create" class="btn btn-light btn-sm font-weight-bold"><i class="fa-solid fa-plus me-1"></i> Thêm mới</a>
-        </div>
-        <div class="card-body border-bottom bg-light">
-            <div class="row"><div class="col-md-4"><div class="input-group shadow-sm"><span class="input-group-text bg-white border-end-0"><i class="fa-solid fa-magnifying-glass text-muted"></i></span><input type="text" id="searchInput" class="form-control border-start-0 ps-0" placeholder="Tìm tên địa điểm..." onkeyup="filterTable()"></div></div></div>
-        </div>
-        <div class="card-body p-0">
-            <table class="table table-hover mb-0">
-                <thead class="table-light">
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="fa-solid fa-list text-primary"></i> Danh sách địa điểm</h2>
+    <a asp-action="Create" class="btn btn-success shadow">
+        <i class="fa-solid fa-plus"></i> Thêm địa điểm mới
+    </a>
+</div>
+
+<div class="card shadow border-0">
+    <div class="card-body">
+        <table class="table table-hover align-middle">
+            <thead class="table-dark">
+                <tr>
+                    <th>ID</th>
+                    <th>Tên địa điểm</th>
+                    <th>Tọa độ (Lat, Lng)</th>
+                    <th>Bán kính</th>
+                    <th class="text-center">Hành động</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in Model)
+                {
                     <tr>
-                        <th>Tên</th><th>Vĩ độ</th><th>Kinh độ</th><th>Bán kính</th><th class="text-center">Thao tác</th>
+                        <td>@item.Id</td>
+                        <td><strong>@item.Name</strong></td>
+                        <td><span class="badge bg-info text-dark">@item.Lat, @item.Lng</span></td>
+                        <td>@item.Radius (m)</td>
+                        <td class="text-center">
+                            <a asp-action="Edit" asp-route-id="@item.Id" class="btn btn-warning btn-sm">
+                                <i class="fa-solid fa-pen-to-square"></i> Sửa
+                            </a>
+                            <a asp-action="Delete" asp-route-id="@item.Id" class="btn btn-danger btn-sm" onclick="return confirm('Có chắc là muốn xóa địa điểm này không cu?')">
+                                <i class="fa-solid fa-trash"></i> Xóa
+                            </a>
+                        </td>
                     </tr>
-                </thead>
-                <tbody>
-                    @foreach (var item in Model) {
-                        <tr>
-                            <td class="fw-bold text-primary">@item.Name</td>
-                            <td>@item.Lat</td><td>@item.Lng</td>
-                            <td><span class="badge bg-info text-dark">@item.Radius m</span></td>
-                            <td class="text-center">
-                                <button class="btn btn-outline-info btn-sm me-1" onclick="showMap(@item.Lat, @item.Lng, '@item.Name')">
-                                    <i class="fa-solid fa-earth-asia"></i>
-                                </button>
-                                <a asp-action="Edit" asp-route-id="@item.Id" class="btn btn-outline-warning btn-sm me-1"><i class="fa-solid fa-pen-to-square"></i></a>
-                                <a asp-action="Delete" asp-route-id="@item.Id" onclick="return confirm('Xác nhận xoá?')" class="btn btn-outline-danger btn-sm"><i class="fa-solid fa-trash-can"></i></a>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-
-<div class="modal fade" id="mapModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg border-0">
-        <div class="modal-content">
-            <div class="modal-header bg-dark text-white">
-                <h5 class="modal-title" id="mapTitle">Vị trí địa điểm</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body p-0">
-                <div id="map" style="height: 450px; width: 100%;"></div>
-            </div>
-        </div>
-    </div>
-</div>
-
-@section Scripts {
-    <script>
-        let map;
-        let marker;
-
-        function showMap(lat, lng, name) {
-            // Hiện Modal
-            var myModal = new bootstrap.Modal(document.getElementById('mapModal'));
-            myModal.show();
-
-            // Đợi Modal hiện xong mới vẽ bản đồ (tránh lỗi bị xám màn hình)
-            document.getElementById('mapModal').addEventListener('shown.bs.modal', function () {
-                document.getElementById('mapTitle').innerText = "Vị trí: " + name;
-                
-                if (!map) {
-                    map = L.map('map').setView([lat, lng], 15);
-                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-                } else {
-                    map.setView([lat, lng], 15);
                 }
-
-                if (marker) map.removeLayer(marker);
-                marker = L.marker([lat, lng]).addTo(map).bindPopup(name).openPopup();
-                
-                // Fix lỗi bản đồ không load hết các ô gạch
-                setTimeout(() => { map.invalidateSize(); }, 200);
-            }, { once: true });
-        }
-
-        // Logic tìm kiếm (giữ nguyên của cu)
-        function filterTable() {
-            let input = document.getElementById("searchInput").value.toLowerCase();
-            document.querySelectorAll("tbody tr").forEach(row => {
-                let name = row.getElementsByTagName("td")[0].innerText.toLowerCase();
-                row.style.display = name.includes(input) ? "" : "none";
-            });
-        }
-    </script>
-}
+            </tbody>
+        </table>
+    </div>
+</div>
