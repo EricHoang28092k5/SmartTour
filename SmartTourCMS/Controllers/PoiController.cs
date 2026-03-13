@@ -9,7 +9,6 @@ namespace SmartTourCMS.Controllers
     {
         private readonly AppDbContext _context;
         public PoiController(AppDbContext context) => _context = context;
-
         // 1. XEM DANH SÁCH
         public async Task<IActionResult> Index() => View(await _context.Pois.ToListAsync());
 
