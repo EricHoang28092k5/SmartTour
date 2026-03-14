@@ -54,8 +54,9 @@
   <ItemGroup>
 
     <!-- MAUI -->
-    <PackageReference Include="Mapsui" Version="5.0.0" />
-    <PackageReference Include="Mapsui.Maui" Version="5.0.0" />
+    <PackageReference Include="Mapsui" Version="5.0.2" />
+    <PackageReference Include="Mapsui.Maui" Version="5.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.5" />
     <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="8.0.0" />
     <PackageReference Include="Microsoft.Maui.Controls" Version="10.0.0" />
     <PackageReference Include="Microsoft.Maui.Controls.Maps" Version="9.0.50" />
@@ -77,6 +78,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <MauiXaml Update="Pages\HomePage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </MauiXaml>
     <MauiXaml Update="Pages\PoiDetailPage.xaml">
       <Generator>MSBuild:Compile</Generator>
     </MauiXaml>
@@ -89,6 +93,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Update="Pages\HomePage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </None>
     <None Update="Pages\PoiDetailPage.xaml">
       <Generator>MSBuild:Compile</Generator>
     </None>

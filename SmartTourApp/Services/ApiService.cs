@@ -7,24 +7,22 @@ public class ApiService
 {
     private readonly HttpClient http;
 
-    public ApiService()
+    public ApiService(HttpClient http)
     {
-        http = new HttpClient
-        {
-            BaseAddress = new Uri("https://10.0.2.2:7139")
-        };
+        this.http = http;
     }
 
     public async Task<List<Poi>> GetPois()
     {
         try
         {
-            var data = await http.GetFromJsonAsync<List<Poi>>("/api/pois");
+            var data = await http.GetFromJsonAsync<List<Poi>>("api/pois");
             return data ?? new List<Poi>();
         }
-        catch
+        catch (Exception ex)
         {
-            return new List<Poi>();
+            System.Diagnostics.Debug.WriteLine("API ERROR: " + ex.Message);
+            throw;
         }
     }
 }

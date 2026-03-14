@@ -1,10 +1,11 @@
-﻿using System.ComponentModel.DataAnnotations.Schema;
-using SQLite;
+﻿using SQLite;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace SmartTour.Shared.Models;
 
 public class Poi
 {
+    [PrimaryKey]
     public int Id { get; set; }
 
     public string Name { get; set; } = "";

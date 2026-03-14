@@ -38,4 +38,16 @@ public partial class QrScannerPage : ContentPage
 
             await DisplayAlertAsync("QR", "Đã kích hoạt POI", "OK");
     }
+    protected override async void OnAppearing()
+    {
+        base.OnAppearing();
+
+        var status = await Permissions.RequestAsync<Permissions.Camera>();
+
+        if (status != PermissionStatus.Granted)
+        {
+            await DisplayAlertAsync("Permission", "Camera permission required", "OK");
+            return;
+        }
+    }
 }

@@ -55,7 +55,7 @@ public class TrackingService
                     await narration.Play(poi, loc);
                 }
 
-                await Task.Delay(5000);
+                await Task.Delay(7000);
             }
         });
     }

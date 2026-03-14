@@ -5,33 +5,31 @@ namespace SmartTourApp.Services;
 
 public class GeofencingEngine
 {
+    private HashSet<int> activeZones = new();
+
     public Poi? FindBestPoi(Location user, List<Poi> pois)
     {
         Poi? best = null;
 
-        double minDistance = double.MaxValue;
-
         foreach (var poi in pois)
         {
-            var distanceKm =
+            var meters =
                 Location.CalculateDistance(
-                    user.Latitude,
-                    user.Longitude,
-                    poi.Lat,
-                    poi.Lng,
-                    DistanceUnits.Kilometers);
-
-            var meters = distanceKm * 1000;
+                    user,
+                    new Location(poi.Lat, poi.Lng),
+                    DistanceUnits.Kilometers) * 1000;
 
             if (meters <= poi.Radius)
             {
-                if (best == null ||
-                    poi.Priority > best.Priority ||
-                    meters < minDistance)
+                if (!activeZones.Contains(poi.Id))
                 {
+                    activeZones.Add(poi.Id);
                     best = poi;
-                    minDistance = meters;
                 }
+            }
+            else
+            {
+                activeZones.Remove(poi.Id);
             }
         }
 

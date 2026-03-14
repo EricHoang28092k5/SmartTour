@@ -17,18 +17,27 @@ public class PoiRepository
 
     public async Task<List<Poi>> GetPois()
     {
-        var local = db.GetPois();
-
-        if (local.Count > 0)
-            return local;
-
-        var server = await api.GetPois();
-
-        foreach (var poi in server)
+        try
         {
-            db.AddPoi(poi);
+            var server = await api.GetPois();
+
+            if (server != null && server.Count > 0)
+            {
+                db.ClearPois();
+                db.AddPois(server);
+                return server;
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine("API FAIL: " + ex.Message);
         }
 
-        return server;
+        // fallback local
+        var local = db.GetPois();
+
+        System.Diagnostics.Debug.WriteLine($"LOCAL POI COUNT: {local.Count}");
+
+        return local;
     }
 }

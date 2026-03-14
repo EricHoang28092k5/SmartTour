@@ -32,8 +32,9 @@ public class MapViewModel
         });
 
         UserLayer.Features = new[] { feature };
+        UserLayer.DataHasChanged();
 
-        map.Navigator.CenterOn(feature.Point);
+        //map.Navigator.CenterOn(feature.Point);
     }
 
     public void LoadPois(Map map, List<Poi> pois)
@@ -60,5 +61,26 @@ public class MapViewModel
         }
 
         PoiLayer.Features = features;
+
+        // ⭐ dòng cực quan trọng
+        PoiLayer.DataHasChanged();
+    }
+    public void HighlightPoi(double lat, double lng)
+    {
+        var spherical =
+            SphericalMercator.FromLonLat(lng, lat);
+
+        var point = new MPoint(spherical.x, spherical.y);
+
+        var feature = new PointFeature(point);
+
+        feature.Styles.Add(new SymbolStyle
+        {
+            SymbolScale = 1.2,
+            Fill = new Brush(Color.Green)
+        });
+
+        PoiLayer.Features = PoiLayer.Features.Append(feature).ToList();
+        PoiLayer.DataHasChanged();
     }
 }

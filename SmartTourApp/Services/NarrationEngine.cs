@@ -53,6 +53,8 @@ public class NarrationEngine
             if (!string.IsNullOrWhiteSpace(poi.AudioUrl))
             {
                 await audio.Play(poi.AudioUrl);
+
+                await Task.Delay(5000); // chờ audio
             }
             else if (!string.IsNullOrWhiteSpace(poi.TtsScript))
             {

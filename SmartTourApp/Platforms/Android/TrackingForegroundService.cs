@@ -36,7 +36,7 @@ public class TrackingForegroundService : Service
         var builder = new NotificationCompat.Builder(this!, ChannelId)
             .SetContentTitle("SmartTour")
             .SetContentText("Đang theo dõi vị trí")
-            .SetSmallIcon(Resource.Mipmap.appicon);
+            .SetSmallIcon(global::SmartTourApp.Resource.Mipmap.appicon);
 
         return builder.Build()!;
     }

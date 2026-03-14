@@ -1,22 +1,28 @@
+<?xml version="1.0" encoding="utf-8" ?>
+
 <Shell
     x:Class="SmartTourApp.AppShell"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-    xmlns:local="clr-namespace:SmartTourApp.Pages">
+    xmlns:pages="clr-namespace:SmartTourApp.Pages">
 
     <TabBar>
 
         <ShellContent
+            Title="Home"
+            ContentTemplate="{DataTemplate pages:HomePage}" />
+
+        <ShellContent
             Title="Map"
-            ContentTemplate="{DataTemplate local:MapPage}" />
+            ContentTemplate="{DataTemplate pages:MapPage}" />
 
         <ShellContent
             Title="QR Scan"
-            ContentTemplate="{DataTemplate local:QrScannerPage}" />
+            ContentTemplate="{DataTemplate pages:QrScannerPage}" />
 
         <ShellContent
             Title="Settings"
-            ContentTemplate="{DataTemplate local:SettingsPage}" />
+            ContentTemplate="{DataTemplate pages:SettingsPage}" />
 
     </TabBar>
 
