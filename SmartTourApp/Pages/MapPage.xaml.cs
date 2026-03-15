@@ -7,13 +7,13 @@ using Microsoft.Maui.Devices.Sensors;
 using SmartTour.Shared.Models;
 using SmartTourApp.Services;
 using SmartTourApp.ViewModels;
-using System.Collections.Concurrent;
 using System.Linq;
 
 namespace SmartTourApp.Pages;
 
 public partial class MapPage : ContentPage
 {
+    private bool followUser = true;
     private readonly TrackingService tracking;
     private readonly PoiRepository repo;
     private readonly GeofencingEngine geo;
@@ -24,22 +24,24 @@ public partial class MapPage : ContentPage
 
     private bool mapInitialized = false;
     private bool trackingStarted = false;
-
-    // dùng để zoom lần đầu
     private bool firstZoom = true;
 
     public MapPage(
-    TrackingService tracking,
-    PoiRepository repo,
-    GeofencingEngine geo)
+        TrackingService tracking,
+        PoiRepository repo,
+        GeofencingEngine geo)
     {
         InitializeComponent();
+
+        TourMap.Map!.Navigator.ViewportChanged += (s, e) =>
+        {
+            followUser = false;
+        };
 
         this.tracking = tracking;
         this.repo = repo;
         this.geo = geo;
 
-        // Khởi tạo map sau khi MapControl load xong
         TourMap.Loaded += async (_, _) =>
         {
             if (!mapInitialized)
@@ -54,7 +56,6 @@ public partial class MapPage : ContentPage
     {
         base.OnAppearing();
 
-
         tracking.OnLocationChanged -= UpdateLocation;
         tracking.OnLocationChanged += UpdateLocation;
 
@@ -64,7 +65,6 @@ public partial class MapPage : ContentPage
             trackingStarted = true;
         }
 
-        // Zoom tới vị trí user nếu có GPS
         var loc = await Geolocation.GetLastKnownLocationAsync();
 
         if (loc != null && TourMap?.Map?.Navigator != null)
@@ -75,14 +75,13 @@ public partial class MapPage : ContentPage
 
             var pos = new MPoint(mercator.x, mercator.y);
 
-            TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 100);
+            TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 0.5);
         }
     }
 
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
-
         tracking.OnLocationChanged -= UpdateLocation;
     }
 
@@ -94,23 +93,20 @@ public partial class MapPage : ContentPage
             {
                 var map = new Mapsui.Map();
 
+                map.BackColor = Mapsui.Styles.Color.White;
+
                 Mapsui.Logging.Logger.LogDelegate = null;
 
                 TourMap.Map = map;
-
-                // 🔴 XÓA TOÀN BỘ DEBUG WIDGET
                 TourMap.Map.Widgets.Clear();
             }
 
-            // tránh add layer nhiều lần
             if (!TourMap.Map.Layers.OfType<TileLayer>().Any())
             {
                 TourMap.Map.Layers.Add(OpenStreetMap.CreateTileLayer());
             }
 
-            // Load POI
             pois = await repo.GetPois();
-            System.Diagnostics.Debug.WriteLine($"POI COUNT = {pois.Count}");
 
             vm.LoadPois(TourMap.Map, pois);
 
@@ -133,19 +129,13 @@ public partial class MapPage : ContentPage
                 TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 500);
             }
 
-            if (TourMap?.Map != null)
-            {
-                TourMap.Refresh();
-            }
+            TourMap?.Refresh();
 
             MainThread.BeginInvokeOnMainThread(RemoveLoggingWidget);
         }
         catch (Exception ex)
         {
-            await DisplayAlertAsync(
-                "Map Error",
-                ex.Message,
-                "OK");
+            await DisplayAlertAsync("Map Error", ex.Message, "OK");
         }
     }
 
@@ -156,45 +146,35 @@ public partial class MapPage : ContentPage
 
         MainThread.BeginInvokeOnMainThread(() =>
         {
-            try
+            vm.UpdateUser(TourMap.Map, loc);
+
+            if (TourMap?.Map?.Navigator != null && followUser)
             {
-                vm.UpdateUser(TourMap.Map, loc);
+                var mercator = SphericalMercator.FromLonLat(
+        loc.Longitude,
+        loc.Latitude);
 
-                // zoom lần đầu theo GPS
-                if (firstZoom && TourMap?.Map?.Navigator != null)
-                {
-                    var mercator = SphericalMercator.FromLonLat(
-                        loc.Longitude,
-                        loc.Latitude);
+                var pos = new MPoint(mercator.x, mercator.y);
 
-                    var pos = new MPoint(mercator.x, mercator.y);
+                TourMap.Map.Navigator.CenterOn(pos);
 
-                    TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 100);
-
-                    firstZoom = false;
-                }
-
-                if (pois.Count == 0)
-                    return;
-
-                var poi = geo.FindBestPoi(loc, pois);
-
-                if (poi != null)
-                {
-                    NearestPoiLabel.Text = poi.Name;
-                }
-                else
-                {
-                    NearestPoiLabel.Text = "Không có POI gần";
-                }
-
-                if (TourMap?.Map != null)
-                    TourMap.Refresh();
+                firstZoom = false;
             }
-            catch (Exception ex)
+
+            if (pois.Count == 0)
+                return;
+
+            var poi = geo.FindBestPoi(loc, pois);
+
+            if (poi != null)
             {
-                System.Diagnostics.Debug.WriteLine(
-                    $"Map update error: {ex.Message}");
+                NearestPoiLabel.Text = poi.Name;
+
+                vm.HighlightPoi(poi.Lat, poi.Lng);
+            }
+            else
+            {
+                NearestPoiLabel.Text = "Không có POI gần";
             }
         });
     }
@@ -214,5 +194,33 @@ public partial class MapPage : ContentPage
 
         foreach (var w in widgets)
             TourMap.Map.Widgets.Enqueue(w);
+    }
+
+    private void ZoomIn_Clicked(object sender, EventArgs e)
+    {
+        TourMap?.Map?.Navigator?.ZoomIn();
+    }
+
+    private void ZoomOut_Clicked(object sender, EventArgs e)
+    {
+        TourMap?.Map?.Navigator?.ZoomOut();
+    }
+
+    private async void LocateUser_Clicked(object sender, EventArgs e)
+    {
+        followUser = true;
+
+        var loc = await Geolocation.GetLastKnownLocationAsync();
+
+        if (loc == null || TourMap?.Map?.Navigator == null)
+            return;
+
+        var mercator = SphericalMercator.FromLonLat(
+            loc.Longitude,
+            loc.Latitude);
+
+        var pos = new MPoint(mercator.x, mercator.y);
+
+        TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 0.5);
     }
 }

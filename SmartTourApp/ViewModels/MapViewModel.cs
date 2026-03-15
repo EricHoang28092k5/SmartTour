@@ -14,72 +14,109 @@ namespace SmartTourApp.ViewModels;
 
 public class MapViewModel
 {
+    private PointFeature? highlightFeature;
     public MemoryLayer UserLayer = new();
     public MemoryLayer PoiLayer = new();
 
     private PointFeature? userFeature;
+    private PointFeature? pulseFeature;
+
     private readonly List<PointFeature> poiFeatures = new();
 
     private Location? lastLocation;
+
+    private double pulseScale = 1.0;
+    private bool pulseGrowing = true;
 
     // =============================
     // USER LOCATION
     // =============================
     public void UpdateUser(Map map, Location loc)
+{
+    if (lastLocation != null)
     {
-        if (lastLocation != null)
-        {
-            var distance = Location.CalculateDistance(
-                lastLocation,
-                loc,
-                DistanceUnits.Kilometers);
+        var distance = Location.CalculateDistance(
+            lastLocation,
+            loc,
+            DistanceUnits.Kilometers);
 
-            if (distance < 0.005)
-                return;
-        }
-
-        lastLocation = loc;
-
-        var spherical = SphericalMercator.FromLonLat(
-            loc.Longitude,
-            loc.Latitude);
-
-        if (userFeature == null)
-        {
-            userFeature = new PointFeature(
-                new MPoint(spherical.x, spherical.y));
-
-            userFeature.Styles.Add(new SymbolStyle
-            {
-                SymbolScale = 1.2,
-                Fill = new Brush(Color.Blue)
-            });
-
-            UserLayer.Features = new[] { userFeature };
-        }
-        else
-        {
-            userFeature.Point.X = spherical.x;
-            userFeature.Point.Y = spherical.y;
-        }
-
-        UserLayer.DataHasChanged();
+        if (distance < 0.003)
+            return;
     }
 
+    lastLocation = loc;
+
+    var spherical = SphericalMercator.FromLonLat(
+        loc.Longitude,
+        loc.Latitude);
+
+    if (userFeature == null)
+    {
+        // accuracy circle (vòng xanh nhạt lớn)
+        var accuracyFeature = new PointFeature(
+            new MPoint(spherical.x, spherical.y));
+
+        accuracyFeature.Styles.Add(new SymbolStyle
+        {
+            SymbolScale = 1.0,
+            Fill = new Brush(new Color(66,133,244,40)),
+            Outline = null
+        });
+
+        // soft blue halo
+        pulseFeature = new PointFeature(
+            new MPoint(spherical.x, spherical.y));
+
+        pulseFeature.Styles.Add(new SymbolStyle
+        {
+            SymbolScale = 0.5,
+            Fill = new Brush(new Color(66,133,244,80)),
+            Outline = null
+        });
+
+        // blue dot
+        userFeature = new PointFeature(
+            new MPoint(spherical.x, spherical.y));
+
+        userFeature.Styles.Add(new SymbolStyle
+        {
+            SymbolScale = 0.35,
+            Fill = new Brush(new Color(66,133,244)),
+            Outline = new Pen(Color.White, 4)
+        });
+
+        UserLayer.Features = new[]
+        {
+            accuracyFeature,
+            pulseFeature,
+            userFeature
+        };
+    }
+    else
+    {
+        userFeature.Point.X = spherical.x;
+        userFeature.Point.Y = spherical.y;
+
+        pulseFeature!.Point.X = spherical.x;
+        pulseFeature!.Point.Y = spherical.y;
+    }
+
+    UserLayer.DataHasChanged();
+}
+
     // =============================
-    // LOAD POI
+    // LOAD POI (GIỮ NGUYÊN)
     // =============================
     public void LoadPois(Map map, List<Poi> pois)
     {
         poiFeatures.Clear();
 
-        // Tắt style mặc định của layer
         PoiLayer.Style = null;
 
         var iconStyle = new ImageStyle
         {
             Image = "embedded://SmartTourApp.Resources.Images.mappin.png",
-            SymbolScale = 0.7,
+            SymbolScale = 0.6,
             Offset = new Offset(0, 20)
         };
 
@@ -92,7 +129,6 @@ public class MapViewModel
             var feature = new PointFeature(
                 new MPoint(spherical.x, spherical.y));
 
-            // chỉ dùng ImageStyle
             feature.Styles.Clear();
             feature.Styles.Add(iconStyle);
 
@@ -104,22 +140,30 @@ public class MapViewModel
     }
 
     // =============================
-    // HIGHLIGHT POI
+    // HIGHLIGHT POI (GIỮ NGUYÊN)
     // =============================
     public void HighlightPoi(double lat, double lng)
     {
         var spherical = SphericalMercator.FromLonLat(lng, lat);
 
-        var highlight = new PointFeature(
-            new MPoint(spherical.x, spherical.y));
-
-        highlight.Styles.Add(new SymbolStyle
+        if (highlightFeature == null)
         {
-            SymbolScale = 1.4,
-            Fill = new Brush(Color.Green)
-        });
+            highlightFeature = new PointFeature(
+                new MPoint(spherical.x, spherical.y));
 
-        poiFeatures.Add(highlight);
+            highlightFeature.Styles.Add(new SymbolStyle
+            {
+                SymbolScale = 1.3,
+                Fill = new Brush(Color.Green)
+            });
+
+            poiFeatures.Add(highlightFeature);
+        }
+        else
+        {
+            highlightFeature.Point.X = spherical.x;
+            highlightFeature.Point.Y = spherical.y;
+        }
 
         PoiLayer.DataHasChanged();
     }
