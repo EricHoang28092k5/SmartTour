@@ -1,5 +1,8 @@
+
 using Microsoft.EntityFrameworkCore;
+
 using SmartTourBackend.Data;
+// Thêm dòng này lên đầu
 
 var builder = WebApplication.CreateBuilder(args);
 

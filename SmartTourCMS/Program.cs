@@ -1,14 +1,17 @@
+using DotNetEnv;
 using Microsoft.EntityFrameworkCore;
 using SmartTourBackend.Data;
-
+Env.Load();
 var builder = WebApplication.CreateBuilder(args);
 
 // 1. Thêm dịch vụ giao diện MVC (Cái này cu có rồi)
 builder.Services.AddControllersWithViews();
 
 // 2. KẾT NỐI DATABASE (Phải có cái này nó mới lấy được dữ liệu POI từ Neon)
+var connectionString = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING");
+
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(connectionString));
 
 var app = builder.Build();
 

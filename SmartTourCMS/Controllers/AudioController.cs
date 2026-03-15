@@ -16,14 +16,15 @@ namespace SmartTourCMS.Controllers
         private readonly AppDbContext _context;
         private readonly Cloudinary _cloudinary;
 
-        public AudioController(AppDbContext context, IConfiguration config)
+        public AudioController(AppDbContext context)
         {
             _context = context;
-            // Khởi tạo tài khoản Cloudinary
+
+            // Đọc trực tiếp từ biến môi trường (Environment Variables)
             var account = new Account(
-                config["CloudinarySettings:CloudName"],
-                config["CloudinarySettings:ApiKey"],
-                config["CloudinarySettings:ApiSecret"]
+                Environment.GetEnvironmentVariable("CLOUDINARY_CLOUD_NAME"),
+                Environment.GetEnvironmentVariable("CLOUDINARY_API_KEY"),
+                Environment.GetEnvironmentVariable("CLOUDINARY_API_SECRET")
             );
             _cloudinary = new Cloudinary(account);
         }

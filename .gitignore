@@ -1,3 +1,4 @@
+# --- Các file rác của Visual Studio ---
 .vs/
 bin/
 obj/
@@ -5,3 +6,16 @@ obj/
 *.suo
 *.cache
 *.log
+
+# --- Bảo mật: Chặn file chứa mật khẩu ---
+.env
+.env.local
+.env.*
+
+# --- Các file đặc thù khác ---
+*.userosscache
+*.sln.docstates
+
+# --- Thư mục build ---
+[Dd]ebug/
+[Rr]elease/
