@@ -1,5 +1,5 @@
 ﻿using Microsoft.Maui.Devices.Sensors;
-using SmartTourApp.Services;
+using SmartTour.Shared.Models;
 
 namespace SmartTourApp.Services;
 
@@ -10,6 +10,9 @@ public class TrackingService
     private readonly NarrationEngine narration;
     private readonly PoiRepository repo;
     private readonly LocationLogger logger;
+
+    private bool isRunning = false;
+    private List<Poi> pois = new();
 
     public event Action<Location>? OnLocationChanged;
 
@@ -29,24 +32,36 @@ public class TrackingService
 
     public async Task Start()
     {
-        var pois = repo.GetPois();
+        if (isRunning) return;
 
-        while (true)
+        isRunning = true;
+
+        pois = await repo.GetPois();
+
+        _ = Task.Run(async () =>
         {
-            var loc = await location.GetLocation();
-
-            if (loc != null)
+            while (isRunning)
             {
-                logger.Log(loc);
+                var loc = await location.GetLocation();
 
-                OnLocationChanged?.Invoke(loc);
+                if (loc != null)
+                {
+                    logger.Log(loc);
 
-                var poi = geo.FindBestPoi(loc, pois);
+                    OnLocationChanged?.Invoke(loc);
 
-                await narration.Play(poi, loc);
+                    var poi = geo.FindBestPoi(loc, pois);
+
+                    await narration.Play(poi, loc);
+                }
+
+                await Task.Delay(7000);
             }
+        });
+    }
 
-            await Task.Delay(4000);
-        }
+    public void Stop()
+    {
+        isRunning = false;
     }
 }

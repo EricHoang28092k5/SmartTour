@@ -1,9 +1,15 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Mapsui.Logging;
+using Mapsui.Widgets;
+using Mapsui.Widgets.InfoWidgets;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 using SkiaSharp.Views.Maui.Controls.Hosting;
+using SmartTour.Services;
 using SmartTourApp.Data;
 using SmartTourApp.Pages;
 using SmartTourApp.Services;
 using ZXing.Net.Maui;
+using ZXing.Net.Maui.Controls;
 
 namespace SmartTourApp;
 
@@ -11,10 +17,14 @@ public static class MauiProgram
 {
     public static MauiApp CreateMauiApp()
     {
+        Mapsui.Logging.Logger.LogDelegate = null;
+
+
         var builder = MauiApp.CreateBuilder();
 
         builder
             .UseMauiApp<App>()
+            .UseBarcodeReader()
             .UseMauiMaps()
             .UseSkiaSharp()
             .ConfigureFonts(fonts =>
@@ -27,6 +37,10 @@ public static class MauiProgram
         builder.Services.AddSingleton<AudioService>();
         builder.Services.AddSingleton<GeofencingEngine>();
         builder.Services.AddSingleton<NarrationEngine>();
+        builder.Services.AddHttpClient<ApiService>(client =>
+        {
+            client.BaseAddress = new Uri("http://192.168.1.2:5165/");
+        });
         builder.Services.AddSingleton<PoiRepository>();
         builder.Services.AddSingleton<Database>();
         builder.Services.AddSingleton<LogService>();
@@ -37,11 +51,11 @@ public static class MauiProgram
         builder.Services.AddSingleton<LanguageService>();
         builder.Services.AddSingleton<QrScannerPage>();
         builder.Services.AddSingleton<SettingsPage>();
-
-        builder.Services.AddSingleton<MainPage>();
+        builder.Services.AddSingleton<HomePage>();
+        builder.Services.AddSingleton<MapPage>();
 
 #if DEBUG
-        builder.Logging.AddDebug();
+        builder.Logging.ClearProviders();
 #endif
 
         return builder.Build();

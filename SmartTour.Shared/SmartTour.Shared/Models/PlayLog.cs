@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace SmartTour.Shared.Models
+﻿namespace SmartTour.Shared.Models
 {
     public class PlayLog
     {
