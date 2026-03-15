@@ -1,59 +1,78 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using CloudinaryDotNet;
+using CloudinaryDotNet.Actions;
+using Microsoft.AspNetCore.Mvc;
+using CloudinaryDotNet;
+using CloudinaryDotNet.Actions;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
-// Nhớ đổi tên Namespace cho đúng project của cu
-using SmartTourBackend.Data;
+using SmartTourBackend.Data; // Chỗ này bác check lại tên AppDbContext nằm ở đâu
 using SmartTour.Shared.Models;
 
-public class AudioController : Controller
+namespace SmartTourCMS.Controllers
 {
-    private readonly AppDbContext _context;
-    private readonly IWebHostEnvironment _hostEnvironment;
-
-    public AudioController(AppDbContext context, IWebHostEnvironment hostEnvironment)
+    public class AudioController : Controller
     {
-        _context = context;
-        _hostEnvironment = hostEnvironment;
-    }
+        private readonly AppDbContext _context;
+        private readonly Cloudinary _cloudinary;
 
-    // Trang Upload
-    public IActionResult Upload()
-    {
-        // Lấy danh sách POI để đổ vào Dropdown cho cu chọn
-        ViewBag.Pois = new SelectList(_context.Pois, "Id", "Name");
-        return View();
-    }
-
-    [HttpPost]
-    public async Task<IActionResult> Upload(int poiId, IFormFile audioFile)
-    {
-        if (audioFile != null && audioFile.Length > 0)
+        public AudioController(AppDbContext context, IConfiguration config)
         {
-            // 1. Tạo thư mục lưu file nếu chưa có
-            string uploadsFolder = Path.Combine(_hostEnvironment.WebRootPath, "uploads/audio");
-            if (!Directory.Exists(uploadsFolder)) Directory.CreateDirectory(uploadsFolder);
+            _context = context;
+            // Khởi tạo tài khoản Cloudinary
+            var account = new Account(
+                config["CloudinarySettings:CloudName"],
+                config["CloudinarySettings:ApiKey"],
+                config["CloudinarySettings:ApiSecret"]
+            );
+            _cloudinary = new Cloudinary(account);
+        }
 
-            // 2. Tạo tên file duy nhất để không bị trùng
-            string fileName = Guid.NewGuid().ToString() + "_" + audioFile.FileName;
-            string filePath = Path.Combine(uploadsFolder, fileName);
+        public IActionResult Upload()
+        {
+            ViewBag.Pois = new SelectList(_context.Pois, "Id", "Name");
+            return View();
+        }
 
-            // 3. Lưu file vật lý vào máy
-            using (var fileStream = new FileStream(filePath, FileMode.Create))
+        [HttpPost]
+        public async Task<IActionResult> Upload(int poiId, IFormFile audioFile)
+        {
+            if (audioFile != null && audioFile.Length > 0)
             {
-                await audioFile.CopyToAsync(fileStream);
+                // 1. Đẩy file lên Cloudinary
+                var uploadResult = new RawUploadResult();
+                using (var stream = audioFile.OpenReadStream())
+                {
+                    var uploadParams = new RawUploadParams()
+                    {
+                        File = new FileDescription(audioFile.FileName, stream),
+                        Folder = "smart_tour_audio", // Tên thư mục trên Cloud
+                        PublicId = Guid.NewGuid().ToString() // Tên file ngẫu nhiên
+                    };
+                    uploadResult = await _cloudinary.UploadAsync(uploadParams);
+                }
+
+                // 2. Nếu upload thành công, lưu link vào Database
+                if (uploadResult.SecureUrl != null)
+                {
+                    var audioEntry = new AudioFile
+                    {
+                        PoiId = poiId,
+                        FileUrl = uploadResult.SecureUrl.ToString(), // Link https://res.cloudinary.com/...
+                        LanguageId = 1,
+                        AudioType = "Narration",
+                        Duration = 0 // Bác có thể tự tính duration sau
+                    };
+
+                    _context.AudioFiles.Add(audioEntry);
+                    await _context.SaveChangesAsync();
+
+                    return RedirectToAction("Index", "Poi");
+                }
             }
 
-            // 4. Lưu thông tin vào bảng AudioFiles (Bảng cu đã có sẵn)
-            var audioEntry = new AudioFile
-            {
-                PoiId = poiId,
-                FileUrl = "/uploads/audio/" + fileName
-            };
-            _context.AudioFiles.Add(audioEntry);
-            await _context.SaveChangesAsync();
-
-            return RedirectToAction("Index", "Poi"); // Xong thì về trang danh sách
+            ViewBag.Pois = new SelectList(_context.Pois, "Id", "Name");
+            return View();
         }
-        return View();
     }
 }
