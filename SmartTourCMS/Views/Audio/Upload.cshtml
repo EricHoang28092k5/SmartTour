@@ -1,0 +1,55 @@
+﻿@{
+    ViewData["Title"] = "Upload Audio Guide";
+}
+
+<div class="container-fluid px-4">
+    <h1 class="mt-4">Quản lý Thuyết Minh</h1>
+    <ol class="breadcrumb mb-4">
+        <li class="breadcrumb-item"><a asp-controller="Poi" asp-action="Index">Dashboard</a></li>
+        <li class="breadcrumb-item active">Upload Audio</li>
+    </ol>
+
+    <div class="row justify-content-center">
+        <div class="col-lg-6">
+            <div class="card shadow border-0 rounded-lg">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="text-center font-weight-light my-2">
+                        <i class="fa-solid fa-file-audio me-2"></i>Thêm Audio cho địa điểm
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <form asp-action="Upload" method="post" enctype="multipart/form-data">
+                        @* 1. Chọn POI *@
+                        <div class="mb-4">
+                            <label class="small mb-1 fw-bold">Chọn địa điểm:</label>
+                            <select name="poiId" class="form-select shadow-sm" asp-items="ViewBag.Pois">
+                                <option value="">-- Chọn địa điểm từ danh sách --</option>
+                            </select>
+                        </div>
+
+                        @* 2. Chọn File *@
+                        <div class="mb-4">
+                            <label class="small mb-1 fw-bold">Chọn file âm thanh (.mp3):</label>
+                            <div class="input-group">
+                                <input type="file" name="audioFile" class="form-control" accept=".mp3" required />
+                                <span class="input-group-text"><i class="fa-solid fa-music"></i></span>
+                            </div>
+                            <div class="form-text mt-2">Dung lượng tối đa: 15MB. Định dạng hỗ trợ: .mp3</div>
+                        </div>
+
+                        @* 3. Nút bấm *@
+                        <div class="d-flex align-items-center justify-content-between mt-4 mb-0">
+                            <a class="btn btn-secondary shadow-sm" asp-controller="Poi" asp-action="Index">Hủy bỏ</a>
+                            <button type="submit" class="btn btn-success px-4 shadow-sm">
+                                <i class="fa-solid fa-upload me-2"></i>Bắt đầu Upload
+                            </button>
+                        </div>
+                    </form>
+                </div>
+                <div class="card-footer text-center py-3 bg-light">
+                    <div class="small text-muted">Dữ liệu sẽ được lưu vào thư mục wwwroot/uploads/audio</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

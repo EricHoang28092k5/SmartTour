@@ -16,8 +16,12 @@ namespace SmartTourBackend.Controllers
         [HttpGet]
         public async Task<IActionResult> GetPois()
         {
-            var data = await _context.Pois.ToListAsync();
-            return Ok(data); // Trả về JSON 200 OK
+            // Giờ có dòng ICollection ở trên rồi thì cái .Include này sẽ hết đỏ ngay
+            var poisWithAudio = await _context.Pois
+                .Include(p => p.AudioFiles)
+                .ToListAsync();
+
+            return Ok(poisWithAudio);
         }
     }
 }

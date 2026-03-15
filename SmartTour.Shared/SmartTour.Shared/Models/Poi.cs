@@ -30,6 +30,7 @@ public class Poi
     public bool IsActive { get; set; } = true;
 
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    public virtual ICollection<AudioFile> AudioFiles { get; set; } = new List<AudioFile>();
 
     // Thuộc tính này dùng để map với PostGIS trong Database
     // [NotMapped] có nghĩa là App di động sẽ không cần quan tâm đến nó, 

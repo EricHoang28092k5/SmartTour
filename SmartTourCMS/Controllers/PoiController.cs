@@ -10,7 +10,15 @@ namespace SmartTourCMS.Controllers
         private readonly AppDbContext _context;
         public PoiController(AppDbContext context) => _context = context;
         // 1. XEM DANH SÁCH
-        public async Task<IActionResult> Index() => View(await _context.Pois.ToListAsync());
+        public async Task<IActionResult> Index()
+        {
+            // Phải có dòng .Include này thì bảng ở trang Index mới thấy được nhạc để hiện nút Loa
+            var pois = await _context.Pois
+                .Include(p => p.AudioFiles)
+                .ToListAsync();
+
+            return View(pois);
+        }
 
         // 2. THÊM MỚI (Giao diện)
         public IActionResult Create() => View();

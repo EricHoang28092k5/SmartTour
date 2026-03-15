@@ -1,20 +1,27 @@
 @model IEnumerable<SmartTour.Shared.Models.Poi>
 
+@* 1. TIÊU ĐỀ VÀ Ô TÌM KIẾM *@
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h2><i class="fa-solid fa-list text-primary"></i> Danh sách địa điểm</h2>
-    <a asp-action="Create" class="btn btn-success shadow">
-        <i class="fa-solid fa-plus"></i> Thêm địa điểm mới
-    </a>
+    <h2><i class="fa-solid fa-map-location-dot text-primary"></i> Quản lý địa điểm</h2>
+    <div class="d-flex gap-2">
+        <div class="input-group">
+            <span class="input-group-text bg-white border-end-0"><i class="fa-solid fa-magnifying-glass text-muted"></i></span>
+            <input type="text" id="searchInput" class="form-control border-start-0" placeholder="Tìm tên địa điểm..." onkeyup="filterTable()">
+        </div>
+        <a asp-action="Create" class="btn btn-success shadow-sm" style="min-width: 120px;">
+            <i class="fa-solid fa-plus"></i> Thêm mới
+        </a>
+    </div>
 </div>
 
-<div class="card shadow border-0">
-    <div class="card-body">
-        <table class="table table-hover align-middle">
+@* 2. BẢNG DỮ LIỆU *@
+<div class="card shadow border-0 mb-4">
+    <div class="card-body p-0">
+        <table class="table table-hover align-middle mb-0" id="poiTable">
             <thead class="table-dark">
                 <tr>
-                    <th>ID</th>
-                    <th>Tên địa điểm</th>
-                    <th>Tọa độ (Lat, Lng)</th>
+                    <th class="ps-3">Tên địa điểm</th>
+                    <th>Tọa độ</th>
                     <th>Bán kính</th>
                     <th class="text-center">Hành động</th>
                 </tr>
@@ -23,16 +30,36 @@
                 @foreach (var item in Model)
                 {
                     <tr>
-                        <td>@item.Id</td>
-                        <td><strong>@item.Name</strong></td>
-                        <td><span class="badge bg-info text-dark">@item.Lat, @item.Lng</span></td>
-                        <td>@item.Radius (m)</td>
+                        <td class="ps-3"><strong>@item.Name</strong></td>
+                        <td>
+                            <span class="badge rounded-pill bg-light text-dark border">
+                                <i class="fa-solid fa-location-dot text-danger"></i> @item.Lat.ToString("F4"), @item.Lng.ToString("F4")
+                            </span>
+                        </td>
+                        <td>@item.Radius m</td>
                         <td class="text-center">
-                            <a asp-action="Edit" asp-route-id="@item.Id" class="btn btn-warning btn-sm">
-                                <i class="fa-solid fa-pen-to-square"></i> Sửa
+                            @* NÚT NGHE THỬ AUDIO *@
+                            @if (item.AudioFiles != null && item.AudioFiles.Any())
+                            {
+                                var firstAudio = item.AudioFiles.First().FileUrl;
+                                <button class="btn btn-sm btn-outline-primary me-1" title="Nghe thử" onclick="playPreview('@firstAudio')">
+                                    <i class="fa-solid fa-volume-high"></i>
+                                </button>
+                            }
+
+                            @* NÚT XEM BẢN ĐỒ *@
+                            <button class="btn btn-sm btn-info text-white me-1" title="Xem vị trí"
+                                    onclick="showMapModal('@item.Name', @item.Lat, @item.Lng)">
+                                <i class="fa-solid fa-eye"></i>
+                            </button>
+
+                            <a asp-action="Edit" asp-route-id="@item.Id" class="btn btn-sm btn-warning me-1" title="Sửa">
+                                <i class="fa-solid fa-pen"></i>
                             </a>
-                            <a asp-action="Delete" asp-route-id="@item.Id" class="btn btn-danger btn-sm" onclick="return confirm('Có chắc là muốn xóa địa điểm này không cu?')">
-                                <i class="fa-solid fa-trash"></i> Xóa
+
+                            <a asp-action="Delete" asp-route-id="@item.Id" class="btn btn-sm btn-danger" title="Xóa"
+                                   onclick="return confirm('Có chắc là muốn xóa @item.Name không cu?')">
+                                <i class="fa-solid fa-trash"></i>
                             </a>
                         </td>
                     </tr>
@@ -41,3 +68,82 @@
         </table>
     </div>
 </div>
+
+@* 3. KHUNG MODAL HIỆN BẢN ĐỒ (POPUP) *@
+<div class="modal fade" id="mapModal" tabindex="-1" aria-labelledby="modalTitle" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title font-weight-bold" id="modalTitle">Vị trí trên bản đồ</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div id="quickMap" style="height: 450px; width: 100%;"></div>
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@* 4. SCRIPTS XỬ LÝ *@
+@section Scripts {
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <script>
+        var quickMap;
+        var currentMarker;
+
+        // Hàm mở Modal và hiện bản đồ
+        function showMapModal(name, lat, lng) {
+        var myModal = new bootstrap.Modal(document.getElementById('mapModal'));
+        myModal.show();
+
+        var modalEl = document.getElementById('mapModal');
+        modalEl.addEventListener('shown.bs.modal', function () {
+        if (!quickMap) {
+        quickMap = L.map('quickMap').setView([lat, lng], 15);
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap'
+        }).addTo(quickMap);
+        } else {
+        quickMap.setView([lat, lng], 15);
+        }
+
+        if (currentMarker) quickMap.removeLayer(currentMarker);
+        currentMarker = L.marker([lat, lng]).addTo(quickMap)
+        .bindPopup("<b>" + name + "</b>").openPopup();
+                
+        setTimeout(function(){
+        quickMap.invalidateSize();
+        }, 100);
+        }, { once: true });
+        }
+
+        // Hàm tìm kiếm nhanh trên bảng
+        function filterTable() {
+        var input = document.getElementById("searchInput");
+        var filter = input.value.toUpperCase();
+        var table = document.getElementById("poiTable");
+        var tr = table.getElementsByTagName("tr");
+
+        for (var i = 1; i < tr.length; i++) {
+        var tdName = tr[i].getElementsByTagName("td")[0];
+        if (tdName) {
+        var txtValue = tdName.textContent || tdName.innerText;
+        tr[i].style.display = txtValue.toUpperCase().indexOf(filter) > -1 ? "" : "none";
+        }
+        }
+        }
+
+        // Hàm nghe thử Audio
+        function playPreview(url) {
+        var audio = new Audio(url);
+        audio.play().catch(e => {
+        alert("Không thể phát audio. Kiểm tra lại đường dẫn hoặc file cu nhé!");
+        console.error(e);
+        });
+        }
+    </script>
+}
