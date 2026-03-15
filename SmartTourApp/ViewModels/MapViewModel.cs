@@ -2,6 +2,8 @@
 using Mapsui.Layers;
 using Mapsui.Projections;
 using Mapsui.Styles;
+using Mapsui.Features;
+using Microsoft.Maui.Devices.Sensors;
 using SmartTour.Shared.Models;
 
 using Map = Mapsui.Map;
@@ -15,72 +17,110 @@ public class MapViewModel
     public MemoryLayer UserLayer = new();
     public MemoryLayer PoiLayer = new();
 
+    private PointFeature? userFeature;
+    private readonly List<PointFeature> poiFeatures = new();
+
+    private Location? lastLocation;
+
+    // =============================
+    // USER LOCATION
+    // =============================
     public void UpdateUser(Map map, Location loc)
     {
-        var spherical =
-            SphericalMercator.FromLonLat(
-                loc.Longitude,
-                loc.Latitude);
-
-        var feature = new PointFeature(
-            new MPoint(spherical.x, spherical.y));
-
-        feature.Styles.Add(new SymbolStyle
+        if (lastLocation != null)
         {
-            SymbolScale = 1.2,
-            Fill = new Brush(Color.Red)
-        });
+            var distance = Location.CalculateDistance(
+                lastLocation,
+                loc,
+                DistanceUnits.Kilometers);
 
-        UserLayer.Features = new[] { feature };
-        UserLayer.DataHasChanged();
+            if (distance < 0.005)
+                return;
+        }
 
-        //map.Navigator.CenterOn(feature.Point);
-    }
+        lastLocation = loc;
 
-    public void LoadPois(Map map, List<Poi> pois)
-    {
-        var features = new List<PointFeature>();
+        var spherical = SphericalMercator.FromLonLat(
+            loc.Longitude,
+            loc.Latitude);
 
-        foreach (var poi in pois)
+        if (userFeature == null)
         {
-            var spherical =
-                SphericalMercator.FromLonLat(
-                    poi.Lng,
-                    poi.Lat);
-
-            var f = new PointFeature(
+            userFeature = new PointFeature(
                 new MPoint(spherical.x, spherical.y));
 
-            f.Styles.Add(new SymbolStyle
+            userFeature.Styles.Add(new SymbolStyle
             {
-                SymbolScale = 0.8,
+                SymbolScale = 1.2,
                 Fill = new Brush(Color.Blue)
             });
 
-            features.Add(f);
+            UserLayer.Features = new[] { userFeature };
+        }
+        else
+        {
+            userFeature.Point.X = spherical.x;
+            userFeature.Point.Y = spherical.y;
         }
 
-        PoiLayer.Features = features;
+        UserLayer.DataHasChanged();
+    }
 
-        // ⭐ dòng cực quan trọng
+    // =============================
+    // LOAD POI
+    // =============================
+    public void LoadPois(Map map, List<Poi> pois)
+    {
+        poiFeatures.Clear();
+
+        // Tắt style mặc định của layer
+        PoiLayer.Style = null;
+
+        var iconStyle = new ImageStyle
+        {
+            Image = "embedded://SmartTourApp.Resources.Images.mappin.png",
+            SymbolScale = 0.7,
+            Offset = new Offset(0, 20)
+        };
+
+        foreach (var poi in pois)
+        {
+            var spherical = SphericalMercator.FromLonLat(
+                poi.Lng,
+                poi.Lat);
+
+            var feature = new PointFeature(
+                new MPoint(spherical.x, spherical.y));
+
+            // chỉ dùng ImageStyle
+            feature.Styles.Clear();
+            feature.Styles.Add(iconStyle);
+
+            poiFeatures.Add(feature);
+        }
+
+        PoiLayer.Features = poiFeatures;
         PoiLayer.DataHasChanged();
     }
+
+    // =============================
+    // HIGHLIGHT POI
+    // =============================
     public void HighlightPoi(double lat, double lng)
     {
-        var spherical =
-            SphericalMercator.FromLonLat(lng, lat);
+        var spherical = SphericalMercator.FromLonLat(lng, lat);
 
-        var point = new MPoint(spherical.x, spherical.y);
+        var highlight = new PointFeature(
+            new MPoint(spherical.x, spherical.y));
 
-        var feature = new PointFeature(point);
-
-        feature.Styles.Add(new SymbolStyle
+        highlight.Styles.Add(new SymbolStyle
         {
-            SymbolScale = 1.2,
+            SymbolScale = 1.4,
             Fill = new Brush(Color.Green)
         });
 
-        PoiLayer.Features = PoiLayer.Features.Append(feature).ToList();
+        poiFeatures.Add(highlight);
+
         PoiLayer.DataHasChanged();
     }
 }

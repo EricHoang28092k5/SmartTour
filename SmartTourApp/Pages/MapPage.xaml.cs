@@ -1,12 +1,14 @@
 ﻿using Mapsui;
+using Mapsui.Layers;
 using Mapsui.Projections;
 using Mapsui.Tiling;
+using Mapsui.Tiling.Layers;
 using Microsoft.Maui.Devices.Sensors;
 using SmartTour.Shared.Models;
 using SmartTourApp.Services;
 using SmartTourApp.ViewModels;
-using System.Linq;
 using System.Collections.Concurrent;
+using System.Linq;
 
 namespace SmartTourApp.Pages;
 
@@ -101,10 +103,9 @@ public partial class MapPage : ContentPage
             }
 
             // tránh add layer nhiều lần
-            if (!TourMap.Map.Layers.Any())
+            if (!TourMap.Map.Layers.OfType<TileLayer>().Any())
             {
-                TourMap.Map.Layers.Add(
-                    OpenStreetMap.CreateTileLayer());
+                TourMap.Map.Layers.Add(OpenStreetMap.CreateTileLayer());
             }
 
             // Load POI
@@ -132,7 +133,10 @@ public partial class MapPage : ContentPage
                 TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 500);
             }
 
-            TourMap.Refresh();
+            if (TourMap?.Map != null)
+            {
+                TourMap.Refresh();
+            }
 
             MainThread.BeginInvokeOnMainThread(RemoveLoggingWidget);
         }
