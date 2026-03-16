@@ -31,6 +31,7 @@ public class Poi
     public bool IsActive { get; set; } = true;
 
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    [Ignore]
     public virtual ICollection<AudioFile> AudioFiles { get; set; } = new List<AudioFile>();
 
     // Thuộc tính này dùng để map với PostGIS trong Database

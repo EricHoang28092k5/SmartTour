@@ -170,7 +170,7 @@ public partial class MapPage : ContentPage
             {
                 NearestPoiLabel.Text = poi.Name;
 
-                vm.HighlightPoi(poi.Lat, poi.Lng);
+                vm.HighlightPoi(TourMap.Map, poi.Lat, poi.Lng);
             }
             else
             {
