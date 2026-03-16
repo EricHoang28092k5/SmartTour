@@ -1,8 +1,76 @@
-﻿@{
-    ViewData["Title"] = "Home Page";
-}
+﻿@model IEnumerable<SmartTour.Shared.Models.Tour>
 
-<div class="text-center">
-    <h1 class="display-4">Welcome</h1>
-    <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
+<div class="container-fluid mt-4">
+    <h2 class="mb-4">📊 Hệ thống Quản lý SmartTour</h2>
+
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white shadow">
+                <div class="card-body">
+                    <h5>📍 Địa điểm (POI)</h5>
+                    <h2 class="display-4">@ViewBag.TotalPois</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white shadow">
+                <div class="card-body">
+                    <h5>🗺️ Tổng số Tour</h5>
+                    <h2 class="display-4">@ViewBag.TotalTours</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white shadow">
+                <div class="card-body">
+                    <h5>🌐 Bản dịch</h5>
+                    <h2 class="display-4">@ViewBag.TotalTranslations</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-dark shadow">
+                <div class="card-body">
+                    <h5>🌍 Ngôn ngữ</h5>
+                    <h2 class="display-4">@ViewBag.TotalLanguages</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card shadow">
+                <div class="card-header bg-dark text-white d-flex justify-content-between">
+                    <h5 class="mb-0">✨ Các hành trình (Tour) mới tạo</h5>
+                    <a href="/Tour/Index" class="btn btn-sm btn-outline-light">Xem tất cả</a>
+                </div>
+                <div class="card-body">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Tên Tour</th>
+                                <th>Số địa điểm</th>
+                                <th>Ngày tạo (VN)</th>
+                                <th>Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var tour in Model)
+                            {
+                                <tr>
+                                    <td><strong>@tour.Name</strong></td>
+                                    <td><span class="badge bg-secondary">@(tour.TourPois?.Count ?? 0) điểm</span></td>
+                                    <td>@tour.CreatedAt.AddHours(7).ToString("dd/MM/yyyy HH:mm")</td>
+                                    <td>
+                                        <a href="/Tour/Details/@tour.Id" class="btn btn-sm btn-primary">Xem</a>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>

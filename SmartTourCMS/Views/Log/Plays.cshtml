@@ -1,0 +1,31 @@
+﻿@model IEnumerable<SmartTour.Shared.Models.PlayLog>
+
+<div class="container-fluid">
+    <div class="card shadow">
+        <div class="card-header bg-success text-white">
+            <h4 class="mb-0"><i class="fa-solid fa-play me-2"></i> Lịch sử nghe Audio Guide</h4>
+        </div>
+        <div class="card-body">
+            <table class="table table-hover border">
+                <thead class="table-light">
+                    <tr>
+                        <th>Người dùng</th>
+                        <th>Địa điểm nghe</th>
+                        <th>Thời gian (VN)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var log in Model)
+                    {
+                        <tr>
+                            <td><span class="badge bg-secondary">@log.UserId</span></td>
+        
+                            <td><strong>@log.Poi?.Name</strong></td>
+                            <td>@log.Time.AddHours(7).ToString("dd/MM/yyyy HH:mm")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

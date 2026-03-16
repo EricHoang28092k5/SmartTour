@@ -1,0 +1,47 @@
+﻿@model SmartTour.Shared.Models.Tour
+
+<div class="container mt-4">
+    <h2>✏️ Chỉnh sửa hành trình</h2>
+    <hr />
+    <form asp-action="Edit" method="post">
+        <input type="hidden" asp-for="Id" />
+        <div class="row">
+            <div class="col-md-5">
+                <div class="mb-3">
+                    <label class="form-label font-weight-bold">Tên Tour</label>
+                    <input asp-for="Name" class="form-control" required />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label font-weight-bold">Mô tả</label>
+                    <textarea asp-for="Description" class="form-control" rows="4"></textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label font-weight-bold">Ngày tạo</label>
+                    <input asp-for="CreatedAt" class="form-control" readonly />
+                </div>
+                <button type="submit" class="btn btn-warning w-100">💾 Cập nhật thay đổi</button>
+                <a href="/Tour/Index" class="btn btn-link w-100 mt-2">Hủy bỏ</a>
+            </div>
+
+            <div class="col-md-7">
+                <label class="form-label font-weight-bold">Điều chỉnh danh sách địa điểm:</label>
+                <div class="card shadow-sm p-3" style="max-height: 450px; overflow-y: auto;">
+                    @{
+                        var selectedIds = ViewBag.SelectedPoiIds as List<int> ?? new List<int>();
+                    }
+                    @foreach (var poi in ViewBag.Pois)
+                    {
+                        <div class="form-check border-bottom py-2">
+                            <input class="form-check-input" type="checkbox" name="selectedPoiIds" value="@poi.Id"
+                                   id="poi_@poi.Id" @(selectedIds.Contains(poi.Id) ? "checked" : "")>
+                            <label class="form-check-label ms-2" for="poi_@poi.Id">
+                                <strong>@poi.Name</strong>
+                                <br /><small class="text-muted">📍 @poi.Lat, @poi.Lng</small>
+                            </label>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </form>
+</div>

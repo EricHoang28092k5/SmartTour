@@ -1,0 +1,51 @@
+﻿@model SmartTour.Shared.Models.PoiTranslation
+
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow border-0">
+                <div class="card-header bg-info text-white p-3">
+                    <h4 class="mb-0">🌐 Thêm bản dịch mới</h4>
+                </div>
+                <div class="card-body p-4">
+                    <form asp-action="Create" method="post">
+                        <input type="hidden" asp-for="PoiId" value="@ViewBag.PoiId" />
+
+                        <div class="mb-3">
+                            <label class="form-label font-weight-bold">Địa điểm đang dịch:</label>
+                            <input class="form-control bg-light" value="@ViewBag.PoiName" readonly />
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label font-weight-bold">Ngôn ngữ đích</label>
+                            <select asp-for="LanguageId" class="form-select border-primary"
+                                    asp-items="@(new SelectList(ViewBag.Languages, "Id", "Name"))" required>
+                                <option value="">-- Chọn ngôn ngữ --</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label font-weight-bold">Tiêu đề (Ví dụ: Hoan Kiem Lake)</label>
+                            <input asp-for="Title" class="form-control" required placeholder="Nhập tên đã dịch..." />
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label font-weight-bold">Mô tả chi tiết</label>
+                            <textarea asp-for="Description" class="form-control" rows="4" placeholder="Viết mô tả bằng ngôn ngữ đã chọn..."></textarea>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label font-weight-bold">Kịch bản Audio (TTS Script)</label>
+                            <textarea asp-for="TtsScript" class="form-control" rows="3" placeholder="Nội dung này sẽ dùng để AI đọc thành tiếng cho khách nghe..."></textarea>
+                        </div>
+
+                        <div class="d-flex justify-content-between">
+                            <a href="/Translation/Index?poiId=@ViewBag.PoiId" class="btn btn-outline-secondary">Quay lại</a>
+                            <button type="submit" class="btn btn-info text-white px-4">🚀 Lưu bản dịch</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

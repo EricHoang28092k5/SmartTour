@@ -1,0 +1,47 @@
+﻿@model SmartTour.Shared.Models.Tour
+
+<div class="container mt-4">
+    <div class="card shadow">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h3 class="mb-0">🗺️ Chi tiết hành trình: @Model.Name</h3>
+            <a href="/Tour/Index" class="btn btn-light btn-sm">Quay lại danh sách</a>
+        </div>
+        <div class="card-body">
+            <div class="row mb-4">
+                <div class="col-md-8">
+                    <h5>Mô tả:</h5>
+                    <p class="lead">@Model.Description</p>
+                </div>
+                <div class="col-md-4 text-end text-muted">
+                    <small>Được tạo ngày: @Model.CreatedAt.AddHours(7).ToString("dd/MM/yyyy HH:mm")</small>
+                </div>
+            </div>
+
+            <h4 class="border-bottom pb-2">📍 Lộ trình di chuyển</h4>
+            <div class="timeline mt-3">
+                @if (Model.TourPois != null && Model.TourPois.Any())
+                {
+                    @foreach (var tp in Model.TourPois.OrderBy(x => x.OrderIndex))
+                    {
+                        <div class="d-flex mb-3 align-items-center p-3 border rounded bg-light">
+                            <div class="me-4">
+                                <span class="badge bg-dark rounded-circle p-3" style="width: 45px;">@tp.OrderIndex</span>
+                            </div>
+                            <div>
+                                <h5 class="mb-1 text-primary">@tp.Poi?.Name</h5>
+                                <p class="mb-0 text-muted small">Tọa độ: @tp.Poi?.Lat, @tp.Poi?.Lng</p>
+                            </div>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="alert alert-warning">Hành trình này hiện chưa có địa điểm nào được chọn.</div>
+                }
+            </div>
+        </div>
+        <div class="card-footer text-end">
+            <a href="/Tour/Edit/@Model.Id" class="btn btn-warning">Sửa hành trình</a>
+        </div>
+    </div>
+</div>

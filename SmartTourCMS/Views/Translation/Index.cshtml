@@ -1,0 +1,36 @@
+﻿@model IEnumerable<SmartTour.Shared.Models.PoiTranslation>
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3>🌐 Bản dịch của: <span class="text-primary">@ViewBag.PoiName</span></h3>
+        <a href="/Translation/Create?poiId=@ViewBag.PoiId" class="btn btn-success">+ Thêm ngôn ngữ</a>
+    </div>
+
+    <table class="table table-bordered shadow-sm">
+        <thead class="table-dark">
+            <tr>
+                <th>Ngôn ngữ</th>
+                <th>Tiêu đề (Dịch)</th>
+                <th>Mô tả</th>
+                <th>Thao tác</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in Model)
+            {
+                <tr>
+                    <td><span class="badge bg-info text-dark">@item.Language?.Name (@item.Language?.Code)</span></td>
+                    <td><strong>@item.Title</strong></td>
+                    <td class="text-truncate" style="max-width: 250px;">@item.Description</td>
+                    <td>
+                        <form asp-action="Delete" asp-route-id="@item.Id" asp-route-poiId="@item.PoiId"
+                              method="post" onsubmit="return confirm('Xóa bản dịch này nhé bác?');">
+                            <button type="submit" class="btn btn-sm btn-outline-danger">Xóa</button>
+                        </form>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    <a href="/Poi/Index" class="btn btn-secondary">⬅️ Quay lại danh sách địa điểm</a>
+</div>

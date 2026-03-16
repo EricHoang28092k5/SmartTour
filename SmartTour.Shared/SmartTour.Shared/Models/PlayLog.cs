@@ -16,5 +16,8 @@
         public double Lng { get; set; }
 
         public int DurationListened { get; set; }
+        public Poi? Poi { get; set; }
+        // Nhớ là UserId (U và I viết hoa)
+        public string UserId { get; set; } = string.Empty;
     }
 } // Cần dấu ngoặc này để đóng Namespace

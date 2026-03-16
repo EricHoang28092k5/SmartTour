@@ -46,7 +46,9 @@
                                     <i class="fa-solid fa-volume-high"></i>
                                 </button>
                             }
-
+                            <a href="/Translation/Index?poiId=@item.Id" class="btn btn-sm btn-outline-info">
+                                🌐 Dịch
+                            </a>
                             @* NÚT XEM BẢN ĐỒ *@
                             <button class="btn btn-sm btn-info text-white me-1" title="Xem vị trí"
                                     onclick="showMapModal('@item.Name', @item.Lat, @item.Lng)">
