@@ -1,5 +1,9 @@
 @model IEnumerable<SmartTour.Shared.Models.Poi>
 
+@{
+    ViewData["Title"] = "Quản lý địa điểm";
+}
+
 @* 1. TIÊU ĐỀ VÀ Ô TÌM KIẾM *@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2><i class="fa-solid fa-map-location-dot text-primary"></i> Quản lý địa điểm</h2>
@@ -46,9 +50,11 @@
                                     <i class="fa-solid fa-volume-high"></i>
                                 </button>
                             }
-                            <a href="/Translation/Index?poiId=@item.Id" class="btn btn-sm btn-outline-info">
-                                🌐 Dịch
+                            
+                            <a href="/Translation/Index?poiId=@item.Id" class="btn btn-sm btn-outline-info me-1">
+                                <i class="fa-solid fa-language"></i> Dịch
                             </a>
+
                             @* NÚT XEM BẢN ĐỒ *@
                             <button class="btn btn-sm btn-info text-white me-1" title="Xem vị trí"
                                     onclick="showMapModal('@item.Name', @item.Lat, @item.Lng)">
@@ -72,11 +78,11 @@
 </div>
 
 @* 3. KHUNG MODAL HIỆN BẢN ĐỒ (POPUP) *@
-<div class="modal fade" id="mapModal" tabindex="-1" aria-labelledby="modalTitle" aria-hidden="true">
+<div class="modal fade" id="mapModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content border-0 shadow">
             <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title font-weight-bold" id="modalTitle">Vị trí trên bản đồ</h5>
+                <h5 class="modal-title font-weight-bold"><i class="fa-solid fa-earth-asia me-2"></i>Vị trí trên bản đồ</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body p-0">
@@ -91,18 +97,20 @@
 
 @* 4. SCRIPTS XỬ LÝ *@
 @section Scripts {
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
     <script>
         var quickMap;
         var currentMarker;
 
-        // Hàm mở Modal và hiện bản đồ
         function showMapModal(name, lat, lng) {
-        var myModal = new bootstrap.Modal(document.getElementById('mapModal'));
+        // Hiện modal
+        var modalEl = document.getElementById('mapModal');
+        var myModal = bootstrap.Modal.getOrCreateInstance(modalEl);
         myModal.show();
 
-        var modalEl = document.getElementById('mapModal');
+        // Xử lý bản đồ khi modal hiện xong hoàn toàn
         modalEl.addEventListener('shown.bs.modal', function () {
         if (!quickMap) {
         quickMap = L.map('quickMap').setView([lat, lng], 15);
@@ -117,13 +125,13 @@
         currentMarker = L.marker([lat, lng]).addTo(quickMap)
         .bindPopup("<b>" + name + "</b>").openPopup();
                 
+        // Fix lỗi vỡ tiles do Modal animation
         setTimeout(function(){
         quickMap.invalidateSize();
-        }, 100);
-        }, { once: true });
+        }, 250);
+        }, { once: false }); // Để false để mỗi lần mở đều fix lại size
         }
 
-        // Hàm tìm kiếm nhanh trên bảng
         function filterTable() {
         var input = document.getElementById("searchInput");
         var filter = input.value.toUpperCase();
@@ -139,11 +147,10 @@
         }
         }
 
-        // Hàm nghe thử Audio
         function playPreview(url) {
         var audio = new Audio(url);
         audio.play().catch(e => {
-        alert("Không thể phát audio. Kiểm tra lại đường dẫn hoặc file cu nhé!");
+        alert("Lỗi phát audio: File không tồn tại hoặc sai đường dẫn cu ơi!");
         console.error(e);
         });
         }

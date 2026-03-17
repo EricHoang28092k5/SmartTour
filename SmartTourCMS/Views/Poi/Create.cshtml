@@ -1,51 +1,115 @@
 ﻿@model SmartTour.Shared.Models.Poi
 
-<h2>Thêm địa điểm mới</h2>
+@{
+    ViewData["Title"] = "Thêm địa điểm mới";
+}
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+<h2><i class="fa-solid fa-plus-circle text-success"></i> Thêm địa điểm mới</h2>
 <hr />
+
 <div class="row">
     <div class="col-md-4">
-        <form asp-action="Create">
-            <div class="mb-3">
-                <label class="form-label">Tên địa điểm</label>
-                <input asp-for="Name" class="form-control" placeholder="Nhập tên..." required />
+        <div class="card shadow-sm border-0">
+            <div class="card-body">
+                <form asp-action="Create">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Tên địa điểm</label>
+                        <input asp-for="Name" class="form-control" placeholder="Ví dụ: Thác Trị An..." required />
+                    </div>
+                    <div class="row">
+                        <div class="col-6 mb-3">
+                            <label class="form-label fw-bold">Kinh độ (Lat)</label>
+                            <input asp-for="Lat" id="lat" class="form-control bg-light" readonly required />
+                        </div>
+                        <div class="col-6 mb-3">
+                            <label class="form-label fw-bold">Vĩ độ (Lng)</label>
+                            <input asp-for="Lng" id="lng" class="form-control bg-light" readonly required />
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Bán kính kích hoạt (m)</label>
+                        <input asp-for="Radius" type="number" class="form-control" value="100" />
+                        <div class="form-text">Khoảng cách để App tự phát Audio.</div>
+                    </div>
+                    <hr />
+                    <button type="submit" class="btn btn-primary w-100 shadow">
+                        <i class="fa-solid fa-save"></i> Lưu địa điểm
+                    </button>
+                    <a asp-action="Index" class="btn btn-link w-100 mt-2 text-decoration-none text-muted">Quay lại danh sách</a>
+                </form>
             </div>
-            <div class="mb-3">
-                <label class="form-label">Kinh độ (Latitude)</label>
-                <input asp-for="Lat" id="lat" class="form-control" readonly />
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Vĩ độ (Longitude)</label>
-                <input asp-for="Lng" id="lng" class="form-control" readonly />
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Bán kính (m)</label>
-                <input asp-for="Radius" type="number" class="form-control" value="100" />
-            </div>
-            <button type="submit" class="btn btn-primary w-100">Lưu lại</button>
-        </form>
+        </div>
     </div>
+    
     <div class="col-md-8">
-        <div id="map" style="height: 500px; border-radius: 10px;" class="shadow"></div>
-        <p class="text-muted mt-2 small">* Click chuột vào bản đồ để lấy tọa độ tự động</p>
+        @* Ô tìm kiếm địa điểm cho nhanh *@
+        <div class="input-group mb-2">
+            <input type="text" id="addressSearch" class="form-control" placeholder="Nhập địa chỉ để tìm nhanh (VD: Tam Phước, Biên Hòa)...">
+            <button class="btn btn-outline-secondary" type="button" onclick="searchLocation()">Tìm</button>
+        </div>
+        
+        <div id="map" style="height: 520px; border-radius: 12px;" class="shadow-sm border"></div>
+        <div class="alert alert-info mt-2 p-2 small">
+            <i class="fa-solid fa-circle-info"></i> <strong>Mẹo:</strong> Click trực tiếp vào bản đồ để ghim tọa độ chính xác.
+        </div>
     </div>
 </div>
 
 @section Scripts {
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        var map = L.map('map').setView([21.0285, 105.8542], 13); // Mặc định ở Hà Nội
-        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        // Khởi tạo ở tọa độ Biên Hòa/Đồng Nai cho gần nhà bác
+        var map = L.map('map').setView([10.9482, 106.8123], 13);
+        
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        // Fix lỗi vỡ tiles ngay khi load trang
+        setTimeout(function() {
+        map.invalidateSize();
+        }, 500);
 
         var marker;
+
+        // Click để lấy tọa độ
         map.on('click', function(e) {
-        var lat = e.latlng.lat;
-        var lng = e.latlng.lng;
-
-        if (marker) { map.removeLayer(marker); }
-        marker = L.marker([lat, lng]).addTo(map);
-
-        document.getElementById('lat').value = lat;
-        document.getElementById('lng').value = lng;
+        updateMarker(e.latlng.lat, e.latlng.lng);
         });
+
+        function updateMarker(lat, lng) {
+        if (marker) { map.removeLayer(marker); }
+        marker = L.marker([lat, lng], { draggable: true }).addTo(map);
+            
+        document.getElementById('lat').value = lat.toFixed(6);
+        document.getElementById('lng').value = lng.toFixed(6);
+
+        // Cho phép kéo marker sau khi thả
+        marker.on('dragend', function (event) {
+        var position = marker.getLatLng();
+        document.getElementById('lat').value = position.lat.toFixed(6);
+        document.getElementById('lng').value = position.lng.toFixed(6);
+        });
+        }
+
+        // Hàm tìm kiếm địa chỉ (Geocoding miễn phí)
+        function searchLocation() {
+        var query = document.getElementById('addressSearch').value;
+        if (query.length < 3) return;
+
+        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}`)
+        .then(response => response.json())
+        .then(data => {
+        if (data.length > 0) {
+        var item = data[0];
+        map.setView([item.lat, item.lon], 16);
+        updateMarker(parseFloat(item.lat), parseFloat(item.lon));
+        } else {
+        alert("Không tìm thấy địa chỉ này cu ơi!");
+        }
+        });
+        }
     </script>
 }
