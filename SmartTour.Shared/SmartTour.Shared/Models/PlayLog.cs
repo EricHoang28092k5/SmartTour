@@ -1,4 +1,6 @@
-﻿namespace SmartTour.Shared.Models
+﻿using SQLite;
+
+namespace SmartTour.Shared.Models
 {
     public class PlayLog
     {
@@ -16,6 +18,7 @@
         public double Lng { get; set; }
 
         public int DurationListened { get; set; }
+        [Ignore]
         public Poi? Poi { get; set; }
         // Nhớ là UserId (U và I viết hoa)
         public string UserId { get; set; } = string.Empty;
