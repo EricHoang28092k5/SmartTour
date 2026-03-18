@@ -1,14 +1,13 @@
-﻿namespace SmartTourApp;
+﻿using SmartTourApp.Pages;
+
+namespace SmartTourApp;
 
 public partial class App : Application
 {
-    public App()
+    public App(LoadingPage loadingPage)
     {
         InitializeComponent();
-    }
 
-    protected override Window CreateWindow(IActivationState? activationState)
-    {
-        return new Window(new AppShell());
+        MainPage = loadingPage;
     }
 }

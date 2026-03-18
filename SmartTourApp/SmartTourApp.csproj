@@ -40,8 +40,7 @@
     <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#512BD4" BaseSize="128,128" />
 
     <!-- Images -->
-    <MauiImage Include="Resources\Images\*" Exclude="Resources\Images\mappin.png" />
-    <MauiImage Update="Resources\Images\dotnet_bot.png" Resize="True" BaseSize="300,185" />
+    <MauiImage Include="Resources\Images\*" />
 
     <!-- Fonts -->
     <MauiFont Include="Resources\Fonts\*" />
@@ -50,9 +49,16 @@
     <MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
 
   </ItemGroup>
-<ItemGroup>
+
+  <ItemGroup>
+    <MauiImage Remove="Resources\Images\dotnet_bot.png" />
+    <MauiImage Remove="Resources\Images\mappin.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\Images\dotnet_bot.png" Resize="True" BaseSize="300,185" />
     <EmbeddedResource Include="Resources\Images\mappin.png" />
-</ItemGroup>
+  </ItemGroup>
 
   <ItemGroup>
 
@@ -82,6 +88,9 @@
 
   <ItemGroup>
     <MauiXaml Update="Pages\HomePage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </MauiXaml>
+    <MauiXaml Update="Pages\LoadingPage.xaml">
       <Generator>MSBuild:Compile</Generator>
     </MauiXaml>
     <MauiXaml Update="Pages\PoiDetailPage.xaml">
