@@ -12,9 +12,8 @@ namespace SmartTourCMS.Controllers
     public class PoiController : Controller
     {
         private readonly AppDbContext _context;
-        private readonly Cloudinary _cloudinary; // ✅ Phải nằm TRONG class
+        private readonly Cloudinary _cloudinary;
 
-        // Constructor: Nạp cả 2 dịch vụ vào đây
         public PoiController(AppDbContext context, Cloudinary cloudinary)
         {
             _context = context;
@@ -54,7 +53,8 @@ namespace SmartTourCMS.Controllers
             return RedirectToAction(nameof(Index));
         }
 
-        // 4. SỬA (Giao diện)
+        // 4. SỬA (Giao diện GET - Load dữ liệu cũ lên Map)
+        [HttpGet]
         public async Task<IActionResult> Edit(int? id)
         {
             if (id == null) return NotFound();
@@ -63,13 +63,13 @@ namespace SmartTourCMS.Controllers
             return View(poi);
         }
 
-        // 5. SỬA (Lưu)
+        // 5. SỬA (Xử lý lưu POST - Gộp chung logic upload ảnh)
         [HttpPost]
         public async Task<IActionResult> Edit(int id, Poi poi, IFormFile? imageFile)
         {
             if (id != poi.Id) return NotFound();
 
-            // Nếu có upload ảnh mới thì cập nhật, không thì giữ nguyên ImageUrl cũ
+            // Nếu có upload ảnh mới thì đẩy lên Cloudinary
             if (imageFile != null && imageFile.Length > 0)
             {
                 var uploadParams = new ImageUploadParams()
@@ -78,12 +78,16 @@ namespace SmartTourCMS.Controllers
                     Folder = "SmartTour/Pois"
                 };
                 var uploadResult = await _cloudinary.UploadAsync(uploadParams);
+
+                // Cập nhật URL mới
                 poi.ImageUrl = uploadResult.SecureUrl.ToString();
             }
 
+            // Lưu mọi thay đổi (Tên, Tọa độ, Ảnh...) vào DB
             _context.Update(poi);
             await _context.SaveChangesAsync();
-            TempData["success"] = "Cập nhật dữ liệu thành công!";
+
+            TempData["success"] = "Cập nhật dữ liệu thành công rồi bác ơi!";
             return RedirectToAction(nameof(Index));
         }
 

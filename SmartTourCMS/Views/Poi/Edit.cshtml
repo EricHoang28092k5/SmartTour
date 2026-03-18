@@ -1,22 +1,149 @@
 ﻿@model SmartTour.Shared.Models.Poi
-<div class="container mt-4">
-    <div class="card shadow">
-        <div class="card-header bg-warning text-dark"><h4>Chỉnh sửa Địa điểm</h4></div>
-        <div class="card-body">
-            <form asp-action="Edit" method="post">
-                <input type="hidden" asp-for="Id" />
-                <div class="mb-3">
-                    <label class="form-label">Tên địa điểm</label>
-                    <input asp-for="Name" class="form-control" required />
+
+@{
+    ViewData["Title"] = "Chỉnh sửa địa điểm";
+}
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+<h2><i class="fa-solid fa-pen-to-square text-warning"></i> Chỉnh sửa địa điểm</h2>
+<hr />
+
+<form asp-action="Edit" enctype="multipart/form-data">
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <input type="hidden" asp-for="Id" />
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Tên địa điểm</label>
+                        <input asp-for="Name" class="form-control" required />
+                    </div>
+
+                    <div class="row">
+                        <div class="col-6 mb-3">
+                            <label class="form-label fw-bold">Kinh độ (Lat)</label>
+                            <input asp-for="Lat" id="lat" class="form-control bg-light" readonly required />
+                        </div>
+                        <div class="col-6 mb-3">
+                            <label class="form-label fw-bold">Vĩ độ (Lng)</label>
+                            <input asp-for="Lng" id="lng" class="form-control bg-light" readonly required />
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Bán kính kích hoạt (m)</label>
+                        <input asp-for="Radius" type="number" class="form-control" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold"><i class="fa-solid fa-image text-primary me-2"></i>Ảnh địa điểm</label>
+                        
+                        <div id="currentImage" class="mb-2 @(string.IsNullOrEmpty(Model.ImageUrl) ? "d-none" : "")">
+                            <img src="@Model.ImageUrl" class="rounded shadow-sm border" style="width: 100%; height: 120px; object-fit: cover;" />
+                            <p class="small text-muted text-center mt-1">Ảnh hiện tại</p>
+                        </div>
+
+                        <input type="file" name="imageFile" class="form-control" accept="image/*" onchange="previewImage(this)" />
+                        
+                        <div id="imagePreview" class="mt-2" style="display:none;">
+                            <img id="preview" src="#" class="rounded shadow-sm border border-primary" style="width: 100%; height: 120px; object-fit: cover;" />
+                            <p class="small text-primary text-center mt-1">Ảnh mới được chọn</p>
+                        </div>
+                        
+                        <input type="hidden" asp-for="ImageUrl" />
+                    </div>
+
+                    <hr />
+                    <button type="submit" class="btn btn-warning w-100 shadow text-white fw-bold">
+                        <i class="fa-solid fa-save"></i> Lưu thay đổi
+                    </button>
+                    <a asp-action="Index" class="btn btn-link w-100 mt-2 text-decoration-none text-muted">Hủy bỏ</a>
                 </div>
-                <div class="row">
-                    <div class="col-6 mb-3"><label>Vĩ độ</label><input asp-for="Lat" class="form-control" type="number" step="any" required /></div>
-                    <div class="col-6 mb-3"><label>Kinh độ</label><input asp-for="Lng" class="form-control" type="number" step="any" required /></div>
-                </div>
-                <div class="mb-3"><label>Bán kính (m)</label><input asp-for="Radius" class="form-control" type="number" /></div>
-                <button type="submit" class="btn btn-success"><i class="fa-solid fa-floppy-disk me-1"></i> Lưu lại</button>
-                <a asp-action="Index" class="btn btn-secondary"><i class="fa-solid fa-arrow-rotate-left me-1"></i> Quay lại</a>
-            </form>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <div class="input-group mb-2 shadow-sm">
+                <input type="text" id="addressSearch" class="form-control" placeholder="Tìm kiếm địa chỉ mới...">
+                <button class="btn btn-secondary" type="button" onclick="searchLocation()">Tìm kiếm</button>
+            </div>
+            
+            <div id="map" style="height: 550px; border-radius: 12px;" class="shadow-sm border"></div>
+            
+            <div class="alert alert-warning mt-2 p-2 small text-center">
+                <i class="fa-solid fa-location-dot"></i> Click vào bản đồ hoặc kéo Marker để cập nhật vị trí mới.
+            </div>
         </div>
     </div>
-</div>
+</form>
+
+@section Scripts {
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // 1. Script Xem trước ảnh
+        function previewImage(input) {
+        if (input.files && input.files[0]) {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+        document.getElementById('preview').src = e.target.result;
+        document.getElementById('imagePreview').style.display = 'block';
+        if(document.getElementById('currentImage'))
+        document.getElementById('currentImage').classList.add('d-none');
+        }
+        reader.readAsDataURL(input.files[0]);
+        }
+        }
+
+        // 2. Script Bản đồ
+        // Lấy tọa độ hiện tại từ Model để hiển thị
+        var initialLat = @Model.Lat;
+        var initialLng = @Model.Lng;
+
+        var map = L.map('map').setView([initialLat, initialLng], 16);
+        
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap'
+        }).addTo(map);
+
+        // Fix vỡ tiles
+        setTimeout(() => map.invalidateSize(), 500);
+
+        // Hiển thị Marker tại vị trí cũ
+        var marker = L.marker([initialLat, initialLng], { draggable: true }).addTo(map);
+        marker.bindPopup("Vị trí hiện tại của: @Model.Name").openPopup();
+
+        // Khi click bản đồ -> Di chuyển Marker & Cập nhật input
+        map.on('click', function(e) {
+        updateMarker(e.latlng.lat, e.latlng.lng);
+        });
+
+        // Khi kéo Marker -> Cập nhật input
+        marker.on('dragend', function(e) {
+        var pos = marker.getLatLng();
+        updateMarker(pos.lat, pos.lng);
+        });
+
+        function updateMarker(lat, lng) {
+        marker.setLatLng([lat, lng]);
+        document.getElementById('lat').value = lat.toFixed(6);
+        document.getElementById('lng').value = lng.toFixed(6);
+        }
+
+        // Tìm kiếm địa chỉ
+        function searchLocation() {
+        var query = document.getElementById('addressSearch').value;
+        if (query.length < 3) return;
+        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}`)
+        .then(res => res.json())
+        .then(data => {
+        if (data.length > 0) {
+        var res = data[0];
+        map.setView([res.lat, res.lon], 16);
+        updateMarker(parseFloat(res.lat), parseFloat(res.lon));
+        }
+        });
+        }
+    </script>
+}

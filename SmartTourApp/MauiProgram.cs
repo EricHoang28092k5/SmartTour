@@ -39,7 +39,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<NarrationEngine>();
         builder.Services.AddHttpClient<ApiService>(client =>
         {
-            client.BaseAddress = new Uri("http://192.168.1.17:5165/");
+            client.BaseAddress = new Uri("http://192.168.1.69:5165/");
         });
         builder.Services.AddSingleton<PoiRepository>();
         builder.Services.AddSingleton<Database>();
