@@ -1,16 +1,18 @@
 ﻿using CloudinaryDotNet;
-using CloudinaryDotNet.Actions;
-using Microsoft.AspNetCore.Mvc;
 using CloudinaryDotNet;
 using CloudinaryDotNet.Actions;
+using CloudinaryDotNet.Actions;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
-using SmartTourBackend.Data; // Chỗ này bác check lại tên AppDbContext nằm ở đâu
 using SmartTour.Shared.Models;
+using SmartTourBackend.Data; // Chỗ này bác check lại tên AppDbContext nằm ở đâu
 
 namespace SmartTourCMS.Controllers
 {
+    [Authorize(Roles = "Admin,Vendor")]
     public class AudioController : Controller
     {
         private readonly AppDbContext _context;

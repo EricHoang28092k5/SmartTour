@@ -1,10 +1,13 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using SmartTourBackend.Data;
 using SmartTour.Shared.Models;
+using SmartTourBackend.Data;
 
 namespace SmartTourCMS.Controllers
 {
+    [Authorize(Roles = "Admin")]
+    //nếu muốn pphaan quyền cụ thể cho từng hàm thì đặt cụ thể ở dươi từng hàm, còn nếu đặt ở trên controller thì tất cả hàm đều phải có quyền Admin mới truy cập được
     public class PoiController : Controller
     {
         private readonly AppDbContext _context;

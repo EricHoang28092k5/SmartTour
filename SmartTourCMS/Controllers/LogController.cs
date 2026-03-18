@@ -1,9 +1,11 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SmartTourBackend.Data; // Nhớ đổi namespace cho đúng với project của bác
 
 namespace SmartTourCMS.Controllers
 {
+    [Authorize(Roles = "Admin,Vendor")]
     public class LogController : Controller
     {
         private readonly AppDbContext _context;

@@ -1,10 +1,13 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using SmartTour.Shared.Models;
 using SmartTourBackend.Data;
 
+[Authorize(Roles = "Admin,Vendor")]
 public class TranslationController : Controller
 {
+
     private readonly AppDbContext _context;
     public TranslationController(AppDbContext context) => _context = context;
 

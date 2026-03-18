@@ -1,10 +1,12 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SmartTour.Shared.Models;
 using SmartTourBackend.Data;
 // Nhớ đổi namespace cho đúng với project CMS của bác
 namespace SmartTourCMS.Controllers
 {
+    [Authorize(Roles = "Admin,Vendor")]
     public class TourController : Controller
     {
         private readonly AppDbContext _context;

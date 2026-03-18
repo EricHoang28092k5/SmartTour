@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SmartTour.Shared.Models;
@@ -6,8 +7,10 @@ using SmartTourCMS.Models;
 using System.Diagnostics;
 namespace SmartTourCMS.Controllers;
 
+[Authorize(Roles = "Admin,Vendor")]
 public class HomeController : Controller
 {
+
     private readonly ILogger<HomeController> _logger;
     private readonly AppDbContext _context;
     public HomeController(ILogger<HomeController> logger, AppDbContext context)
