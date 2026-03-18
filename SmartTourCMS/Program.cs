@@ -1,3 +1,4 @@
+using CloudinaryDotNet;
 using DotNetEnv;
 using Microsoft.EntityFrameworkCore;
 using SmartTourBackend.Data;
@@ -14,14 +15,22 @@ var connectionString = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING"
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
 
-// Cấu hình Authentication & Cookie (Gộp chung bản Full vào đây)
+// Cấu hình Cloudinary (Bốc từ dưới lên đây nè bác!)
+var cloudinaryAccount = new Account(
+    Environment.GetEnvironmentVariable("CLOUDINARY_CLOUD_NAME"),
+    Environment.GetEnvironmentVariable("CLOUDINARY_API_KEY"),
+    Environment.GetEnvironmentVariable("CLOUDINARY_API_SECRET")
+);
+builder.Services.AddSingleton(new Cloudinary(cloudinaryAccount));
+
+// Cấu hình Authentication & Cookie
 builder.Services.AddAuthentication("CookieAuth")
     .AddCookie("CookieAuth", config =>
     {
         config.Cookie.Name = "Admin.Cookie";
-        config.LoginPath = "/Account/Login";         // Trang đăng nhập
-        config.AccessDeniedPath = "/Account/AccessDenied"; // Trang báo lỗi phân quyền
-        config.ExpireTimeSpan = TimeSpan.FromHours(8);     // Cho login 8 tiếng đi ngủ cho sướng
+        config.LoginPath = "/Account/Login";
+        config.AccessDeniedPath = "/Account/AccessDenied";
+        config.ExpireTimeSpan = TimeSpan.FromHours(8);
     });
 
 // --- DÒNG CHIA CẮT SINH TỬ ---
@@ -40,13 +49,13 @@ app.UseStaticFiles();
 
 app.UseRouting();
 
-// THỨ TỰ QUAN TRỌNG: Authentication trước -> Authorization sau
+// THỨ TỰ QUAN TRỌNG
 app.UseAuthentication();
 app.UseAuthorization();
 
 // 3. ĐỊNH TUYẾN WEB
 app.MapControllerRoute(
     name: "default",
-    pattern: "{controller=Home}/{action=Index}/{id?}"); // Để Home/Index cho chuyên nghiệp bác ạ
+    pattern: "{controller=Home}/{action=Index}/{id?}");
 
 app.Run();

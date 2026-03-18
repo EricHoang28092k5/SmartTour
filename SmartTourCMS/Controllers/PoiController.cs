@@ -1,4 +1,6 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using CloudinaryDotNet;
+using CloudinaryDotNet.Actions;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SmartTour.Shared.Models;
@@ -7,19 +9,24 @@ using SmartTourBackend.Data;
 namespace SmartTourCMS.Controllers
 {
     [Authorize(Roles = "Admin")]
-    //nếu muốn pphaan quyền cụ thể cho từng hàm thì đặt cụ thể ở dươi từng hàm, còn nếu đặt ở trên controller thì tất cả hàm đều phải có quyền Admin mới truy cập được
     public class PoiController : Controller
     {
         private readonly AppDbContext _context;
-        public PoiController(AppDbContext context) => _context = context;
+        private readonly Cloudinary _cloudinary; // ✅ Phải nằm TRONG class
+
+        // Constructor: Nạp cả 2 dịch vụ vào đây
+        public PoiController(AppDbContext context, Cloudinary cloudinary)
+        {
+            _context = context;
+            _cloudinary = cloudinary;
+        }
+
         // 1. XEM DANH SÁCH
         public async Task<IActionResult> Index()
         {
-            // Phải có dòng .Include này thì bảng ở trang Index mới thấy được nhạc để hiện nút Loa
             var pois = await _context.Pois
                 .Include(p => p.AudioFiles)
                 .ToListAsync();
-
             return View(pois);
         }
 
@@ -28,15 +35,26 @@ namespace SmartTourCMS.Controllers
 
         // 3. THÊM MỚI (Xử lý lưu)
         [HttpPost]
-        public async Task<IActionResult> Create(Poi poi)
+        public async Task<IActionResult> Create(Poi poi, IFormFile imageFile)
         {
+            if (imageFile != null && imageFile.Length > 0)
+            {
+                var uploadParams = new ImageUploadParams()
+                {
+                    File = new FileDescription(imageFile.FileName, imageFile.OpenReadStream()),
+                    Folder = "SmartTour/Pois"
+                };
+
+                var uploadResult = await _cloudinary.UploadAsync(uploadParams);
+                poi.ImageUrl = uploadResult.SecureUrl.ToString();
+            }
+
             _context.Add(poi);
             await _context.SaveChangesAsync();
-            TempData["success"] = "Thêm mới địa điểm thành công rồi cu ơi!";
             return RedirectToAction(nameof(Index));
         }
 
-        // 4. SỬA (Giao diện hiển thị dữ liệu cũ)
+        // 4. SỬA (Giao diện)
         public async Task<IActionResult> Edit(int? id)
         {
             if (id == null) return NotFound();
@@ -45,11 +63,23 @@ namespace SmartTourCMS.Controllers
             return View(poi);
         }
 
-        // 5. SỬA (Xử lý lưu dữ liệu mới)
+        // 5. SỬA (Lưu)
         [HttpPost]
-        public async Task<IActionResult> Edit(int id, Poi poi)
+        public async Task<IActionResult> Edit(int id, Poi poi, IFormFile? imageFile)
         {
             if (id != poi.Id) return NotFound();
+
+            // Nếu có upload ảnh mới thì cập nhật, không thì giữ nguyên ImageUrl cũ
+            if (imageFile != null && imageFile.Length > 0)
+            {
+                var uploadParams = new ImageUploadParams()
+                {
+                    File = new FileDescription(imageFile.FileName, imageFile.OpenReadStream()),
+                    Folder = "SmartTour/Pois"
+                };
+                var uploadResult = await _cloudinary.UploadAsync(uploadParams);
+                poi.ImageUrl = uploadResult.SecureUrl.ToString();
+            }
 
             _context.Update(poi);
             await _context.SaveChangesAsync();
@@ -57,7 +87,7 @@ namespace SmartTourCMS.Controllers
             return RedirectToAction(nameof(Index));
         }
 
-        // 6. XÓA (Xử lý xóa luôn)
+        // 6. XÓA
         public async Task<IActionResult> Delete(int id)
         {
             var poi = await _context.Pois.FindAsync(id);

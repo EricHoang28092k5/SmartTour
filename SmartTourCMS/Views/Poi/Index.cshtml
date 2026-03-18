@@ -24,7 +24,8 @@
         <table class="table table-hover align-middle mb-0" id="poiTable">
             <thead class="table-dark">
                 <tr>
-                    <th class="ps-3">Tên địa điểm</th>
+                    <th class="ps-3">Ảnh</th> @* Cột ảnh mới *@
+                    <th>Tên địa điểm</th>
                     <th>Tọa độ</th>
                     <th>Bán kính</th>
                     <th class="text-center">Hành động</th>
@@ -34,10 +35,24 @@
                 @foreach (var item in Model)
                 {
                     <tr>
-                        <td class="ps-3"><strong>@item.Name</strong></td>
+                        <td class="ps-3">
+                            @if (!string.IsNullOrEmpty(item.ImageUrl))
+                            {
+                                <img src="@item.ImageUrl" class="rounded shadow-sm border"
+                                     style="width: 70px; height: 50px; object-fit: cover;"
+                                     onerror="this.src='https://placehold.co/70x50?text=No+Image'" />
+                            }
+                            else
+                            {
+                                <div class="bg-light rounded border text-center" style="width: 70px; height: 50px; line-height: 50px;">
+                                    <i class="fa-solid fa-image text-muted opacity-50"></i>
+                                </div>
+                            }
+                        </td>
+                        <td><strong>@item.Name</strong></td>
                         <td>
                             <span class="badge rounded-pill bg-light text-dark border">
-                                <i class="fa-solid fa-location-dot text-danger"></i> @item.Lat.ToString("F4"), @item.Lng.ToString("F4")
+                                @item.Lat.ToString("F4"), @item.Lng.ToString("F4")
                             </span>
                         </td>
                         <td>@item.Radius m</td>
