@@ -24,11 +24,11 @@
                     <div class="row">
                         <div class="col-6 mb-3">
                             <label class="form-label fw-bold">Kinh độ (Lat)</label>
-                            <input asp-for="Lat" id="lat" class="form-control bg-light" readonly required />
+                            <input asp-for="Lat" id="lat" class="form-control bg-light"  required />
                         </div>
                         <div class="col-6 mb-3">
                             <label class="form-label fw-bold">Vĩ độ (Lng)</label>
-                            <input asp-for="Lng" id="lng" class="form-control bg-light" readonly required />
+                            <input asp-for="Lng" id="lng" class="form-control bg-light"  required />
                         </div>
                     </div>
 
@@ -77,6 +77,7 @@
             </div>
         </div>
     </div>
+    <input type="hidden" asp-for="ImageUrl" />
 </form>
 
 @section Scripts {
@@ -98,8 +99,9 @@
 
         // 2. Script Bản đồ
         // Lấy tọa độ hiện tại từ Model để hiển thị
-        var initialLat = @Model.Lat;
-        var initialLng = @Model.Lng;
+        // Thêm dấu nháy đơn hoặc kiểm tra giá trị để tránh lỗi JS khi Model trống
+        var initialLat = parseFloat('@Model.Lat') || 10.9482;
+        var initialLng = parseFloat('@Model.Lng') || 106.8123;
 
         var map = L.map('map').setView([initialLat, initialLng], 16);
         

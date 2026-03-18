@@ -1,0 +1,59 @@
+﻿@model SmartTour.Shared.Models.PoiTranslation
+
+@{
+    ViewData["Title"] = "Chi tiết bản dịch";
+}
+
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow border-0">
+                <div class="card-header bg-info text-white p-3 d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0"><i class="fa-solid fa-circle-info"></i> Chi tiết bản dịch</h4>
+                    <span class="badge bg-light text-info">@Model.Language?.Name</span>
+                </div>
+                <div class="card-body p-4">
+                    <div class="mb-4">
+                        <label class="text-muted small uppercase fw-bold">Địa điểm gốc</label>
+                        <h5 class="text-dark">@Model.Poi?.Name</h5>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="text-muted small uppercase fw-bold">Tiêu đề (Đã dịch)</label>
+                        <p class="fs-5 fw-bold text-primary">@Model.Title</p>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="text-muted small uppercase fw-bold">Mô tả chi tiết</label>
+                        <div class="p-3 bg-light rounded border">
+                            @Model.Description
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="text-muted small uppercase fw-bold">Kịch bản Audio (TTS Script)</label>
+                        <div class="p-3 border-start border-4 border-info bg-aliceblue">
+                            <i class="fa-solid fa-quote-left text-info me-2"></i>
+                            <span class="fst-italic">@Model.TtsScript</span>
+                        </div>
+                    </div>
+
+                    <hr />
+                    <div class="d-flex justify-content-between">
+                        <a href="/Translation/Index?poiId=@Model.PoiId" class="btn btn-outline-secondary">
+                            <i class="fa-solid fa-arrow-left"></i> Quay lại
+                        </a>
+                        <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-warning text-white">
+                            <i class="fa-solid fa-pen-to-square"></i> Chỉnh sửa bản dịch
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .bg-aliceblue { background-color: #f0f8ff; }
+    .uppercase { text-transform: uppercase; letter-spacing: 1px; }
+</style>

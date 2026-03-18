@@ -22,11 +22,22 @@
                     <td><span class="badge bg-info text-dark">@item.Language?.Name (@item.Language?.Code)</span></td>
                     <td><strong>@item.Title</strong></td>
                     <td class="text-truncate" style="max-width: 250px;">@item.Description</td>
-                    <td>
-                        <form asp-action="Delete" asp-route-id="@item.Id" asp-route-poiId="@item.PoiId"
-                              method="post" onsubmit="return confirm('Xóa bản dịch này nhé bác?');">
-                            <button type="submit" class="btn btn-sm btn-outline-danger">Xóa</button>
-                        </form>
+                    <td class="text-center">
+                        <div class="btn-group">
+                            <a asp-action="Details" asp-route-id="@item.Id" class="btn btn-sm btn-outline-info" title="Xem chi tiết">
+                                <i class="fa-solid fa-eye"></i>
+                            </a>
+        
+                            <a asp-action="Edit" asp-route-id="@item.Id" class="btn btn-sm btn-outline-warning" title="Chỉnh sửa">
+                                <i class="fa-solid fa-pen-to-square"></i>
+                            </a>
+
+                            <form asp-action="Delete" asp-route-id="@item.Id" method="post" onsubmit="return confirm('Xóa thiệt không bác?')" style="display:inline;">
+                                <button type="submit" class="btn btn-sm btn-outline-danger" title="Xóa">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </form>
+                        </div>
                     </td>
                 </tr>
             }

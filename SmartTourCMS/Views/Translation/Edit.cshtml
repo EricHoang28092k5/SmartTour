@@ -1,0 +1,34 @@
+﻿@model SmartTour.Shared.Models.PoiTranslation
+
+<div class="card shadow border-0 mt-4">
+    <div class="card-header bg-warning text-white">
+        <h4 class="mb-0">✏️ Chỉnh sửa bản dịch: @ViewBag.PoiName</h4>
+    </div>
+    <div class="card-body">
+        <form asp-action="Edit">
+            <input type="hidden" asp-for="Id" />
+            <input type="hidden" asp-for="PoiId" />
+            <input type="hidden" asp-for="LanguageId" />
+
+            <div class="mb-3">
+                <label class="form-label fw-bold">Tiêu đề</label>
+                <input asp-for="Title" class="form-control" required />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label fw-bold">Mô tả</label>
+                <textarea asp-for="Description" class="form-control" rows="5"></textarea>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label fw-bold">Kịch bản Audio (TTS)</label>
+                <textarea asp-for="TtsScript" class="form-control" rows="3"></textarea>
+            </div>
+
+            <div class="d-flex justify-content-between">
+                <a href="/Translation/Index?poiId=@Model.PoiId" class="btn btn-secondary">Quay lại</a>
+                <button type="submit" class="btn btn-warning text-white px-4">Lưu thay đổi</button>
+            </div>
+        </form>
+    </div>
+</div>

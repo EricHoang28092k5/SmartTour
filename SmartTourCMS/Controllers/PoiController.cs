@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SmartTour.Shared.Models;
 using SmartTourBackend.Data;
+using System.Net.Http;
 
 namespace SmartTourCMS.Controllers
 {
@@ -13,6 +14,7 @@ namespace SmartTourCMS.Controllers
     {
         private readonly AppDbContext _context;
         private readonly Cloudinary _cloudinary;
+        private static readonly HttpClient _httpClient = new HttpClient(); // Dùng chung để tiết kiệm tài nguyên
 
         public PoiController(AppDbContext context, Cloudinary cloudinary)
         {
@@ -20,7 +22,6 @@ namespace SmartTourCMS.Controllers
             _cloudinary = cloudinary;
         }
 
-        // 1. XEM DANH SÁCH
         public async Task<IActionResult> Index()
         {
             var pois = await _context.Pois
@@ -29,13 +30,12 @@ namespace SmartTourCMS.Controllers
             return View(pois);
         }
 
-        // 2. THÊM MỚI (Giao diện)
         public IActionResult Create() => View();
 
-        // 3. THÊM MỚI (Xử lý lưu)
         [HttpPost]
         public async Task<IActionResult> Create(Poi poi, IFormFile imageFile)
         {
+            // 1. Upload ảnh
             if (imageFile != null && imageFile.Length > 0)
             {
                 var uploadParams = new ImageUploadParams()
@@ -43,17 +43,81 @@ namespace SmartTourCMS.Controllers
                     File = new FileDescription(imageFile.FileName, imageFile.OpenReadStream()),
                     Folder = "SmartTour/Pois"
                 };
-
                 var uploadResult = await _cloudinary.UploadAsync(uploadParams);
                 poi.ImageUrl = uploadResult.SecureUrl.ToString();
             }
 
-            _context.Add(poi);
+            // 2. Lưu POI gốc
+            _context.Pois.Add(poi);
             await _context.SaveChangesAsync();
+
+            // 3. TỰ ĐỘNG DỊCH ĐA NGÔN NGỮ
+            // 3. TỰ ĐỘNG DỊCH ĐA NGÔN NGỮ (Dịch cả Tiêu đề và Mô tả)
+            // 3. TỰ ĐỘNG DỊCH ĐA NGÔN NGỮ (Kèm câu chào mừng)
+            try
+            {
+                var allLanguages = await _context.Languages.ToListAsync();
+                foreach (var lang in allLanguages)
+                {
+                    string translatedTitle;
+                    string translatedDescription;
+                    string translatedTts;
+
+                    // Câu gốc tiếng Việt để đem đi dịch
+                    string baseDescription = $"Chào mừng bạn đến với {poi.Name}. Đây là một địa điểm du lịch tuyệt vời.";
+                    string baseTts = $"Chào mừng bạn đến với {poi.Name}. Chúc bạn có một chuyến tham quan vui vẻ!";
+
+                    if (lang.Code.ToLower() == "vi")
+                    {
+                        translatedTitle = poi.Name;
+                        translatedDescription = baseDescription;
+                        translatedTts = baseTts;
+                    }
+                    else
+                    {
+                        // Dịch Tiêu đề
+                        translatedTitle = await AutoTranslateAsync(poi.Name, lang.Code.ToLower());
+                        // Dịch Mô tả
+                        translatedDescription = await AutoTranslateAsync(baseDescription, lang.Code.ToLower());
+                        // Dịch Kịch bản Audio (TTS)
+                        translatedTts = await AutoTranslateAsync(baseTts, lang.Code.ToLower());
+                    }
+
+                    var translation = new PoiTranslation
+                    {
+                        PoiId = poi.Id,
+                        LanguageId = lang.Id,
+                        Title = translatedTitle,
+                        Description = translatedDescription,
+                        TtsScript = translatedTts // <--- Giờ kịch bản audio cũng được dịch siêu mượt
+                    };
+                    _context.PoiTranslations.Add(translation);
+                }
+                await _context.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Lỗi dịch đa ngôn ngữ: " + ex.Message);
+            }
+
             return RedirectToAction(nameof(Index));
         }
 
-        // 4. SỬA (Giao diện GET - Load dữ liệu cũ lên Map)
+        private async Task<string> AutoTranslateAsync(string text, string targetLang)
+        {
+            try
+            {
+                var url = $"https://translate.googleapis.com/translate_a/single?client=gtx&sl=vi&tl={targetLang}&dt=t&q={Uri.EscapeDataString(text)}";
+                var response = await _httpClient.GetStringAsync(url);
+                var parts = response.Split('"');
+                return parts.Length > 1 ? parts[1] : text;
+            }
+            catch
+            {
+                return text;
+            }
+        }
+
         [HttpGet]
         public async Task<IActionResult> Edit(int? id)
         {
@@ -63,13 +127,14 @@ namespace SmartTourCMS.Controllers
             return View(poi);
         }
 
-        // 5. SỬA (Xử lý lưu POST - Gộp chung logic upload ảnh)
         [HttpPost]
         public async Task<IActionResult> Edit(int id, Poi poi, IFormFile? imageFile)
         {
             if (id != poi.Id) return NotFound();
 
-            // Nếu có upload ảnh mới thì đẩy lên Cloudinary
+            var existingPoi = await _context.Pois.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id);
+            if (existingPoi == null) return NotFound();
+
             if (imageFile != null && imageFile.Length > 0)
             {
                 var uploadParams = new ImageUploadParams()
@@ -78,20 +143,28 @@ namespace SmartTourCMS.Controllers
                     Folder = "SmartTour/Pois"
                 };
                 var uploadResult = await _cloudinary.UploadAsync(uploadParams);
-
-                // Cập nhật URL mới
                 poi.ImageUrl = uploadResult.SecureUrl.ToString();
             }
+            else
+            {
+                poi.ImageUrl = existingPoi.ImageUrl;
+            }
 
-            // Lưu mọi thay đổi (Tên, Tọa độ, Ảnh...) vào DB
-            _context.Update(poi);
-            await _context.SaveChangesAsync();
+            try
+            {
+                _context.Update(poi);
+                await _context.SaveChangesAsync();
+                TempData["success"] = "Cập nhật thành công!";
+            }
+            catch (Exception ex)
+            {
+                ModelState.AddModelError("", "Lỗi: " + ex.Message);
+                return View(poi);
+            }
 
-            TempData["success"] = "Cập nhật dữ liệu thành công rồi bác ơi!";
             return RedirectToAction(nameof(Index));
         }
 
-        // 6. XÓA
         public async Task<IActionResult> Delete(int id)
         {
             var poi = await _context.Pois.FindAsync(id);
@@ -99,7 +172,7 @@ namespace SmartTourCMS.Controllers
             {
                 _context.Pois.Remove(poi);
                 await _context.SaveChangesAsync();
-                TempData["success"] = "Đã xóa sạch địa điểm này!";
+                TempData["success"] = "Xóa thành công!";
             }
             return RedirectToAction(nameof(Index));
         }

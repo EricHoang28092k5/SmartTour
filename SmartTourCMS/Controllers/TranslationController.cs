@@ -28,7 +28,9 @@ public class TranslationController : Controller
     // 2. Form thêm bản dịch mới
     public async Task<IActionResult> Create(int poiId)
     {
+        var poi = await _context.Pois.FindAsync(poiId);
         ViewBag.PoiId = poiId;
+        ViewBag.PoiName = poi?.Name; // <--- Dòng này phải có để hiện tên gốc
         ViewBag.Languages = await _context.Languages.ToListAsync();
         return View();
     }
@@ -65,5 +67,49 @@ public class TranslationController : Controller
             await _context.SaveChangesAsync();
         }
         return RedirectToAction(nameof(Index), new { poiId = poiId });
+    }
+    // 1. XEM CHI TIẾT
+    public async Task<IActionResult> Details(int id)
+    {
+        var translation = await _context.PoiTranslations
+            .Include(t => t.Language)
+            .Include(t => t.Poi)
+            .FirstOrDefaultAsync(t => t.Id == id);
+
+        if (translation == null) return NotFound();
+        return View(translation);
+    }
+
+    // 2. SỬA (Giao diện)
+    public async Task<IActionResult> Edit(int id)
+    {
+        var translation = await _context.PoiTranslations.FindAsync(id);
+        if (translation == null) return NotFound();
+
+        // Load lại tên địa điểm để hiển thị cho đẹp
+        var poi = await _context.Pois.FindAsync(translation.PoiId);
+        ViewBag.PoiName = poi?.Name;
+
+        return View(translation);
+    }
+
+    // 3. SỬA (Xử lý lưu)
+    [HttpPost]
+    public async Task<IActionResult> Edit(int id, PoiTranslation translation)
+    {
+        if (id != translation.Id) return NotFound();
+
+        try
+        {
+            _context.Update(translation);
+            await _context.SaveChangesAsync();
+            TempData["success"] = "Đã cập nhật bản dịch thành công!";
+        }
+        catch (Exception ex)
+        {
+            return BadRequest("Lỗi rồi bác ơi: " + ex.Message);
+        }
+
+        return RedirectToAction("Index", new { poiId = translation.PoiId });
     }
 }
