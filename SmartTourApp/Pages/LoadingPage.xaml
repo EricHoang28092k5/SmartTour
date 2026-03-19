@@ -1,0 +1,69 @@
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="SmartTourApp.Pages.LoadingPage">
+
+    <Grid HorizontalOptions="Fill" VerticalOptions="Fill">
+        <Image Source="hauvuong.jpg" 
+               Aspect="AspectFill" 
+               HorizontalOptions="Fill" 
+               VerticalOptions="Fill" />
+
+        <BoxView>
+            <BoxView.Background>
+                <LinearGradientBrush StartPoint="0,1" EndPoint="0,0">
+                    <GradientStop Color="#40000000" Offset="0.0"/>
+                    <GradientStop Color="#00000000" Offset="1.0"/>
+                </LinearGradientBrush>
+            </BoxView.Background>
+        </BoxView>
+
+        <VerticalStackLayout HorizontalOptions="Center" VerticalOptions="Center" Spacing="50">
+            <Border x:Name="LogoBorder"
+        WidthRequest="140"
+        HeightRequest="140"
+        StrokeShape="RoundRectangle 70"
+        BackgroundColor="#2196F3"
+        HorizontalOptions="Center"
+        Shadow="{Shadow Brush=Black, Offset='5,5', Opacity=0.5}">
+
+                <Image Source="phucmixi.jpg"
+           WidthRequest="140"
+           HeightRequest="140"
+           Aspect="AspectFill"
+           HorizontalOptions="Center"
+           VerticalOptions="Center">
+                    <Image.Clip>
+                        <EllipseGeometry Center="70,70" RadiusX="70" RadiusY="70"/>
+                    </Image.Clip>
+                </Image>
+            </Border>
+
+            <Border WidthRequest="300" 
+        HeightRequest="20" 
+        StrokeShape="RoundRectangle 10" 
+        BackgroundColor="#ddd"
+        StrokeThickness="0">
+                <Grid x:Name="ProgressBarContainer" 
+          HorizontalOptions="Start" 
+          WidthRequest="0" 
+          IsClippedToBounds="True">
+
+                    <BoxView Color="#2196F3" HorizontalOptions="Fill"/>
+
+                    <BoxView x:Name="ShineBox" 
+                 Color="White" 
+                 Opacity="0.4" 
+                 WidthRequest="60" 
+                 HorizontalOptions="Start"/>
+                </Grid>
+            </Border>
+
+            <Label x:Name="StatusLabel"
+                   Text="Đang khởi động..."
+                   FontSize="20"
+                   FontAttributes="Bold"
+                   HorizontalOptions="Center"
+                   TextColor="White"/>
+        </VerticalStackLayout>
+    </Grid>
+</ContentPage>
