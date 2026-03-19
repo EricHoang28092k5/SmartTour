@@ -8,6 +8,7 @@ public class PoiRepository
 {
     private readonly Database db;
     private readonly ApiService api;
+    private List<Poi>? cachedPois;
 
     public PoiRepository(Database db, ApiService api)
     {
@@ -17,15 +18,29 @@ public class PoiRepository
 
     public async Task<List<Poi>> GetPois()
     {
+        if (cachedPois != null && cachedPois.Count > 0)
+            return cachedPois;
+
         try
         {
             var server = await api.GetPois();
 
             if (server != null && server.Count > 0)
             {
-                db.ClearPois();
-                db.AddPois(server);
-                return server;
+                db.AddPois(server); // ✅ bỏ Clear
+
+                cachedPois = server.Select(p => new Poi
+                {
+                    Id = p.Id,
+                    Name = p.Name,
+                    Lat = p.Lat,
+                    Lng = p.Lng,
+                    Radius = p.Radius,
+                    ImageUrl = p.ImageUrl,
+                    Description = p.Description
+                }).ToList();
+
+                return cachedPois;
             }
         }
         catch (Exception ex)
@@ -33,11 +48,15 @@ public class PoiRepository
             System.Diagnostics.Debug.WriteLine("API FAIL: " + ex.Message);
         }
 
-        // fallback local
         var local = db.GetPois();
 
-        System.Diagnostics.Debug.WriteLine($"LOCAL POI COUNT: {local.Count}");
+        cachedPois = local;
 
         return local;
+    }
+
+    public List<Poi>? GetCachedPois()
+    {
+        return cachedPois;
     }
 }

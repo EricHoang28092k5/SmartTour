@@ -27,13 +27,19 @@ public partial class LoadingPage : ContentPage
         {
             double step = 0.25;
 
-            // 1️⃣ Load POI
+            // ✅ chạy preload song song (KHÔNG block UI)
+            var loadPoiTask = repo.GetPois();
+
+            // 1️⃣ Load POI (UI fake nhưng data chạy thật)
             await UpdateStatusAsync("Đang tải POI...", step);
+
+            // ✅ đảm bảo data load xong trước khi qua bước tiếp
+            await loadPoiTask;
 
             // 2️⃣ Preload TTS
             await UpdateStatusAsync("Khởi tạo TTS...", step * 2);
 
-            // 3️⃣ Start Tracking
+            // 3️⃣ Start Tracking (lúc này POI đã có cache → nhanh)
             StatusLabel.Text = "Khởi tạo Tracking...";
             await tracking.Start();
             await AnimateProgressTo(step * 3);
@@ -42,12 +48,13 @@ public partial class LoadingPage : ContentPage
             await UpdateStatusAsync("Hoàn tất!", 1.0);
 
             await this.FadeToAsync(0, 400);
+
             if (Application.Current?.Windows.Count > 0)
                 Application.Current.Windows[0].Page = new AppShell();
         }
         catch (Exception ex)
         {
-            await DisplayAlert("Error", ex.Message, "OK");
+            await DisplayAlertAsync("Error", ex.Message, "OK");
         }
     }
 
@@ -64,7 +71,7 @@ public partial class LoadingPage : ContentPage
         {
             progress += 0.005;
             ProgressBarContainer.WidthRequest = 300 * progress;
-            await Task.Delay(8);
+            await Task.Delay(16);
         }
     }
 

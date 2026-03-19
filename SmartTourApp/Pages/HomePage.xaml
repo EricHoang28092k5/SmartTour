@@ -1,35 +1,70 @@
 <ContentPage
-xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
-xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-x:Class="SmartTourApp.Pages.HomePage">
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    x:Class="SmartTourApp.Pages.HomePage"
+    BackgroundColor="#F6F7FB">
 
-    <ScrollView>
+    <Grid RowDefinitions="Auto,*" Padding="16">
 
-        <VerticalStackLayout Padding="20" Spacing="15">
+        <!-- HEADER -->
+        <VerticalStackLayout Grid.Row="0" Spacing="4">
+            <Label Text="SmartTour"
+                   FontSize="26"
+                   FontAttributes="Bold"
+                   TextColor="#111"/>
 
-            <Label
-Text="LINH ỨNG ĐÀ NẴNG"
-FontSize="28"
-FontAttributes="Bold"/>
-
-            <Label
-Text="Chào mừng bạn đến với SmartTour"/>
-
-            <Button
-Text="Tạo Tour mới"
-HeightRequest="50"
-BackgroundColor="#ff8c6b"
-TextColor="White"/>
-
-            <Label
-Text="Tour gợi ý"
-FontAttributes="Bold"
-FontSize="18"/>
-
-            <CollectionView x:Name="TourList"/>
-
+            <Label Text="Địa điểm gần bạn"
+                   FontSize="14"
+                   TextColor="#777"/>
         </VerticalStackLayout>
 
-    </ScrollView>
+        <!-- LIST -->
+        <CollectionView
+            Grid.Row="1"
+            x:Name="PoiList"
+            Margin="0,10,0,0"
+            SelectionMode="None"
+            ItemsLayout="VerticalList"
+            ItemSizingStrategy="MeasureAllItems">
+
+            <CollectionView.ItemTemplate>
+                <DataTemplate>
+
+                    <Grid Padding="8"
+                          Margin="0,0,0,10"
+                          ColumnDefinitions="80,*"
+                          HeightRequest="90">
+
+                        <!-- IMAGE -->
+                        <Image
+                            WidthRequest="80"
+                            HeightRequest="80"
+                            Aspect="AspectFill"
+                            Source="{Binding ImageUrl}" />
+
+                        <!-- CONTENT -->
+                        <VerticalStackLayout Grid.Column="1"
+                                             Padding="8,0"
+                                             Spacing="2">
+
+                            <Label Text="{Binding Name}"
+                                   FontSize="15"
+                                   FontAttributes="Bold"
+                                   LineBreakMode="TailTruncation"/>
+
+                            <Label Text="{Binding Description}"
+                                   FontSize="12"
+                                   TextColor="#2979FF"/>
+
+                        </VerticalStackLayout>
+
+                    </Grid>
+
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+
+        </CollectionView>
+
+    </Grid>
 
 </ContentPage>
