@@ -1,76 +1,122 @@
-﻿@model IEnumerable<SmartTour.Shared.Models.Tour>
+﻿@{
+    ViewData["Title"] = "Bảng điều khiển Admin";
+}
 
-<div class="container-fluid mt-4">
-    <h2 class="mb-4">📊 Hệ thống Quản lý SmartTour</h2>
+<div class="container-fluid pt-4">
+    <div class="row">
+        <div class="col-lg-3 col-6">
+            <div class="small-box bg-info p-3 rounded shadow-sm text-white mb-4">
+                <div class="inner">
+                    <h3>@ViewBag.TotalPois</h3>
+                    <p>Địa điểm (POI)</p>
+                </div>
+                <div class="icon">
+                    <i class="fa-solid fa-map-location-dot fa-2x"></i>
+                </div>
+            </div>
+        </div>
 
-    <div class="row mb-4">
-        <div class="col-md-3">
-            <div class="card bg-primary text-white shadow">
-                <div class="card-body">
-                    <h5>📍 Địa điểm (POI)</h5>
-                    <h2 class="display-4">@ViewBag.TotalPois</h2>
+        <div class="col-lg-3 col-6">
+            <div class="small-box bg-success p-3 rounded shadow-sm text-white mb-4">
+                <div class="inner">
+                    <h3>@ViewBag.TotalTranslations</h3>
+                    <p>Bản dịch đa ngôn ngữ</p>
+                </div>
+                <div class="icon">
+                    <i class="fa-solid fa-language fa-2x"></i>
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="card bg-success text-white shadow">
-                <div class="card-body">
-                    <h5>🗺️ Tổng số Tour</h5>
-                    <h2 class="display-4">@ViewBag.TotalTours</h2>
+
+        <div class="col-lg-3 col-6">
+            <div class="small-box bg-warning p-3 rounded shadow-sm text-white mb-4">
+                <div class="inner">
+                    <h3>1,250</h3>
+                    <p>Lượt khách ghé thăm</p>
+                </div>
+                <div class="icon">
+                    <i class="fa-solid fa-users-viewfinder fa-2x"></i>
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="card bg-info text-white shadow">
-                <div class="card-body">
-                    <h5>🌐 Bản dịch</h5>
-                    <h2 class="display-4">@ViewBag.TotalTranslations</h2>
+
+        <div class="col-lg-3 col-6">
+            <div class="small-box bg-danger p-3 rounded shadow-sm text-white mb-4">
+                <div class="inner">
+                    <h3>15.5 Tr</h3>
+                    <p>Doanh thu bán quà</p>
                 </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card bg-warning text-dark shadow">
-                <div class="card-body">
-                    <h5>🌍 Ngôn ngữ</h5>
-                    <h2 class="display-4">@ViewBag.TotalLanguages</h2>
+                <div class="icon">
+                    <i class="fa-solid fa-cart-shopping fa-2x"></i>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="row">
-        <div class="col-md-12">
-            <div class="card shadow">
-                <div class="card-header bg-dark text-white d-flex justify-content-between">
-                    <h5 class="mb-0">✨ Các hành trình (Tour) mới tạo</h5>
-                    <a href="/Tour/Index" class="btn btn-sm btn-outline-light">Xem tất cả</a>
+    <div class="row mt-4">
+        <div class="col-md-8">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white fw-bold">
+                    <i class="fa-solid fa-clock-rotate-left"></i> Địa điểm mới tạo gần đây
                 </div>
-                <div class="card-body">
-                    <table class="table table-hover">
-                        <thead>
+                <div class="card-body p-0">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
                             <tr>
-                                <th>Tên Tour</th>
-                                <th>Số địa điểm</th>
-                                <th>Ngày tạo (VN)</th>
+                                <th>Tên POI</th>
+                                <th>Tọa độ</th>
+                                <th>Ngày tạo</th>
                                 <th>Thao tác</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            @foreach (var tour in Model)
-                            {
-                                <tr>
-                                    <td><strong>@tour.Name</strong></td>
-                                    <td><span class="badge bg-secondary">@(tour.TourPois?.Count ?? 0) điểm</span></td>
-                                    <td>@tour.CreatedAt.AddHours(7).ToString("dd/MM/yyyy HH:mm")</td>
-                                    <td>
-                                        <a href="/Tour/Details/@tour.Id" class="btn btn-sm btn-primary">Xem</a>
-                                    </td>
-                                </tr>
-                            }
-                        </tbody>
+            <tbody>
+                @foreach (var item in Model)
+                {
+                    <tr>
+                        <td><strong>@item.Name</strong></td> 
+            
+                        <td>
+                            <span class="badge bg-info">
+                                @(item.TourPois?.Count ?? 0) địa điểm
+                            </span>
+                        </td>
+
+                        <td>@item.CreatedAt.ToString("dd/MM/yyyy")</td>
+
+                        <td>
+                            <a href="/Tour/Edit/@item.Id" class="btn btn-sm btn-outline-primary">Sửa</a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
                     </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white fw-bold">
+                    <i class="fa-solid fa-bolt"></i> Thao tác nhanh
+                </div>
+                <div class="card-body">
+                    <a href="/Poi/Create" class="btn btn-primary w-100 mb-2 text-start">
+                        <i class="fa-solid fa-plus"></i> Thêm địa điểm mới
+                    </a>
+                    <a href="/Translation/Index" class="btn btn-info w-100 mb-2 text-start text-white">
+                        <i class="fa-solid fa-language"></i> Kiểm tra bản dịch AI
+                    </a>
+                    <a href="/Audio/Upload" class="btn btn-success w-100 mb-2 text-start">
+                        <i class="fa-solid fa-microphone"></i> Quản lý âm thanh
+                    </a>
                 </div>
             </div>
         </div>
     </div>
 </div>
+
+<style>
+    .small-box { position: relative; overflow: hidden; }
+    .small-box .icon { position: absolute; right: 15px; top: 15px; opacity: 0.3; transition: transform 0.3s; }
+    .small-box:hover .icon { transform: scale(1.2); }
+</style>

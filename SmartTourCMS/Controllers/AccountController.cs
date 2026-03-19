@@ -1,18 +1,17 @@
-﻿using Microsoft.AspNetCore.Authentication;
+﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using System.Security.Claims;
-using SmartTourBackend.Data; // Đảm bảo đúng namespace của AppDbContext
 
 namespace SmartTourCMS.Controllers
 {
     public class AccountController : Controller
     {
-        private readonly AppDbContext _context;
+        private readonly SignInManager<IdentityUser> _signInManager;
+        private readonly UserManager<IdentityUser> _userManager;
 
-        public AccountController(AppDbContext context)
+        public AccountController(SignInManager<IdentityUser> signInManager, UserManager<IdentityUser> userManager)
         {
-            _context = context;
+            _signInManager = signInManager;
+            _userManager = userManager;
         }
 
         [HttpGet]
@@ -21,37 +20,21 @@ namespace SmartTourCMS.Controllers
         [HttpPost]
         public async Task<IActionResult> Login(string username, string password)
         {
-            // Tìm user dựa trên Email hoặc Name (tùy bác chọn làm Username)
-            // Ở đây em check theo Name dựa trên ảnh Model của bác
-            var user = await _context.Users
-                .FirstOrDefaultAsync(u => u.Name == username && u.PasswordHash == password);
+            // Kiểm tra đăng nhập bằng Identity
+            var result = await _signInManager.PasswordSignInAsync(username, password, isPersistent: true, lockoutOnFailure: false);
 
-            if (user != null)
+            if (result.Succeeded)
             {
-                var claims = new List<Claim>
-                {
-                    new Claim(ClaimTypes.Name, user.Name),
-                    new Claim(ClaimTypes.Email, user.Email ?? ""),
-                    new Claim(ClaimTypes.Role, user.Role) // Lấy "Admin" hoặc "Vendor" từ DB
-                };
-
-                var identity = new ClaimsIdentity(claims, "CookieAuth");
-                var principal = new ClaimsPrincipal(identity);
-
-                await HttpContext.SignInAsync("CookieAuth", principal);
                 return RedirectToAction("Index", "Home");
             }
 
-            ViewBag.Error = "Tài khoản hoặc mật khẩu không đúng cu ơi!";
+            ViewBag.Error = "Tài khoản hoặc mật khẩu không đúng cụ ơi!";
             return View();
         }
 
         public async Task<IActionResult> Logout()
         {
-            // Lệnh xóa sạch Cookie đăng nhập
-            await HttpContext.SignOutAsync("CookieAuth");
-
-            // Đuổi về trang Login cho nó chuyên nghiệp
+            await _signInManager.SignOutAsync();
             return RedirectToAction("Login", "Account");
         }
 

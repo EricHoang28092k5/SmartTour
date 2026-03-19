@@ -1,0 +1,35 @@
+﻿<table class="table table-hover shadow-sm bg-white">
+    <thead class="table-dark">
+        <tr>
+            <th>Email / Username</th>
+            <th>Trạng thái</th>
+            <th>Thao tác</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var user in Model)
+        {
+            <tr>
+                <td>@user.Email</td>
+                <td>
+                    @if (user.LockoutEnd != null && user.LockoutEnd > DateTime.Now)
+                    {
+                        <span class="badge bg-danger">Đang bị khóa</span>
+                    }
+                    else
+                    {
+                        <span class="badge bg-success">Hoạt động</span>
+                    }
+                </td>
+                <td>
+                    <form asp-action="ToggleLock" asp-route-id="@user.Id" method="post" style="display:inline;">
+                        <button type="submit" class="btn btn-sm @(user.LockoutEnd > DateTime.Now ? "btn-success" : "btn-danger")">
+                            @(user.LockoutEnd > DateTime.Now ? "Mở khóa" : "Khóa tài khoản")
+                        </button>
+                    </form>
+                    <button class="btn btn-sm btn-info text-white" onclick="resetPassword('@user.Id')">Đổi mật khẩu</button>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>

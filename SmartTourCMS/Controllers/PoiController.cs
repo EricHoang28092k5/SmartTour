@@ -176,5 +176,18 @@ namespace SmartTourCMS.Controllers
             }
             return RedirectToAction(nameof(Index));
         }
+        [Authorize(Roles = "Admin")]
+        [HttpPost]
+        public async Task<IActionResult> AssignToVendor(int poiId, string vendorEmail)
+        {
+            var poi = await _context.Pois.FindAsync(poiId);
+            if (poi != null)
+            {
+                poi.CreatedBy = vendorEmail; // Chuyển quyền sở hữu sang Vendor
+                await _context.SaveChangesAsync();
+                TempData["success"] = $"Đã gán địa điểm cho {vendorEmail} quản lý!";
+            }
+            return RedirectToAction("Index");
+        }
     }
 }

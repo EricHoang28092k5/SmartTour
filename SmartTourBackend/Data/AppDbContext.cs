@@ -1,16 +1,17 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using SmartTour.Shared.Models;
 
 namespace SmartTourBackend.Data // Thêm dòng này vào để định danh "hộ khẩu"
 {
-    public class AppDbContext : DbContext
+    public class AppDbContext : IdentityDbContext<IdentityUser>
     {
         // 1. PHẢI CÓ Constructor này thì nó mới nhận được Connection String từ Neon
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
         {
         }
         // Đăng ký toàn bộ 12 bảng lên Neon
-        public DbSet<User> Users { get; set; }
         public DbSet<Poi> Pois { get; set; }
         public DbSet<Language> Languages { get; set; }
         public DbSet<PoiTranslation> PoiTranslations { get; set; }

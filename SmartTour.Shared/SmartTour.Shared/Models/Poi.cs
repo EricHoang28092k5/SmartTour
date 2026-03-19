@@ -29,6 +29,7 @@ public class Poi
     public string? TtsScript { get; set; } // Nội dung để đọc TTS nếu không có file Audio
 
     public bool IsActive { get; set; } = true;
+    public string? CreatedBy { get; set; }
 
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     [Ignore]
