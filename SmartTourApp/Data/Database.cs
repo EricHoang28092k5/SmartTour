@@ -73,10 +73,18 @@ public class Database : IDisposable
     {
         lock (locker)
         {
-            foreach (var poi in pois)
+            var existingIds = db.Table<Poi>().Select(p => p.Id).ToHashSet();
+
+            db.RunInTransaction(() =>
             {
-                AddPoi(poi);
-            }
+                foreach (var poi in pois)
+                {
+                    if (existingIds.Contains(poi.Id))
+                        db.Update(poi);
+                    else
+                        db.Insert(poi);
+                }
+            });
         }
     }
 
@@ -106,12 +114,10 @@ public class Database : IDisposable
 
     public void AddLocation(UserLocationLog log)
     {
+        if (DateTime.Now.Second % 10 != 0) return; // tránh lock thừa
+
         lock (locker)
         {
-            // giảm spam DB
-            if (DateTime.Now.Second % 10 != 0)
-                return;
-
             db.Insert(log);
         }
     }

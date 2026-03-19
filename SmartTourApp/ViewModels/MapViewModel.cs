@@ -31,6 +31,14 @@ public class MapViewModel
     private double pulseScale = 1.0;
     private bool pulseGrowing = true;
 
+    // Tái sử dụng style POI để tránh tạo nhiều lần
+    private static readonly ImageStyle poiIconStyle = new ImageStyle
+    {
+        Image = "embedded://SmartTourApp.Resources.Images.mappin.png",
+        SymbolScale = 0.6,
+        Offset = new Offset(0, 20)
+    };
+
     public MapViewModel()
     {
         StartPulseAnimation();
@@ -58,56 +66,59 @@ public class MapViewModel
             loc.Longitude,
             loc.Latitude);
 
+        var newPoint = new MPoint(spherical.x, spherical.y);
+
         if (userFeature == null)
         {
-            accuracyFeature = new PointFeature(
-                new MPoint(spherical.x, spherical.y));
-
-            accuracyFeature.Styles.Add(new SymbolStyle
+            // Tạo các feature lần đầu và gắn style
+            accuracyFeature = new PointFeature(newPoint)
             {
-                SymbolScale = 2.0,
-                Fill = new Brush(new Color(66, 133, 244, 40))
-            });
-
-            pulseFeature = new PointFeature(
-                new MPoint(spherical.x, spherical.y));
-
-            pulseFeature.Styles.Add(new SymbolStyle
-            {
-                SymbolScale = 1.2,
-                Fill = new Brush(new Color(66, 133, 244, 80))
-            });
-
-            userFeature = new PointFeature(
-                new MPoint(spherical.x, spherical.y));
-
-            userFeature.Styles.Add(new SymbolStyle
-            {
-                SymbolScale = 0.35,
-                Fill = new Brush(new Color(66, 133, 244)),
-                Outline = new Pen(Color.White, 4)
-            });
-
-            UserLayer.Features = new[]
-            {
-                accuracyFeature,
-                pulseFeature,
-                userFeature
+                Styles = {
+                    new SymbolStyle
+                    {
+                        SymbolScale = 2.0,
+                        Fill = new Brush(new Color(66, 133, 244, 40))
+                    }
+                }
             };
+
+            pulseFeature = new PointFeature(newPoint)
+            {
+                Styles = {
+                    new SymbolStyle
+                    {
+                        SymbolScale = 1.2,
+                        Fill = new Brush(new Color(66, 133, 244, 80))
+                    }
+                }
+            };
+
+            userFeature = new PointFeature(newPoint)
+            {
+                Styles = {
+                    new SymbolStyle
+                    {
+                        SymbolScale = 0.35,
+                        Fill = new Brush(new Color(66, 133, 244)),
+                        Outline = new Pen(Color.White, 4)
+                    }
+                }
+            };
+
+            UserLayer.Features = new[] { accuracyFeature, pulseFeature, userFeature };
         }
         else
         {
-            accuracyFeature!.Point.X = spherical.x;
-            accuracyFeature.Point.Y = spherical.y;
+            // Cập nhật tọa độ bằng cách gán Point mới
+            accuracyFeature!.Point.X = newPoint.X;
+            accuracyFeature!.Point.Y = newPoint.Y;
+            pulseFeature!.Point.X = newPoint.X;
+            pulseFeature!.Point.Y = newPoint.Y;
+            userFeature!.Point.X = newPoint.X;
+            userFeature!.Point.Y = newPoint.Y;
 
-            pulseFeature!.Point.X = spherical.x;
-            pulseFeature.Point.Y = spherical.y;
-
-            userFeature!.Point.X = spherical.x;
-            userFeature.Point.Y = spherical.y;
+            UserLayer.DataHasChanged();
         }
-
-        UserLayer.DataHasChanged();
     }
 
     // =============================
@@ -116,7 +127,6 @@ public class MapViewModel
     private void StartPulseAnimation()
     {
         var dispatcher = Application.Current?.Dispatcher;
-
         if (dispatcher == null)
             return;
 
@@ -129,20 +139,18 @@ public class MapViewModel
             if (style == null)
                 return true;
 
-            if (pulseGrowing)
-                pulseScale += 0.04;
-            else
-                pulseScale -= 0.04;
+            // Cập nhật scale pulse
+            pulseScale = pulseGrowing ? pulseScale + 0.04 : pulseScale - 0.04;
 
-            if (pulseScale > 1.6)
-                pulseGrowing = false;
+            if (pulseScale > 1.6) pulseGrowing = false;
+            if (pulseScale < 1.0) pulseGrowing = true;
 
-            if (pulseScale < 1.0)
-                pulseGrowing = true;
-
-            style.SymbolScale = pulseScale;
-
-            UserLayer.DataHasChanged();
+            // Chỉ cập nhật nếu thực sự thay đổi scale
+            if (Math.Abs(style.SymbolScale - pulseScale) > 0.01)
+            {
+                style.SymbolScale = pulseScale;
+                UserLayer.DataHasChanged();
+            }
 
             return true;
         });
@@ -154,27 +162,16 @@ public class MapViewModel
     public void LoadPois(Map map, List<Poi> pois)
     {
         poiFeatures.Clear();
-
         PoiLayer.Style = null;
-
-        var iconStyle = new ImageStyle
-        {
-            Image = "embedded://SmartTourApp.Resources.Images.mappin.png",
-            SymbolScale = 0.6,
-            Offset = new Offset(0, 20)
-        };
 
         foreach (var poi in pois)
         {
-            var spherical = SphericalMercator.FromLonLat(
-                poi.Lng,
-                poi.Lat);
+            var spherical = SphericalMercator.FromLonLat(poi.Lng, poi.Lat);
 
-            var feature = new PointFeature(
-                new MPoint(spherical.x, spherical.y));
-
-            feature.Styles.Clear();
-            feature.Styles.Add(iconStyle);
+            var feature = new PointFeature(new MPoint(spherical.x, spherical.y))
+            {
+                Styles = { poiIconStyle } // tái sử dụng style
+            };
 
             poiFeatures.Add(feature);
         }
@@ -189,24 +186,27 @@ public class MapViewModel
     public void HighlightPoi(Map map, double lat, double lng)
     {
         var spherical = SphericalMercator.FromLonLat(lng, lat);
+        var newPoint = new MPoint(spherical.x, spherical.y);
 
         if (highlightFeature == null)
         {
-            highlightFeature = new PointFeature(
-                new MPoint(spherical.x, spherical.y));
-
-            highlightFeature.Styles.Add(new SymbolStyle
+            highlightFeature = new PointFeature(newPoint)
             {
-                SymbolScale = 1.3,
-                Fill = new Brush(Color.Green)
-            });
+                Styles = {
+                    new SymbolStyle
+                    {
+                        SymbolScale = 1.3,
+                        Fill = new Brush(Color.Green)
+                    }
+                }
+            };
 
-            poiFeatures.Add(highlightFeature);
+            poiFeatures.Add(highlightFeature); // thêm 1 lần
         }
         else
         {
-            highlightFeature.Point.X = spherical.x;
-            highlightFeature.Point.Y = spherical.y;
+            highlightFeature.Point.X = newPoint.X;
+            highlightFeature.Point.Y = newPoint.Y;
         }
 
         PoiLayer.DataHasChanged();
