@@ -38,7 +38,9 @@
                 </Image>
             </Border>
 
-            <Border WidthRequest="300" 
+            <Border 
+                x:Name="ProgressBackground"
+                WidthRequest="300" 
         HeightRequest="20" 
         StrokeShape="RoundRectangle 10" 
         BackgroundColor="#ddd"

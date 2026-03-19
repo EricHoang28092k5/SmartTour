@@ -17,6 +17,7 @@ public partial class LoadingPage : ContentPage
 
         StartLogoAnimation();
         StartShineAnimation();
+        StartBackgroundAnimation();
     }
 
     protected override async void OnAppearing()
@@ -28,7 +29,7 @@ public partial class LoadingPage : ContentPage
             double step = 0.25;
 
             // ✅ chạy preload song song (KHÔNG block UI)
-            var loadPoiTask = repo.GetPois();
+            var loadPoiTask = Task.Run(() => repo.GetPois());
 
             // 1️⃣ Load POI (UI fake nhưng data chạy thật)
             await UpdateStatusAsync("Đang tải POI...", step);
@@ -41,7 +42,7 @@ public partial class LoadingPage : ContentPage
 
             // 3️⃣ Start Tracking (lúc này POI đã có cache → nhanh)
             StatusLabel.Text = "Khởi tạo Tracking...";
-            await tracking.Start();
+            await Task.Run(() => tracking.Start());
             await AnimateProgressTo(step * 3);
 
             // 4️⃣ Complete
@@ -69,22 +70,27 @@ public partial class LoadingPage : ContentPage
     {
         while (progress < target)
         {
-            progress += 0.005;
-            ProgressBarContainer.WidthRequest = 300 * progress;
-            await Task.Delay(16);
+            progress += 0.01;
+            await MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                ProgressBarContainer.WidthRequest = 300 * progress;
+            });
+            await Task.Delay(20);
         }
     }
 
-    private void StartLogoAnimation()
+    private async void StartLogoAnimation()
     {
-        this.Dispatcher.StartTimer(TimeSpan.FromMilliseconds(16), () =>
+        while (true)
         {
-            double t = DateTime.Now.TimeOfDay.TotalMilliseconds / 1000.0;
-            LogoBorder.Scale = 0.9 + 0.05 * Math.Sin(t * 3);
-            // Để không bị lỗi thời, có thể dùng RotateToAsync trong một Task riêng
-            LogoBorder.Rotation += 0.8;
-            return true;
-        });
+            await Task.WhenAll(
+                LogoBorder.ScaleToAsync(1.0, 600, Easing.SinInOut),
+                LogoBorder.RotateToAsync(360, 2000, Easing.Linear)
+            );
+
+            LogoBorder.Rotation = 0;
+            await LogoBorder.ScaleToAsync(0.9, 600, Easing.SinInOut);
+        }
     }
 
     private void StartShineAnimation()
@@ -95,5 +101,13 @@ public partial class LoadingPage : ContentPage
             ShineBox.TranslationX = 300 * offset - 60;
             return true;
         });
+    }
+    private async void StartBackgroundAnimation()
+    {
+        while (true)
+        {
+            await ProgressBackground.FadeToAsync(0.6, 800, Easing.SinInOut);
+            await ProgressBackground.FadeToAsync(1.0, 800, Easing.SinInOut);
+        }
     }
 }
