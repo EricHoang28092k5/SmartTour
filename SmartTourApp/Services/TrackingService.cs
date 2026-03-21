@@ -47,15 +47,23 @@ public class TrackingService
                 if (loc != null)
                 {
                     logger.Log(loc);
-
                     OnLocationChanged?.Invoke(loc);
 
-                    var poi = geo.FindBestPoi(loc, pois);
+                    // SỬA TẠI ĐÂY:
+                    // 1. Tìm ông gần nhất (hàm mới bạn vừa viết)
+                    var nearestPoi = geo.GetNearestPoi(loc, pois);
 
-                    await narration.Play(poi, loc);
+                    // 2. Chỉ phát nhạc nếu là vùng MỚI (để không bị lặp mỗi 3 giây)
+                    if (nearestPoi != null && geo.IsNewZone(nearestPoi.Id))
+                    {
+                        await narration.Play(nearestPoi, loc);
+                    }
+                    else if (nearestPoi == null)
+                    {
+                        // Nếu không ở gần ông nào thì reset trạng thái các vùng
+                        foreach (var p in pois) geo.LeaveZone(p.Id);
+                    }
                 }
-
-                await Task.Delay(7000);
             }
         });
     }

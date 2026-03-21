@@ -3,6 +3,7 @@ using Mapsui.Widgets;
 using Mapsui.Widgets.InfoWidgets;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
+using CommunityToolkit.Maui; // Thêm using
 using SkiaSharp.Views.Maui.Controls.Hosting;
 using SmartTour.Services;
 using SmartTourApp.Data;
@@ -24,6 +25,8 @@ public static class MauiProgram
 
         builder
             .UseMauiApp<App>()
+            .UseMauiCommunityToolkit()
+            .UseMauiCommunityToolkitMediaElement()
             .UseBarcodeReader()
             .UseMauiMaps()
             .UseSkiaSharp()
@@ -39,7 +42,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<NarrationEngine>();
         builder.Services.AddHttpClient<ApiService>(client =>
         {
-            client.BaseAddress = new Uri("http://10.0.2.2:5165/");
+            client.BaseAddress = new Uri("http://192.168.1.11:5165/");
         });
         builder.Services.AddSingleton<PoiRepository>();
         builder.Services.AddSingleton<Database>();

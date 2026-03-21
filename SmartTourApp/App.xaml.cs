@@ -12,7 +12,6 @@ public partial class App : Application
 
     protected override Window CreateWindow(IActivationState? activationState)
     {
-        // Lấy DI container
         var services = Application.Current?.Handler?.MauiContext?.Services;
 
         if (services == null)
@@ -20,11 +19,14 @@ public partial class App : Application
 
         var poiRepo = services.GetService<PoiRepository>();
         var tracking = services.GetService<TrackingService>();
+        // Lấy thêm AudioService ở đây
+        var audio = services.GetService<AudioService>();
 
-        if (poiRepo == null || tracking == null)
+        if (poiRepo == null || tracking == null || audio == null)
             throw new Exception("Services not registered");
 
-        var loadingPage = new LoadingPage(poiRepo, tracking);
+        // Truyền audio vào LoadingPage nếu LoadingPage là nơi sẽ gọi AppShell sau này
+        var loadingPage = new LoadingPage(poiRepo, tracking, audio);
 
         return new Window(loadingPage);
     }
