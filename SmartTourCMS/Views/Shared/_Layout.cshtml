@@ -82,13 +82,27 @@
         <a class="nav-link @(ViewContext.RouteData.Values["Action"]?.ToString() == "Plays" ? "active" : "")" asp-controller="Log" asp-action="Plays">
             <i class="fa-solid fa-play me-2"></i> Lịch sử nghe
         </a>
-    </li>
+                </li>
+@if (User.IsInRole("Admin"))
+{
+
+
         <li class="nav-item">
+
         <a class="nav-link text-white" asp-controller="User" asp-action="Index">
+
             <i class="fa-solid fa-users-gear me-2"></i>
+
             <span>Quản lý tài khoản</span>
+
         </a>
+
     </li>
+}
+
+<li class="nav-item">
+    <a class="nav-link" asp-controller="Tour" asp-action="Index">Quản lý Tour</a>
+</li>
     <li class="nav-item mt-auto">
     <a class="nav-link text-danger fw-bold" asp-controller="Account" asp-action="Logout">
         <i class="fa-solid fa-right-from-bracket me-2"></i> Đăng xuất

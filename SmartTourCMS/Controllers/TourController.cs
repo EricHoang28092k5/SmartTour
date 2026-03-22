@@ -1,69 +1,84 @@
 ﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SmartTour.Shared.Models;
 using SmartTourBackend.Data;
-// Nhớ đổi namespace cho đúng với project CMS của bác
+
 namespace SmartTourCMS.Controllers
 {
     [Authorize(Roles = "Admin,Vendor")]
     public class TourController : Controller
     {
         private readonly AppDbContext _context;
+        private readonly UserManager<IdentityUser> _userManager;
 
-        public TourController(AppDbContext context)
+        public TourController(AppDbContext context, UserManager<IdentityUser> userManager)
         {
             _context = context;
+            _userManager = userManager;
         }
 
-        // 1. Trang danh sách Tour
+        // 1. Trang danh sách Tour (Đã lọc theo Vendor)
         public async Task<IActionResult> Index()
         {
-            var tours = await _context.Tours
-                .Include(t => t.TourPois) // Lấy luôn danh sách POI bên trong
-                .ThenInclude(tp => tp.Poi)
-                .ToListAsync();
+            var user = await _userManager.GetUserAsync(User);
+            if (user == null) return RedirectToAction("Login", "Account");
+
+            var tours = new List<Tour>();
+
+            if (await _userManager.IsInRoleAsync(user, "Admin"))
+            {
+                tours = await _context.Tours.ToListAsync();
+            }
+            else
+            {
+                tours = await _context.Tours.Where(t => t.VendorId == user.Id).ToListAsync();
+            }
+
             return View(tours);
         }
-        // Trong TourController.cs
+
+        // 2. Trang Tạo mới (GET)
         [HttpGet]
         public async Task<IActionResult> Create()
         {
-            // Lấy danh sách POI để hiển thị checkbox
-            var pois = await _context.Pois.ToListAsync();
-            ViewBag.Pois = pois;
+            ViewBag.Pois = await _context.Pois.ToListAsync();
             return View();
         }
+
+        // 3. Logic Tạo mới (POST)
         [HttpPost]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> Create(Tour tour, int[] selectedPoiIds)
         {
+            var currentUser = await _userManager.GetUserAsync(User);
+            if (currentUser != null)
+            {
+                tour.VendorId = currentUser.Id; // Gán chủ sở hữu
+            }
+
             if (ModelState.IsValid)
             {
-                // 1. Lưu Tour trước
                 _context.Tours.Add(tour);
                 await _context.SaveChangesAsync();
 
-                // 2. Lưu các địa điểm được chọn vào bảng trung gian TourPoi
                 if (selectedPoiIds != null)
                 {
                     int order = 1;
                     foreach (var poiId in selectedPoiIds)
                     {
-                        var tourPoi = new TourPoi
-                        {
-                            TourId = tour.Id,
-                            PoiId = poiId,
-                            OrderIndex = order++ // Tự tăng thứ tự
-                        };
-                        _context.TourPois.Add(tourPoi);
+                        _context.TourPois.Add(new TourPoi { TourId = tour.Id, PoiId = poiId, OrderIndex = order++ });
                     }
                     await _context.SaveChangesAsync();
                 }
                 return RedirectToAction(nameof(Index));
             }
+            ViewBag.Pois = await _context.Pois.ToListAsync();
             return View(tour);
         }
-        // 1. TRANG CHI TIẾT (XEM)
+
+        // 4. Chi tiết
         public async Task<IActionResult> Details(int? id)
         {
             if (id == null) return NotFound();
@@ -77,27 +92,29 @@ namespace SmartTourCMS.Controllers
             return View(tour);
         }
 
-        // 2. TRANG SỬA (GET)
+        // 5. Sửa (GET)
         public async Task<IActionResult> Edit(int? id)
         {
             if (id == null) return NotFound();
 
-            var tour = await _context.Tours
-                .Include(t => t.TourPois)
-                .FirstOrDefaultAsync(t => t.Id == id);
-
+            var tour = await _context.Tours.Include(t => t.TourPois).FirstOrDefaultAsync(t => t.Id == id);
             if (tour == null) return NotFound();
 
-            var allPois = await _context.Pois.ToListAsync();
-            ViewBag.Pois = allPois;
-            // Lấy danh sách ID các POI đã được chọn sẵn
-            ViewBag.SelectedPoiIds = tour.TourPois.Select(tp => tp.PoiId).ToList();
+            // KIỂM TRA QUYỀN: Nếu không phải Admin và cũng không phải chủ Tour thì đuổi ra
+            var user = await _userManager.GetUserAsync(User);
+            if (!await _userManager.IsInRoleAsync(user, "Admin") && tour.VendorId != user.Id)
+            {
+                return Forbid();
+            }
 
+            ViewBag.Pois = await _context.Pois.ToListAsync();
+            ViewBag.SelectedPoiIds = tour.TourPois.Select(tp => tp.PoiId).ToList();
             return View(tour);
         }
 
-        // 3. LOGIC SỬA (POST)
+        // 6. Logic Sửa (POST)
         [HttpPost]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> Edit(int id, Tour tour, int[] selectedPoiIds)
         {
             if (id != tour.Id) return NotFound();
@@ -106,18 +123,15 @@ namespace SmartTourCMS.Controllers
             {
                 try
                 {
-                    // Ép kiểu lại trước khi lưu
+                    // Đảm bảo CreatedAt chuẩn UTC để không bị lỗi Database
                     tour.CreatedAt = DateTime.SpecifyKind(tour.CreatedAt, DateTimeKind.Utc);
-                    _context.Update(tour);
-                    await _context.SaveChangesAsync();
-                    _context.Update(tour);
-                    await _context.SaveChangesAsync();
 
-                    // Xóa hết các POI cũ của Tour này trong bảng trung gian
+                    _context.Update(tour);
+
+                    // Xóa và cập nhật lại POI trung gian
                     var oldPois = _context.TourPois.Where(tp => tp.TourId == id);
                     _context.TourPois.RemoveRange(oldPois);
 
-                    // Thêm lại đống POI mới được tích
                     if (selectedPoiIds != null)
                     {
                         int order = 1;
@@ -138,21 +152,27 @@ namespace SmartTourCMS.Controllers
             return View(tour);
         }
 
-        // 4. LOGIC XÓA (Nhanh gọn lẹ)
+        // 7. Xóa
         [HttpPost]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> Delete(int id)
         {
             var tour = await _context.Tours.FindAsync(id);
-            if (tour != null)
-            {
-                // EF Core sẽ tự động xóa các dòng trong TourPois nếu bác cấu hình Delete Cascade
-                // Nếu không, bác nên xóa thủ công TourPois trước
-                var tourPois = _context.TourPois.Where(tp => tp.TourId == id);
-                _context.TourPois.RemoveRange(tourPois);
+            if (tour == null) return NotFound();
 
-                _context.Tours.Remove(tour);
-                await _context.SaveChangesAsync();
+            // KIỂM TRA QUYỀN XÓA
+            var user = await _userManager.GetUserAsync(User);
+            if (!await _userManager.IsInRoleAsync(user, "Admin") && tour.VendorId != user.Id)
+            {
+                return Forbid();
             }
+
+            var tourPois = _context.TourPois.Where(tp => tp.TourId == id);
+            _context.TourPois.RemoveRange(tourPois);
+
+            _context.Tours.Remove(tour);
+            await _context.SaveChangesAsync();
+
             return RedirectToAction(nameof(Index));
         }
     }

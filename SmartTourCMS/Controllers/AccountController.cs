@@ -1,5 +1,7 @@
-﻿using Microsoft.AspNetCore.Identity;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using SmartTourCMS.Models;
 
 namespace SmartTourCMS.Controllers
 {
@@ -40,5 +42,36 @@ namespace SmartTourCMS.Controllers
 
         [HttpGet]
         public IActionResult AccessDenied() => View();
+        [Authorize]
+        [HttpGet]
+        public IActionResult ChangePassword() => View();
+
+        [Authorize]
+        [HttpPost]
+        public async Task<IActionResult> ChangePassword(ChangePasswordViewModel model)
+        {
+            if (!ModelState.IsValid) return View(model);
+
+            // Lấy thông tin user hiện tại đang đăng nhập
+            var user = await _userManager.GetUserAsync(User);
+            if (user == null) return RedirectToAction("Login");
+
+            // Dùng hàm có sẵn của Identity để đổi mật khẩu (nó tự Hash lại mật khẩu mới luôn)
+            var result = await _userManager.ChangePasswordAsync(user, model.OldPassword, model.NewPassword);
+
+            if (result.Succeeded)
+            {
+                // Đổi xong thì bắt đăng nhập lại cho chắc ăn
+                await _signInManager.SignOutAsync();
+                TempData["Success"] = "Đổi mật khẩu thành công rồi bác, đăng nhập lại nhé!";
+                return RedirectToAction("Login");
+            }
+
+            foreach (var error in result.Errors)
+            {
+                ModelState.AddModelError("", error.Description);
+            }
+            return View(model);
+        }
     }
 }

@@ -13,6 +13,7 @@ namespace SmartTour.Shared.Models
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public string? CreatedBy { get; set; }
+        public string? VendorId { get; set; }
 
         // --- MỐI QUAN HỆ ---
         // Một Tour sẽ có danh sách các POI thông qua bảng trung gian TourPoi
