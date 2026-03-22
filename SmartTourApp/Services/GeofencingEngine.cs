@@ -9,7 +9,7 @@ public class GeofencingEngine
 
     public Poi? FindBestPoi(Location user, List<Poi> pois)
     {
-        Poi? best = null;
+        var candidates = new List<(Poi poi, double dist)>();
 
         foreach (var poi in pois)
         {
@@ -21,11 +21,7 @@ public class GeofencingEngine
 
             if (meters <= poi.Radius)
             {
-                if (!activeZones.Contains(poi.Id))
-                {
-                    activeZones.Add(poi.Id);
-                    best = poi;
-                }
+                candidates.Add((poi, meters));
             }
             else
             {
@@ -33,6 +29,20 @@ public class GeofencingEngine
             }
         }
 
-        return best;
+        if (!candidates.Any())
+            return null;
+
+        var best = candidates
+            .OrderByDescending(x => x.poi.Priority)
+            .ThenBy(x => x.dist)
+            .First().poi;
+
+        if (!activeZones.Contains(best.Id))
+        {
+            activeZones.Add(best.Id);
+            return best;
+        }
+
+        return null;
     }
 }

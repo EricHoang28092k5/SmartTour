@@ -164,7 +164,12 @@ public partial class MapPage : ContentPage
             if (pois.Count == 0)
                 return;
 
-            var poi = geo.FindBestPoi(loc, pois);
+            var poi = pois
+                .OrderBy(p => Location.CalculateDistance(
+                    loc,
+                    new Location(p.Lat, p.Lng),
+                    DistanceUnits.Kilometers))
+                .FirstOrDefault();
 
             if (poi != null)
             {

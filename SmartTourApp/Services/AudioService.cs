@@ -8,17 +8,22 @@ public class AudioService
     private readonly IAudioManager audioManager = AudioManager.Current;
     private IAudioPlayer? player;
 
-    public async Task Play(string file)
+    public async Task Play(string url)
     {
         try
         {
             player?.Stop();
 
-            var stream = await FileSystem.OpenAppPackageFileAsync(file);
+            using var http = new HttpClient();
+            var stream = await http.GetStreamAsync(url);
 
             player = audioManager.CreatePlayer(stream);
-
             player.Play();
+
+            while (player.IsPlaying)
+            {
+                await Task.Delay(300);
+            }
         }
         catch (Exception ex)
         {

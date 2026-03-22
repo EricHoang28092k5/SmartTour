@@ -37,7 +37,12 @@ public class PoiRepository
                     Lng = p.Lng,
                     Radius = p.Radius,
                     ImageUrl = p.ImageUrl,
-                    Description = p.Description
+                    Description = p.Description,
+
+                    AudioUrl = p.AudioUrl,
+                    AudioFiles = p.AudioFiles,   // 🔥 thêm dòng này
+                    TtsScript = p.TtsScript,
+                    Priority = p.Priority
                 }).ToList();
 
                 return cachedPois;

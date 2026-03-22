@@ -50,11 +50,21 @@ public class NarrationEngine
         {
             var poi = queue.Dequeue();
 
-            if (!string.IsNullOrWhiteSpace(poi.AudioUrl))
-            {
-                await audio.Play(poi.AudioUrl);
+            string? audioUrl = null;
 
-                await Task.Delay(5000); // chờ audio
+            // 🎯 Ưu tiên audioFiles từ server
+            if (poi.AudioFiles != null && poi.AudioFiles.Any())
+            {
+                audioUrl = poi.AudioFiles.First().FileUrl;
+            }
+            else if (!string.IsNullOrWhiteSpace(poi.AudioUrl))
+            {
+                audioUrl = poi.AudioUrl;
+            }
+
+            if (!string.IsNullOrWhiteSpace(audioUrl))
+            {
+                await audio.Play(audioUrl); // phải fix AudioService nữa
             }
             else if (!string.IsNullOrWhiteSpace(poi.TtsScript))
             {
