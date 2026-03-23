@@ -40,22 +40,29 @@ public class TrackingService
 
         _ = Task.Run(async () =>
         {
-            while (isRunning)
-            {
-                var loc = await location.GetLocation();
+            var timer = new PeriodicTimer(TimeSpan.FromSeconds(7));
 
-                if (loc != null)
+            try
+            {
+                while (isRunning && await timer.WaitForNextTickAsync())
                 {
+                    var loc = await location.GetLocation();
+
+                    if (loc == null) continue;
+
                     logger.Log(loc);
 
                     OnLocationChanged?.Invoke(loc);
 
                     var poi = geo.FindBestPoi(loc, pois);
 
-                    await narration.Play(poi, loc);
+                    if (poi != null)
+                        await narration.Play(poi, loc);
                 }
-
-                await Task.Delay(7000);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine("Tracking error: " + ex.Message);
             }
         });
     }

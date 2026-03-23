@@ -155,8 +155,8 @@ public partial class MapPage : ContentPage
             if (TourMap?.Map?.Navigator != null && followUser)
             {
                 var mercator = SphericalMercator.FromLonLat(
-        loc.Longitude,
-        loc.Latitude);
+                    loc.Longitude,
+                    loc.Latitude);
 
                 var pos = new MPoint(mercator.x, mercator.y);
 
@@ -168,18 +168,27 @@ public partial class MapPage : ContentPage
             if (pois.Count == 0)
                 return;
 
-            var poi = pois
-                .OrderBy(p => Location.CalculateDistance(
+            Poi? nearest = null;
+            double minDist = double.MaxValue;
+
+            foreach (var p in pois)
+            {
+                var dist = Location.CalculateDistance(
                     loc,
                     new Location(p.Lat, p.Lng),
-                    DistanceUnits.Kilometers))
-                .FirstOrDefault();
+                    DistanceUnits.Kilometers);
 
-            if (poi != null)
+                if (dist < minDist)
+                {
+                    minDist = dist;
+                    nearest = p;
+                }
+            }
+
+            if (nearest != null)
             {
-                NearestPoiLabel.Text = poi.Name;
-
-                vm.HighlightPoi(TourMap.Map, poi.Lat, poi.Lng);
+                NearestPoiLabel.Text = nearest.Name;
+                vm.HighlightPoi(TourMap.Map, nearest.Lat, nearest.Lng);
             }
             else
             {
