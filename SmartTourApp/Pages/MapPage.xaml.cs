@@ -64,8 +64,11 @@ public partial class MapPage : ContentPage
             await tracking.Start();
             trackingStarted = true;
         }
+        followUser = true;
 
         var loc = await Geolocation.GetLastKnownLocationAsync();
+        if (loc == null)
+            loc = await Geolocation.GetLocationAsync(new GeolocationRequest(GeolocationAccuracy.Medium, TimeSpan.FromSeconds(5)));
 
         if (loc != null && TourMap?.Map?.Navigator != null)
         {
@@ -75,7 +78,8 @@ public partial class MapPage : ContentPage
 
             var pos = new MPoint(mercator.x, mercator.y);
 
-            TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 0.5);
+            TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 0.5, 600, Mapsui.Animations.Easing.CubicOut);
+            vm.UpdateUser(TourMap.Map, loc, false);
         }
     }
 
