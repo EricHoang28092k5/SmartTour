@@ -96,8 +96,8 @@
 
         </VerticalStackLayout>
 
-
-        <!-- ================= BOTTOM POI CARD ================= -->
+            
+        <!-- ================= BOTTOM POI CARD 1 ================= -->
         <Border
             Margin="16,0,16,22"
             Padding="18"
