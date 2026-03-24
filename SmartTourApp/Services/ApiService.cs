@@ -25,4 +25,24 @@ public class ApiService
             throw;
         }
     }
+    public async Task<List<TtsDto>> GetTtsScripts(int poiId)
+    {
+        var res = await http.GetFromJsonAsync<TtsResponse>($"api/pois/{poiId}/tts-all");
+        return res?.Data ?? new List<TtsDto>();
+    }
+
+    public class TtsResponse
+    {
+        public bool Success { get; set; }
+        public int PoiId { get; set; }
+        public List<TtsDto> Data { get; set; } = new();
+    }
+
+    public class TtsDto
+    {
+        public string LanguageCode { get; set; } = "";
+        public string LanguageName { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string TtsScript { get; set; } = "";
+    }
 }

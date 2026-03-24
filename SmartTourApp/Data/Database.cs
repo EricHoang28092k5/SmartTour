@@ -141,36 +141,29 @@ public class Database : IDisposable
 
     public void SaveSetting(string key, string value)
     {
-        lock (locker)
-        {
-            var existing = db.Table<AppSetting>()
-                .FirstOrDefault(x => x.SettingKey == key);
+        var existing = db.Table<AppSetting>()
+                         .FirstOrDefault(x => x.SettingKey == key);
 
-            if (existing == null)
+        if (existing == null)
+        {
+            db.Insert(new AppSetting
             {
-                db.Insert(new AppSetting
-                {
-                    SettingKey = key,
-                    SettingValue = value
-                });
-            }
-            else
-            {
-                existing.SettingValue = value;
-                db.Update(existing);
-            }
+                SettingKey = key,
+                SettingValue = value
+            });
+        }
+        else
+        {
+            existing.SettingValue = value;
+            db.Update(existing);
         }
     }
 
-    public string GetSetting(string key, string defaultValue = "")
+    public string GetSetting(string key)
     {
-        lock (locker)
-        {
-            var s = db.Table<AppSetting>()
-                .FirstOrDefault(x => x.SettingKey == key);
-
-            return s?.SettingValue ?? defaultValue;
-        }
+        return db.Table<AppSetting>()
+                 .FirstOrDefault(x => x.SettingKey == key)
+                 ?.SettingValue;
     }
 
     // ======================

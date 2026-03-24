@@ -1,13 +1,17 @@
-﻿using SmartTour.Shared.Models;
+﻿using SmartTour.Services;
+using SmartTour.Shared.Models;
 using SmartTourApp.Data;
+using static SmartTour.Services.ApiService;
 
 namespace SmartTourApp.Services;
 
 public class NarrationEngine
 {
-    private readonly AudioService audio;
     private readonly TtsService tts;
     private readonly Database db;
+    private readonly ApiService api;
+    private readonly LanguageService lang;
+    private readonly Dictionary<int, List<TtsDto>> ttsCache = new();
 
     private readonly Dictionary<int, DateTime> history = new();
 
@@ -16,13 +20,15 @@ public class NarrationEngine
     private bool isPlaying;
 
     public NarrationEngine(
-        AudioService audio,
         TtsService tts,
-        Database db)
+        Database db,
+        ApiService api,
+        LanguageService lang)
     {
-        this.audio = audio;
         this.tts = tts;
         this.db = db;
+        this.api = api;
+        this.lang = lang;
     }
 
     public async Task Play(Poi? poi, Location location)
@@ -49,26 +55,40 @@ public class NarrationEngine
         while (queue.Count > 0)
         {
             var poi = queue.Dequeue();
+            List<TtsDto> scripts;
 
-            string? audioUrl = null;
+            if (!ttsCache.ContainsKey(poi.Id))
+            {
+                try
+                {
+                    scripts = await api.GetTtsScripts(poi.Id);
+                    ttsCache[poi.Id] = scripts ?? new List<TtsDto>();
+                }
+                catch
+                {
+                    scripts = new List<TtsDto>();
+                    ttsCache[poi.Id] = scripts;
+                }
+            }
+            else
+            {
+                scripts = ttsCache[poi.Id];
+            }
+            if (scripts == null || scripts.Count == 0)
+                continue;
 
-            // 🎯 Ưu tiên audioFiles từ server
-            if (poi.AudioFiles != null && poi.AudioFiles.Any())
-            {
-                audioUrl = poi.AudioFiles.First().FileUrl;
-            }
-            else if (!string.IsNullOrWhiteSpace(poi.AudioUrl))
-            {
-                audioUrl = poi.AudioUrl;
-            }
+            // 🔥 chọn ngôn ngữ
+            var currentLang = lang.Current;
 
-            if (!string.IsNullOrWhiteSpace(audioUrl))
+            var selected = scripts
+                .FirstOrDefault(x => x.LanguageCode.StartsWith(currentLang))
+                ?? scripts.FirstOrDefault(x => x.LanguageCode.StartsWith("en"))
+                ?? scripts.FirstOrDefault();
+
+            // 🔥 phát TTS
+            if (selected != null && !string.IsNullOrWhiteSpace(selected.TtsScript))
             {
-                await audio.Play(audioUrl); // phải fix AudioService nữa
-            }
-            else if (!string.IsNullOrWhiteSpace(poi.TtsScript))
-            {
-                await tts.Speak(poi.TtsScript);
+                await tts.Speak(selected.TtsScript, selected.LanguageCode);
             }
 
             history[poi.Id] = DateTime.Now;

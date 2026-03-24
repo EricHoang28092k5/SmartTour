@@ -5,15 +5,21 @@ namespace SmartTourApp.Services;
 public class LanguageService
 {
     private readonly Database db;
+    private string current;
 
     public LanguageService(Database db)
     {
         this.db = db;
+        current = db.GetSetting("lang") ?? "vi";
     }
 
     public string Current
     {
-        get => db.GetSetting("lang", "vi");
-        set => db.SaveSetting("lang", value);
+        get => current;
+        set
+        {
+            current = value;
+            db.SaveSetting("lang", value);
+        }
     }
 }
