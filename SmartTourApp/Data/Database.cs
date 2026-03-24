@@ -112,9 +112,14 @@ public class Database : IDisposable
     // LOCATION LOG
     // ======================
 
+    private DateTime lastLogTime = DateTime.MinValue;
+
     public void AddLocation(UserLocationLog log)
     {
-        if (DateTime.Now.Second % 10 != 0) return; // tránh lock thừa
+        if ((DateTime.Now - lastLogTime).TotalSeconds < 10)
+            return;
+
+        lastLogTime = DateTime.Now;
 
         lock (locker)
         {

@@ -49,7 +49,12 @@ public partial class HomePage : ContentPage
                         pois = pois.OrderBy(p =>
                         {
                             var text = p.Description.Replace(" km", "").Replace(" m", "");
-                            return double.Parse(text);
+
+                            if (double.TryParse(text, System.Globalization.NumberStyles.Any,
+                                System.Globalization.CultureInfo.InvariantCulture, out var val))
+                                return val;
+
+                            return double.MaxValue;
                         }).ToList();
                     }
                 });

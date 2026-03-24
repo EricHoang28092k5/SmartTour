@@ -67,8 +67,11 @@ public partial class MapPage : ContentPage
             await tracking.Start();
             trackingStarted = true;
         }
+        followUser = true;
 
         var loc = await Geolocation.GetLastKnownLocationAsync();
+        if (loc == null)
+            loc = await Geolocation.GetLocationAsync(new GeolocationRequest(GeolocationAccuracy.Medium, TimeSpan.FromSeconds(5)));
 
         if (loc != null && TourMap?.Map?.Navigator != null)
         {
@@ -78,7 +81,8 @@ public partial class MapPage : ContentPage
 
             var pos = new MPoint(mercator.x, mercator.y);
 
-            TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 0.5);
+            TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 0.5, 600, Mapsui.Animations.Easing.CubicOut);
+            vm.UpdateUser(TourMap.Map, loc, false);
         }
     }
 
@@ -154,13 +158,25 @@ public partial class MapPage : ContentPage
 
             if (TourMap?.Map?.Navigator != null && followUser)
             {
+<<<<<<< HEAD
                 var mercator = SphericalMercator.FromLonLat(loc.Longitude, loc.Latitude);
                 TourMap.Map.Navigator.CenterOn(new MPoint(mercator.x, mercator.y));
+=======
+                var mercator = SphericalMercator.FromLonLat(
+                    loc.Longitude,
+                    loc.Latitude);
+
+                var pos = new MPoint(mercator.x, mercator.y);
+
+                TourMap.Map.Navigator.CenterOn(pos);
+
+>>>>>>> e91d1ab27c788503c01afd96e95d2391a9bdc9b0
                 firstZoom = false;
             }
 
             if (pois == null || pois.Count == 0) return;
 
+<<<<<<< HEAD
             // 2. Tìm POI gần nhất ĐỂ HIỂN THỊ (Dùng hàm mới của bạn)
             var nearestPoi = geo.GetNearestPoi(loc, pois);
 
@@ -179,6 +195,29 @@ public partial class MapPage : ContentPage
                     // Debug nhanh để kiểm tra trong cửa sổ Output của Visual Studio
                     System.Diagnostics.Debug.WriteLine($"[TOUR] Đã kích hoạt phát nhạc cho: {nearestPoi.Name}");
                 }
+=======
+            Poi? nearest = null;
+            double minDist = double.MaxValue;
+
+            foreach (var p in pois)
+            {
+                var dist = Location.CalculateDistance(
+                    loc,
+                    new Location(p.Lat, p.Lng),
+                    DistanceUnits.Kilometers);
+
+                if (dist < minDist)
+                {
+                    minDist = dist;
+                    nearest = p;
+                }
+            }
+
+            if (nearest != null)
+            {
+                NearestPoiLabel.Text = nearest.Name;
+                vm.HighlightPoi(TourMap.Map, nearest.Lat, nearest.Lng);
+>>>>>>> e91d1ab27c788503c01afd96e95d2391a9bdc9b0
             }
             else
             {

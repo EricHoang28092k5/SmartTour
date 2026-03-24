@@ -53,6 +53,7 @@ public class NarrationEngine
             var poi = queue.Dequeue();
             string? finalUrl = null;
 
+<<<<<<< HEAD
             // 1. Kiểm tra trường audioUrl trực tiếp
             if (!string.IsNullOrWhiteSpace(poi.AudioUrl))
             {
@@ -79,6 +80,23 @@ public class NarrationEngine
 
                 // Đợi một khoảng thời gian ước lượng hoặc dựa trên duration nếu có
                 await Task.Delay(8000);
+=======
+            string? audioUrl = null;
+
+            // 🎯 Ưu tiên audioFiles từ server
+            if (poi.AudioFiles != null && poi.AudioFiles.Any())
+            {
+                audioUrl = poi.AudioFiles.First().FileUrl;
+            }
+            else if (!string.IsNullOrWhiteSpace(poi.AudioUrl))
+            {
+                audioUrl = poi.AudioUrl;
+            }
+
+            if (!string.IsNullOrWhiteSpace(audioUrl))
+            {
+                await audio.Play(audioUrl); // phải fix AudioService nữa
+>>>>>>> e91d1ab27c788503c01afd96e95d2391a9bdc9b0
             }
             else if (!string.IsNullOrWhiteSpace(poi.TtsScript))
             {

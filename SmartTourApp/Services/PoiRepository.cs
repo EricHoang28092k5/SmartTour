@@ -18,6 +18,7 @@ public class PoiRepository
 
     public async Task<List<Poi>> GetPois()
     {
+        // ✅ cache sớm
         if (cachedPois != null && cachedPois.Count > 0)
             return cachedPois;
 
@@ -27,18 +28,11 @@ public class PoiRepository
 
             if (server != null && server.Count > 0)
             {
-                db.AddPois(server); // ✅ bỏ Clear
+                // ✅ chạy DB ở background
+                _ = Task.Run(() => db.AddPois(server));
 
-                cachedPois = server.Select(p => new Poi
-                {
-                    Id = p.Id,
-                    Name = p.Name,
-                    Lat = p.Lat,
-                    Lng = p.Lng,
-                    Radius = p.Radius,
-                    ImageUrl = p.ImageUrl,
-                    Description = p.Description
-                }).ToList();
+                // ✅ KHÔNG copy nữa → dùng trực tiếp
+                cachedPois = server;
 
                 return cachedPois;
             }
@@ -48,11 +42,12 @@ public class PoiRepository
             System.Diagnostics.Debug.WriteLine("API FAIL: " + ex.Message);
         }
 
-        var local = db.GetPois();
+        // ✅ load DB async để không block UI
+        var local = await Task.Run(() => db.GetPois());
 
-        cachedPois = local;
+        cachedPois = local ?? new List<Poi>();
 
-        return local;
+        return cachedPois;
     }
 
     public List<Poi>? GetCachedPois()

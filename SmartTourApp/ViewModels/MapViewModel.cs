@@ -47,7 +47,7 @@ public class MapViewModel
     // =============================
     // USER LOCATION
     // =============================
-    public void UpdateUser(Map map, Location loc)
+    public void UpdateUser(Map map, Location loc, bool centerMap = false)
     {
         if (lastLocation != null)
         {
@@ -106,6 +106,7 @@ public class MapViewModel
             };
 
             UserLayer.Features = new[] { accuracyFeature, pulseFeature, userFeature };
+            centerMap = true;
         }
         else
         {
@@ -118,6 +119,12 @@ public class MapViewModel
             userFeature!.Point.Y = newPoint.Y;
 
             UserLayer.DataHasChanged();
+        }
+
+        if (centerMap && map?.Navigator != null)
+        {
+            // Lia máy mượt mà trong 500ms, zoom level 0.5 (hoặc mức bạn muốn)
+            map.Navigator.CenterOnAndZoomTo(newPoint, 0.5, 500, Mapsui.Animations.Easing.CubicOut);
         }
     }
 

@@ -40,12 +40,16 @@ public class TrackingService
 
         _ = Task.Run(async () =>
         {
-            while (isRunning)
-            {
-                var loc = await location.GetLocation();
+            var timer = new PeriodicTimer(TimeSpan.FromSeconds(7));
 
-                if (loc != null)
+            try
+            {
+                while (isRunning && await timer.WaitForNextTickAsync())
                 {
+                    var loc = await location.GetLocation();
+
+                    if (loc == null) continue;
+
                     logger.Log(loc);
                     OnLocationChanged?.Invoke(loc);
 
@@ -53,6 +57,7 @@ public class TrackingService
                     // 1. Tìm ông gần nhất (hàm mới bạn vừa viết)
                     var nearestPoi = geo.GetNearestPoi(loc, pois);
 
+<<<<<<< HEAD
                     // 2. Chỉ phát nhạc nếu là vùng MỚI (để không bị lặp mỗi 3 giây)
                     if (nearestPoi != null && geo.IsNewZone(nearestPoi.Id))
                     {
@@ -64,6 +69,15 @@ public class TrackingService
                         foreach (var p in pois) geo.LeaveZone(p.Id);
                     }
                 }
+=======
+                    if (poi != null)
+                        await narration.Play(poi, loc);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine("Tracking error: " + ex.Message);
+>>>>>>> e91d1ab27c788503c01afd96e95d2391a9bdc9b0
             }
         });
     }
