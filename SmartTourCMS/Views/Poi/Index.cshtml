@@ -85,10 +85,11 @@
                                 <i class="fa-solid fa-pen"></i>
                             </a>
 
-                            <a asp-action="Delete" asp-route-id="@item.Id" class="btn btn-sm btn-danger" title="Xóa"
-                                   onclick="return confirm('Có chắc là muốn xóa @item.Name không cu?')">
-                                <i class="fa-solid fa-trash"></i>
-                            </a>
+                            <form asp-action="Delete" asp-route-id="@item.Id" method="post" style="display:inline;" onsubmit="return confirm('Bác có chắc chắn muốn xóa tận gốc địa điểm này không?');">
+                                <button type="submit" class="btn btn-danger btn-sm">
+                                    <i class="fa fa-trash"></i> Xóa
+                                </button>
+                            </form>
                         </td>
                         @if (ViewBag.IsAdmin != null && (bool)ViewBag.IsAdmin)
                         {

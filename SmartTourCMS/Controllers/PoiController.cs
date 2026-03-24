@@ -213,11 +213,16 @@ namespace SmartTourCMS.Controllers
         }
 
         // --- 6. XÓA ĐỊA ĐIỂM ---
-        [HttpPost] // Nên dùng HttpPost cho Delete để bảo mật, tránh bị xóa qua URL GET
+        // --- 6. XÓA ĐỊA ĐIỂM (Phiên bản nhổ cỏ tận gốc) ---
+        [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Delete(int id)
         {
-            var poi = await _context.Pois.FindAsync(id);
+            // Bơm thêm Include để lôi đầu đám "con cái" (Audio) lên
+            var poi = await _context.Pois
+                .Include(p => p.AudioFiles)
+                .FirstOrDefaultAsync(p => p.Id == id);
+
             if (poi == null) return NotFound();
 
             // BẢO MẬT: Chặn xóa lén
@@ -227,9 +232,34 @@ namespace SmartTourCMS.Controllers
                 return Forbid();
             }
 
-            _context.Pois.Remove(poi);
-            await _context.SaveChangesAsync();
-            TempData["success"] = "Xóa thành công!";
+            try
+            {
+                // BƯỚC 1: Xóa sạch các Bản dịch (PoiTranslations) của địa điểm này
+                var translations = _context.PoiTranslations.Where(t => t.PoiId == id);
+                _context.PoiTranslations.RemoveRange(translations);
+
+                // BƯỚC 2: Xóa sạch các File âm thanh (AudioFiles) (nếu có)
+                if (poi.AudioFiles != null && poi.AudioFiles.Any())
+                {
+                    _context.AudioFiles.RemoveRange(poi.AudioFiles);
+                }
+
+                // BƯỚC 3: Nếu POI này đang nằm trong Tour nào đó, xóa luôn liên kết TourPoi
+                // (Bỏ comment 2 dòng dưới nếu bác có bảng TourPoi)
+                // var tourPois = _context.TourPois.Where(tp => tp.PoiId == id);
+                // _context.TourPois.RemoveRange(tourPois);
+
+                // BƯỚC 4: Cuối cùng mới "trảm" thằng POI gốc
+                _context.Pois.Remove(poi);
+
+                // Lưu một cục xuống DB
+                await _context.SaveChangesAsync();
+                TempData["success"] = "Đã dọn dẹp sạch sẽ và xóa địa điểm thành công!";
+            }
+            catch (Exception ex)
+            {
+                TempData["error"] = "Lỗi khi xóa: " + ex.Message;
+            }
 
             return RedirectToAction(nameof(Index));
         }
