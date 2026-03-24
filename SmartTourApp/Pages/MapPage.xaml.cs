@@ -26,6 +26,16 @@ public partial class MapPage : ContentPage
     private bool trackingStarted = false;
     private bool firstZoom = true;
 
+    double startY;
+
+    const double COLLAPSED_Y = 400;
+    const double EXPANDED_Y = 0;
+
+    const double COLLAPSED_HEIGHT = 120;
+    const double EXPANDED_HEIGHT = 500;
+
+    Poi? currentPoi;
+
     public MapPage(
         TrackingService tracking,
         PoiRepository repo,
@@ -81,6 +91,11 @@ public partial class MapPage : ContentPage
             TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 0.5, 600, Mapsui.Animations.Easing.CubicOut);
             vm.UpdateUser(TourMap.Map, loc, false);
         }
+        BottomSheet.TranslationY = COLLAPSED_Y;
+        BottomSheet.HeightRequest = COLLAPSED_HEIGHT;
+
+        PoiImage.IsVisible = false;
+        DetailSection.IsVisible = false;
     }
 
     protected override void OnDisappearing()
@@ -187,7 +202,16 @@ public partial class MapPage : ContentPage
 
             if (nearest != null)
             {
+                currentPoi = nearest;
+
                 NearestPoiLabel.Text = nearest.Name;
+
+                PoiImage.Source = nearest.ImageUrl;
+
+                PoiDescription.Text = string.IsNullOrEmpty(nearest.Description)
+                    ? "Chưa có mô tả"
+                    : nearest.Description;
+
                 vm.HighlightPoi(TourMap.Map, nearest.Lat, nearest.Lng);
             }
             else
@@ -240,5 +264,49 @@ public partial class MapPage : ContentPage
         var pos = new MPoint(mercator.x, mercator.y);
 
         TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 0.5);
+    }
+    private void OnPanUpdated(object sender, PanUpdatedEventArgs e)
+    {
+        switch (e.StatusType)
+        {
+            case GestureStatus.Started:
+                startY = BottomSheet.TranslationY;
+                break;
+
+            case GestureStatus.Running:
+                double newY = startY + e.TotalY;
+                newY = Math.Max(EXPANDED_Y, Math.Min(COLLAPSED_Y, newY));
+                BottomSheet.TranslationY = newY;
+                break;
+
+            case GestureStatus.Completed:
+                SnapToPosition();
+                break;
+        }
+    }
+    private async void SnapToPosition()
+    {
+        double mid = (COLLAPSED_Y + EXPANDED_Y) / 2;
+
+        if (BottomSheet.TranslationY > mid)
+        {
+            // COLLAPSED
+            await BottomSheet.TranslateToAsync(0, COLLAPSED_Y, 250, Easing.CubicOut);
+
+            BottomSheet.HeightRequest = COLLAPSED_HEIGHT;
+
+            PoiImage.IsVisible = false;
+            DetailSection.IsVisible = false;
+        }
+        else
+        {
+            // EXPANDED
+            await BottomSheet.TranslateToAsync(0, EXPANDED_Y, 250, Easing.CubicOut);
+
+            BottomSheet.HeightRequest = EXPANDED_HEIGHT;
+
+            PoiImage.IsVisible = true;
+            DetailSection.IsVisible = true;
+        }
     }
 }
