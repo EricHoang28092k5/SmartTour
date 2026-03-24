@@ -17,7 +17,6 @@ public partial class MapPage : ContentPage
     private readonly TrackingService tracking;
     private readonly PoiRepository repo;
     private readonly GeofencingEngine geo;
-    private readonly NarrationEngine narration;
 
     private readonly MapViewModel vm = new();
 
@@ -30,8 +29,7 @@ public partial class MapPage : ContentPage
     public MapPage(
         TrackingService tracking,
         PoiRepository repo,
-        GeofencingEngine geo,
-        NarrationEngine narration)
+        GeofencingEngine geo)
     {
         InitializeComponent();
 
@@ -43,7 +41,6 @@ public partial class MapPage : ContentPage
         this.tracking = tracking;
         this.repo = repo;
         this.geo = geo;
-        this.narration = narration;
 
         TourMap.Loaded += async (_, _) =>
         {
@@ -151,17 +148,12 @@ public partial class MapPage : ContentPage
         if (loc == null || TourMap?.Map == null)
             return;
 
-        MainThread.BeginInvokeOnMainThread(async () =>
+        MainThread.BeginInvokeOnMainThread(() =>
         {
-            // 1. Cập nhật vị trí User trên bản đồ
             vm.UpdateUser(TourMap.Map, loc);
 
             if (TourMap?.Map?.Navigator != null && followUser)
             {
-<<<<<<< HEAD
-                var mercator = SphericalMercator.FromLonLat(loc.Longitude, loc.Latitude);
-                TourMap.Map.Navigator.CenterOn(new MPoint(mercator.x, mercator.y));
-=======
                 var mercator = SphericalMercator.FromLonLat(
                     loc.Longitude,
                     loc.Latitude);
@@ -170,32 +162,12 @@ public partial class MapPage : ContentPage
 
                 TourMap.Map.Navigator.CenterOn(pos);
 
->>>>>>> e91d1ab27c788503c01afd96e95d2391a9bdc9b0
                 firstZoom = false;
             }
 
-            if (pois == null || pois.Count == 0) return;
+            if (pois.Count == 0)
+                return;
 
-<<<<<<< HEAD
-            // 2. Tìm POI gần nhất ĐỂ HIỂN THỊ (Dùng hàm mới của bạn)
-            var nearestPoi = geo.GetNearestPoi(loc, pois);
-
-            if (nearestPoi != null)
-            {
-                // Cập nhật tên POI lên màn hình - Tên sẽ "đứng im" khi bạn còn trong Radius
-                NearestPoiLabel.Text = nearestPoi.Name;
-                vm.HighlightPoi(TourMap.Map, nearestPoi.Lat, nearestPoi.Lng);
-
-                // 3. KIỂM TRA PHÁT NHẠC (Chỉ phát khi vừa bước vào vùng)
-                if (geo.IsNewZone(nearestPoi.Id))
-                {
-                    // Dùng _ = để chạy ngầm, không làm lag Map
-                    _ = narration.Play(nearestPoi, loc);
-
-                    // Debug nhanh để kiểm tra trong cửa sổ Output của Visual Studio
-                    System.Diagnostics.Debug.WriteLine($"[TOUR] Đã kích hoạt phát nhạc cho: {nearestPoi.Name}");
-                }
-=======
             Poi? nearest = null;
             double minDist = double.MaxValue;
 
@@ -217,18 +189,10 @@ public partial class MapPage : ContentPage
             {
                 NearestPoiLabel.Text = nearest.Name;
                 vm.HighlightPoi(TourMap.Map, nearest.Lat, nearest.Lng);
->>>>>>> e91d1ab27c788503c01afd96e95d2391a9bdc9b0
             }
             else
             {
-                // 4. Khi không ở gần POI nào
                 NearestPoiLabel.Text = "Không có POI gần";
-
-                // Giải phóng các vùng cũ để khi quay lại có thể phát nhạc tiếp
-                foreach (var p in pois)
-                {
-                    geo.LeaveZone(p.Id);
-                }
             }
         });
     }

@@ -51,25 +51,11 @@ public class TrackingService
                     if (loc == null) continue;
 
                     logger.Log(loc);
+
                     OnLocationChanged?.Invoke(loc);
 
-                    // SỬA TẠI ĐÂY:
-                    // 1. Tìm ông gần nhất (hàm mới bạn vừa viết)
-                    var nearestPoi = geo.GetNearestPoi(loc, pois);
+                    var poi = geo.FindBestPoi(loc, pois);
 
-<<<<<<< HEAD
-                    // 2. Chỉ phát nhạc nếu là vùng MỚI (để không bị lặp mỗi 3 giây)
-                    if (nearestPoi != null && geo.IsNewZone(nearestPoi.Id))
-                    {
-                        await narration.Play(nearestPoi, loc);
-                    }
-                    else if (nearestPoi == null)
-                    {
-                        // Nếu không ở gần ông nào thì reset trạng thái các vùng
-                        foreach (var p in pois) geo.LeaveZone(p.Id);
-                    }
-                }
-=======
                     if (poi != null)
                         await narration.Play(poi, loc);
                 }
@@ -77,7 +63,6 @@ public class TrackingService
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine("Tracking error: " + ex.Message);
->>>>>>> e91d1ab27c788503c01afd96e95d2391a9bdc9b0
             }
         });
     }

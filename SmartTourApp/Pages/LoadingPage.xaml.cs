@@ -8,14 +8,12 @@ public partial class LoadingPage : ContentPage
     private readonly PoiRepository repo;
     private readonly TrackingService tracking;
     private double progress = 0;
-    private readonly AudioService audio;
 
-    public LoadingPage(PoiRepository repo, TrackingService tracking, AudioService audio)
+    public LoadingPage(PoiRepository repo, TrackingService tracking)
     {
         InitializeComponent();
         this.repo = repo;
         this.tracking = tracking;
-        this.audio = audio; // Gán vào biến local
 
         StartLogoAnimation();
         StartShineAnimation();
@@ -53,7 +51,7 @@ public partial class LoadingPage : ContentPage
             await this.FadeToAsync(0, 400);
 
             if (Application.Current?.Windows.Count > 0)
-                Application.Current.Windows[0].Page = new AppShell(this.audio);
+                Application.Current.Windows[0].Page = new AppShell();
         }
         catch (Exception ex)
         {
