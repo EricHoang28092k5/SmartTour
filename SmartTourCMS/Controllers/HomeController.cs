@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity; // Bổ sung thư viện này
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SmartTour.Shared.Models;
@@ -6,72 +7,82 @@ using SmartTourBackend.Data;
 using System.Diagnostics;
 using System.Linq;
 
-namespace SmartTourCMS.Controllers;
-
-[Authorize(Roles = "Admin,Vendor")]
-public class HomeController : Controller
+namespace SmartTourCMS.Controllers
 {
-    private readonly ILogger<HomeController> _logger;
-    private readonly AppDbContext _context;
-
-    public HomeController(ILogger<HomeController> logger, AppDbContext context)
+    [Authorize(Roles = "Admin,Vendor")]
+    public class HomeController : Controller
     {
-        _logger = logger;
-        _context = context;
-    }
+        private readonly ILogger<HomeController> _logger;
+        private readonly AppDbContext _context;
+        private readonly UserManager<IdentityUser> _userManager; // 1. Bơm thêm UserManager
 
-    public async Task<IActionResult> Index()
-    {
-        var userRole = User.IsInRole("Admin") ? "Admin" : "Vendor";
-        var userName = User.Identity?.Name;
-
-        // 1. Thống kê số lượng theo quyền
-        if (userRole == "Admin")
+        public HomeController(ILogger<HomeController> logger, AppDbContext context, UserManager<IdentityUser> userManager)
         {
-            ViewBag.TotalPois = await _context.Pois.CountAsync();
-            ViewBag.TotalTours = await _context.Tours.CountAsync();
-            ViewBag.TotalTranslations = await _context.PoiTranslations.CountAsync();
-            ViewBag.TotalLanguages = await _context.Languages.CountAsync();
-
-            // Giả lập dữ liệu từ App (sau này bác query từ bảng VisitLogs)
-            ViewBag.TotalVisits = 1250;
-        }
-        else
-        {
-            // Vendor chỉ thấy hàng của mình (Giả sử có cột CreatedBy)
-            ViewBag.TotalPois = await _context.Pois.CountAsync(p => p.CreatedBy == userName);
-            ViewBag.TotalTours = await _context.Tours.CountAsync(t => t.CreatedBy == userName);
-            ViewBag.TotalTranslations = await _context.PoiTranslations
-                .CountAsync(pt => _context.Pois.Any(p => p.Id == pt.PoiId && p.CreatedBy == userName));
-            ViewBag.TotalLanguages = await _context.Languages.CountAsync();
-
-            ViewBag.TotalVisits = 450; // Lượt ghé thăm riêng của Vendor này
+            _logger = logger;
+            _context = context;
+            _userManager = userManager;
         }
 
-        // 2. Lấy 5 Tour mới nhất (Lọc theo quyền)
-        var tourQuery = _context.Tours.AsQueryable();
-        if (userRole == "Vendor")
+        public async Task<IActionResult> Index()
         {
-            tourQuery = tourQuery.Where(t => t.CreatedBy == userName);
+            // 2. Chộp lấy ID của ông đang đăng nhập
+            var user = await _userManager.GetUserAsync(User);
+            if (user == null) return RedirectToAction("Login", "Account");
+
+            var isAdmin = await _userManager.IsInRoleAsync(user, "Admin");
+
+            // 3. Thống kê số lượng theo quyền (Dùng VendorId thay vì CreatedBy)
+            if (isAdmin)
+            {
+                // Chúa tể: Đếm tất tần tật
+                ViewBag.TotalPois = await _context.Pois.CountAsync();
+                ViewBag.TotalTours = await _context.Tours.CountAsync();
+                ViewBag.TotalTranslations = await _context.PoiTranslations.CountAsync();
+                ViewBag.TotalLanguages = await _context.Languages.CountAsync();
+
+                ViewBag.TotalVisits = 1250; // Giả lập dữ liệu tổng
+            }
+            else
+            {
+                // Vendor: Chỉ đếm đồ của mình bằng cột VendorId anh em mình đã tạo
+                ViewBag.TotalPois = await _context.Pois.CountAsync(p => p.VendorId == user.Id);
+                ViewBag.TotalTours = await _context.Tours.CountAsync(t => t.VendorId == user.Id);
+
+                // Trích xuất số bản dịch: Đếm những bản dịch thuộc về các POI của ông Vendor này
+                ViewBag.TotalTranslations = await _context.PoiTranslations
+                    .CountAsync(pt => _context.Pois.Any(p => p.Id == pt.PoiId && p.VendorId == user.Id));
+
+                // Ngôn ngữ hệ thống thì cứ để cho thấy hết
+                ViewBag.TotalLanguages = await _context.Languages.CountAsync();
+
+                ViewBag.TotalVisits = 450; // Giả lập lượt xem của riêng Vendor
+            }
+
+            // 4. Lấy 5 Tour mới nhất lên Dashboard (Lọc theo quyền)
+            var tourQuery = _context.Tours.AsQueryable();
+            if (!isAdmin)
+            {
+                tourQuery = tourQuery.Where(t => t.VendorId == user.Id); // Lọc gắt gao
+            }
+
+            var recentTours = await tourQuery
+                .Include(t => t.TourPois)
+                .OrderByDescending(t => t.CreatedAt)
+                .Take(5)
+                .ToListAsync();
+
+            return View(recentTours);
         }
 
-        var recentTours = await tourQuery
-            .Include(t => t.TourPois)
-            .OrderByDescending(t => t.CreatedAt)
-            .Take(5)
-            .ToListAsync();
+        public IActionResult Privacy() => View();
 
-        return View(recentTours);
-    }
-
-    public IActionResult Privacy() => View();
-
-    [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
-    public IActionResult Error()
-    {
-        return View(new SmartTourCMS.Models.ErrorViewModel
+        [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
+        public IActionResult Error()
         {
-            RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier
-        });
+            return View(new SmartTourCMS.Models.ErrorViewModel
+            {
+                RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier
+            });
+        }
     }
 }

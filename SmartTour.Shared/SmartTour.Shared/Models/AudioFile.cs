@@ -8,5 +8,6 @@
         public string FileUrl { get; set; } = string.Empty;
         public int Duration { get; set; }
         public string AudioType { get; set; } = "Narration";
+        public string? VendorId { get; set; }
     }
 }

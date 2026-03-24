@@ -1,115 +1,160 @@
 ﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity; // Bơm thêm Identity
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SmartTour.Shared.Models;
 using SmartTourBackend.Data;
 
-[Authorize(Roles = "Admin,Vendor")]
-public class TranslationController : Controller
+namespace SmartTourCMS.Controllers
 {
-
-    private readonly AppDbContext _context;
-    public TranslationController(AppDbContext context) => _context = context;
-
-    // 1. Trang danh sách bản dịch của 1 địa điểm cụ thể
-    public async Task<IActionResult> Index(int poiId)
+    [Authorize(Roles = "Admin,Vendor")]
+    public class TranslationController : Controller
     {
-        var poi = await _context.Pois.FindAsync(poiId);
-        ViewBag.PoiName = poi?.Name;
-        ViewBag.PoiId = poiId;
+        private readonly AppDbContext _context;
+        private readonly UserManager<IdentityUser> _userManager; // 1. Bơm UserManager
 
-        var translations = await _context.PoiTranslations
-            .Include(t => t.Language)
-            .Where(t => t.PoiId == poiId)
-            .ToListAsync();
-        return View(translations);
-    }
-
-    // 2. Form thêm bản dịch mới
-    public async Task<IActionResult> Create(int poiId)
-    {
-        var poi = await _context.Pois.FindAsync(poiId);
-        ViewBag.PoiId = poiId;
-        ViewBag.PoiName = poi?.Name; // <--- Dòng này phải có để hiện tên gốc
-        ViewBag.Languages = await _context.Languages.ToListAsync();
-        return View();
-    }
-
-    [HttpPost]
-    [HttpPost]
-    public async Task<IActionResult> Create(PoiTranslation translation)
-    {
-        if (ModelState.IsValid)
+        public TranslationController(AppDbContext context, UserManager<IdentityUser> userManager)
         {
-            _context.PoiTranslations.Add(translation);
-            await _context.SaveChangesAsync();
-            return RedirectToAction(nameof(Index), new { poiId = translation.PoiId });
+            _context = context;
+            _userManager = userManager;
         }
 
-        // --- ĐÂY LÀ CHỖ QUAN TRỌNG ĐỂ FIX LỖI ---
-        // Nếu dữ liệu sai (ModelState không hợp lệ), mình phải nạp lại ViewBag trước khi trả về View
-        var poi = await _context.Pois.FindAsync(translation.PoiId);
-        ViewBag.PoiName = poi?.Name;
-        ViewBag.PoiId = translation.PoiId;
-
-        // Đừng quên cái <Language> thần thánh nãy anh em mình vừa fix nhé
-        ViewBag.Languages = await _context.Languages.ToListAsync<Language>();
-
-        return View(translation);
-    }
-    [HttpPost]
-    public async Task<IActionResult> Delete(int id, int poiId)
-    {
-        var translation = await _context.PoiTranslations.FindAsync(id);
-        if (translation != null)
+        // --- 1. Trang danh sách bản dịch của 1 địa điểm cụ thể ---
+        public async Task<IActionResult> Index(int poiId)
         {
+            var poi = await _context.Pois.FindAsync(poiId);
+            if (poi == null) return NotFound();
+
+            // BẢO MẬT: Phải là Admin hoặc đúng chủ của POI mới được xem danh sách dịch
+            var user = await _userManager.GetUserAsync(User);
+            if (!await _userManager.IsInRoleAsync(user, "Admin") && poi.VendorId != user.Id)
+            {
+                return Forbid();
+            }
+
+            ViewBag.PoiName = poi.Name;
+            ViewBag.PoiId = poiId;
+
+            var translations = await _context.PoiTranslations
+                .Include(t => t.Language)
+                .Where(t => t.PoiId == poiId)
+                .ToListAsync();
+            return View(translations);
+        }
+
+        // --- 2. Form thêm bản dịch mới (GET) ---
+        public async Task<IActionResult> Create(int poiId)
+        {
+            var poi = await _context.Pois.FindAsync(poiId);
+            if (poi == null) return NotFound();
+
+            var user = await _userManager.GetUserAsync(User);
+            if (!await _userManager.IsInRoleAsync(user, "Admin") && poi.VendorId != user.Id) return Forbid();
+
+            ViewBag.PoiId = poiId;
+            ViewBag.PoiName = poi.Name;
+            ViewBag.Languages = await _context.Languages.ToListAsync();
+            return View();
+        }
+
+        // --- 3. Xử lý thêm bản dịch mới (POST) ---
+        [HttpPost]
+        [ValidateAntiForgeryToken] // Thêm bảo mật chống giả mạo
+        public async Task<IActionResult> Create(PoiTranslation translation)
+        {
+            var poi = await _context.Pois.FindAsync(translation.PoiId);
+            if (poi == null) return NotFound();
+
+            // BẢO MẬT: Tránh hacker chọc ngoáy truyền poiId của người khác vào form
+            var user = await _userManager.GetUserAsync(User);
+            if (!await _userManager.IsInRoleAsync(user, "Admin") && poi.VendorId != user.Id) return Forbid();
+
+            if (ModelState.IsValid)
+            {
+                _context.PoiTranslations.Add(translation);
+                await _context.SaveChangesAsync();
+                return RedirectToAction(nameof(Index), new { poiId = translation.PoiId });
+            }
+
+            // Nếu lỗi, nạp lại ViewBag
+            ViewBag.PoiName = poi.Name;
+            ViewBag.PoiId = translation.PoiId;
+            ViewBag.Languages = await _context.Languages.ToListAsync();
+
+            return View(translation);
+        }
+
+        // --- 4. Xem chi tiết ---
+        public async Task<IActionResult> Details(int id)
+        {
+            var translation = await _context.PoiTranslations
+                .Include(t => t.Language)
+                .Include(t => t.Poi) // Include POI để lấy được VendorId
+                .FirstOrDefaultAsync(t => t.Id == id);
+
+            if (translation == null) return NotFound();
+
+            var user = await _userManager.GetUserAsync(User);
+            if (!await _userManager.IsInRoleAsync(user, "Admin") && translation.Poi.VendorId != user.Id) return Forbid();
+
+            return View(translation);
+        }
+
+        // --- 5. SỬA (Giao diện GET) ---
+        public async Task<IActionResult> Edit(int id)
+        {
+            var translation = await _context.PoiTranslations.Include(t => t.Poi).FirstOrDefaultAsync(t => t.Id == id);
+            if (translation == null) return NotFound();
+
+            var user = await _userManager.GetUserAsync(User);
+            if (!await _userManager.IsInRoleAsync(user, "Admin") && translation.Poi.VendorId != user.Id) return Forbid();
+
+            ViewBag.PoiName = translation.Poi.Name;
+            return View(translation);
+        }
+
+        // --- 6. SỬA (Xử lý lưu POST) ---
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> Edit(int id, PoiTranslation translation)
+        {
+            if (id != translation.Id) return NotFound();
+
+            var existingTranslation = await _context.PoiTranslations.Include(t => t.Poi).AsNoTracking().FirstOrDefaultAsync(t => t.Id == id);
+            if (existingTranslation == null) return NotFound();
+
+            var user = await _userManager.GetUserAsync(User);
+            if (!await _userManager.IsInRoleAsync(user, "Admin") && existingTranslation.Poi.VendorId != user.Id) return Forbid();
+
+            try
+            {
+                _context.Update(translation);
+                await _context.SaveChangesAsync();
+                TempData["success"] = "Đã cập nhật bản dịch thành công!";
+            }
+            catch (Exception ex)
+            {
+                return BadRequest("Lỗi rồi bác ơi: " + ex.Message);
+            }
+
+            return RedirectToAction("Index", new { poiId = translation.PoiId });
+        }
+
+        // --- 7. XÓA BẢN DỊCH ---
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> Delete(int id, int poiId)
+        {
+            var translation = await _context.PoiTranslations.Include(t => t.Poi).FirstOrDefaultAsync(t => t.Id == id);
+            if (translation == null) return NotFound();
+
+            var user = await _userManager.GetUserAsync(User);
+            if (!await _userManager.IsInRoleAsync(user, "Admin") && translation.Poi.VendorId != user.Id) return Forbid();
+
             _context.PoiTranslations.Remove(translation);
             await _context.SaveChangesAsync();
+
+            return RedirectToAction(nameof(Index), new { poiId = poiId });
         }
-        return RedirectToAction(nameof(Index), new { poiId = poiId });
-    }
-    // 1. XEM CHI TIẾT
-    public async Task<IActionResult> Details(int id)
-    {
-        var translation = await _context.PoiTranslations
-            .Include(t => t.Language)
-            .Include(t => t.Poi)
-            .FirstOrDefaultAsync(t => t.Id == id);
-
-        if (translation == null) return NotFound();
-        return View(translation);
-    }
-
-    // 2. SỬA (Giao diện)
-    public async Task<IActionResult> Edit(int id)
-    {
-        var translation = await _context.PoiTranslations.FindAsync(id);
-        if (translation == null) return NotFound();
-
-        // Load lại tên địa điểm để hiển thị cho đẹp
-        var poi = await _context.Pois.FindAsync(translation.PoiId);
-        ViewBag.PoiName = poi?.Name;
-
-        return View(translation);
-    }
-
-    // 3. SỬA (Xử lý lưu)
-    [HttpPost]
-    public async Task<IActionResult> Edit(int id, PoiTranslation translation)
-    {
-        if (id != translation.Id) return NotFound();
-
-        try
-        {
-            _context.Update(translation);
-            await _context.SaveChangesAsync();
-            TempData["success"] = "Đã cập nhật bản dịch thành công!";
-        }
-        catch (Exception ex)
-        {
-            return BadRequest("Lỗi rồi bác ơi: " + ex.Message);
-        }
-
-        return RedirectToAction("Index", new { poiId = translation.PoiId });
     }
 }

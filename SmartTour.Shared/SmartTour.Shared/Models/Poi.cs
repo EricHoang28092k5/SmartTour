@@ -30,6 +30,7 @@ public class Poi
 
     public bool IsActive { get; set; } = true;
     public string? CreatedBy { get; set; }
+    public string? VendorId { get; set; }
 
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     [Ignore]
