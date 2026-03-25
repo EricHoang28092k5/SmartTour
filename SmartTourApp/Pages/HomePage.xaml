@@ -4,67 +4,142 @@
     x:Class="SmartTourApp.Pages.HomePage"
     BackgroundColor="#F6F7FB">
 
-    <Grid RowDefinitions="Auto,*" Padding="16">
+    <ScrollView>
 
-        <!-- HEADER -->
-        <VerticalStackLayout Grid.Row="0" Spacing="4">
-            <Label Text="SmartTour"
-                   FontSize="26"
-                   FontAttributes="Bold"
-                   TextColor="#111"/>
+        <VerticalStackLayout Spacing="20">
 
-            <Label Text="Địa điểm gần bạn"
-                   FontSize="14"
-                   TextColor="#777"/>
+            <!-- HERO -->
+            <Grid HeightRequest="300">
+
+                <Image x:Name="HeroImage"
+                       Aspect="AspectFill"/>
+
+                <BoxView>
+                    <BoxView.Background>
+                        <LinearGradientBrush StartPoint="0,1" EndPoint="0,0">
+                            <GradientStop Color="#CC000000" Offset="0"/>
+                            <GradientStop Color="#00000000" Offset="1"/>
+                        </LinearGradientBrush>
+                    </BoxView.Background>
+                </BoxView>
+
+                <VerticalStackLayout Padding="20"
+                                     VerticalOptions="End">
+
+                    <Label Text="✨ Recommended"
+                           TextColor="White"
+                           FontSize="12"/>
+
+                    <Label x:Name="HeroTitle"
+                           FontSize="26"
+                           FontAttributes="Bold"
+                           TextColor="White"/>
+
+                    <Label x:Name="HeroDistance"
+                           FontSize="14"
+                           TextColor="White"/>
+
+                    <Button x:Name="HeroPlayBtn"
+                            Text="🎧 Nghe ngay"
+                            Clicked="PlayNearest"
+                            BackgroundColor="White"
+                            TextColor="#1976D2"
+                            CornerRadius="18"/>
+                </VerticalStackLayout>
+
+            </Grid>
+
+            <!-- QUICK ACTION -->
+            <Grid Padding="16" ColumnDefinitions="*,*,*">
+
+                <VerticalStackLayout HorizontalOptions="Center">
+                    <Label Text="🗺" FontSize="26"/>
+                    <Label Text="Map" FontSize="12"/>
+                    <VerticalStackLayout.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OpenMap"/>
+                    </VerticalStackLayout.GestureRecognizers>
+                </VerticalStackLayout>
+
+                <VerticalStackLayout Grid.Column="1" HorizontalOptions="Center">
+                    <Label Text="📷" FontSize="26"/>
+                    <Label Text="QR" FontSize="12"/>
+                    <VerticalStackLayout.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OpenQR"/>
+                    </VerticalStackLayout.GestureRecognizers>
+                </VerticalStackLayout>
+
+                <VerticalStackLayout Grid.Column="2" HorizontalOptions="Center">
+                    <Label Text="⚙" FontSize="26"/>
+                    <Label Text="Settings" FontSize="12"/>
+                    <VerticalStackLayout.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OpenSettings"/>
+                    </VerticalStackLayout.GestureRecognizers>
+                </VerticalStackLayout>
+
+            </Grid>
+
+            <Label Text="📍 Gần bạn"
+                   Margin="16,0"
+                   FontSize="18"
+                   FontAttributes="Bold"/>
+
+            <CollectionView
+                x:Name="PoiList"
+                Margin="16,0"
+                SelectionMode="None">
+
+                <CollectionView.ItemTemplate>
+                    <DataTemplate>
+
+                        <Border
+                            Margin="0,0,0,16"
+                            BackgroundColor="White"
+                            Shadow="0,10,30,#22000000">
+
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="20"/>
+                            </Border.StrokeShape>
+
+                            <Grid ColumnDefinitions="110,*"
+                                  HeightRequest="120">
+
+                                <Image Source="{Binding ImageUrl}"
+                                       Aspect="AspectFill"/>
+
+                                <VerticalStackLayout Grid.Column="1"
+                                                     Padding="10"
+                                                     Spacing="6">
+
+                                    <Label Text="{Binding Name}"
+                                           FontSize="16"
+                                           FontAttributes="Bold"/>
+
+                                    <Label Text="{Binding Description}"
+                                           FontSize="12"
+                                           TextColor="#666"/>
+
+                                    <Button Text="🎧 Nghe"
+                                            Clicked="PlayPoi"
+                                            CommandParameter="{Binding .}"
+                                            HeightRequest="34"
+                                            CornerRadius="12"
+                                            BackgroundColor="#1976D2"
+                                            TextColor="White"/>
+
+                                </VerticalStackLayout>
+
+                            </Grid>
+
+                        </Border>
+
+                    </DataTemplate>
+
+                </CollectionView.ItemTemplate>
+
+            </CollectionView>
+
         </VerticalStackLayout>
 
-        <!-- LIST -->
-        <CollectionView
-            Grid.Row="1"
-            x:Name="PoiList"
-            Margin="0,10,0,0"
-            SelectionMode="None"
-            ItemsLayout="VerticalList"
-            ItemSizingStrategy="MeasureAllItems">
-
-            <CollectionView.ItemTemplate>
-                <DataTemplate>
-
-                    <Grid Padding="8"
-                          Margin="0,0,0,10"
-                          ColumnDefinitions="80,*"
-                          HeightRequest="90">
-
-                        <!-- IMAGE -->
-                        <Image
-                            WidthRequest="80"
-                            HeightRequest="80"
-                            Aspect="AspectFill"
-                            Source="{Binding ImageUrl}" />
-
-                        <!-- CONTENT -->
-                        <VerticalStackLayout Grid.Column="1"
-                                             Padding="8,0"
-                                             Spacing="2">
-
-                            <Label Text="{Binding Name}"
-                                   FontSize="15"
-                                   FontAttributes="Bold"
-                                   LineBreakMode="TailTruncation"/>
-
-                            <Label Text="{Binding Description}"
-                                   FontSize="12"
-                                   TextColor="#2979FF"/>
-
-                        </VerticalStackLayout>
-
-                    </Grid>
-
-                </DataTemplate>
-            </CollectionView.ItemTemplate>
-
-        </CollectionView>
-
-    </Grid>
+    </ScrollView>
 
 </ContentPage>
