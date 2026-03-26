@@ -22,12 +22,11 @@ namespace SmartTourBackend.Controllers
         {
             return await _context.Pois
                 .Include(p => p.AudioFiles)
+                   .Include(p => p.PoiImages)
                 .ToListAsync();
+         
         }
 
-        // --- 2. Lấy kịch bản TTS đa ngôn ngữ cho Mobile App đọc (Hàm mới độ) ---
-        // Link gọi: GET /api/pois/{poiId}/tts?lang=vi
-        [HttpGet("{poiId}/tts")]
         // --- 3. GOM TẤT CẢ KỊCH BẢN (MỌI NGÔN NGỮ) VÀO 1 URL ---
         // Link gọi: GET /api/pois/{poiId}/tts-all
         [HttpGet("{poiId}/tts-all")]

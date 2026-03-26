@@ -36,7 +36,8 @@ public class Poi
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     [Ignore]
     public virtual ICollection<AudioFile> AudioFiles { get; set; } = new List<AudioFile>();
-
+    // Danh sách các món ăn của địa điểm này (Menu)
+    public ICollection<Food>? Foods { get; set; }
     // Thuộc tính này dùng để map với PostGIS trong Database
     // [NotMapped] có nghĩa là App di động sẽ không cần quan tâm đến nó, 
     // chỉ Backend dùng để tính toán không gian.

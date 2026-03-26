@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
-
+using System.Text.Json.Serialization; // Nhớ thêm dòng này ở trên cùng nhé bác
 namespace SmartTour.Shared.Models
 {
     public class PoiImage
@@ -11,6 +11,7 @@ namespace SmartTour.Shared.Models
 
         // Dây mơ rễ má với thằng bố POI
         public int PoiId { get; set; }
+        [JsonIgnore] // BƠM CÁI BÙA NÀY VÀO ĐÂY
         public Poi? Poi { get; set; }
     }
 }
