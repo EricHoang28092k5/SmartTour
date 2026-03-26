@@ -23,5 +23,7 @@ namespace SmartTourBackend.Data // Thêm dòng này vào để định danh "h�
         public DbSet<UserLocationLog> UserLocationLogs { get; set; }
         public DbSet<QrCode> QrCodes { get; set; }
         public DbSet<AppSetting> AppSettings { get; set; }
+        // Dùng TimeSpan để lưu giờ phút chuẩn xác (ví dụ: 08:00, 22:30)
+
     }
 }

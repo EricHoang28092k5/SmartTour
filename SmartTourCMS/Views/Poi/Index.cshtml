@@ -28,8 +28,9 @@
                     <th>Tên địa điểm</th>
                     <th>Tọa độ</th>
                     <th>Bán kính</th>
-
+                    <th>Giờ hoạt động</th>
                     <th>Hành động</th>
+                    
                     @if (ViewBag.IsAdmin != null && (bool)ViewBag.IsAdmin)
                     {
                         <th>Người tạo (Vendor)</th>
@@ -61,6 +62,19 @@
                             </span>
                         </td>
                         <td>@item.Radius m</td>
+                        <td>
+                            @if (item.OpenTime.HasValue && item.CloseTime.HasValue)
+                            {
+                                <span class="badge bg-success">
+                                    <i class="fa-regular fa-clock"></i>
+                                    @item.OpenTime.Value.ToString(@"hh\:mm") - @item.CloseTime.Value.ToString(@"hh\:mm")
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">Cả ngày</span>
+                            }
+                        </td>
                         <td class="text-center">
                             @* NÚT NGHE THỬ AUDIO *@
                             @if (item.AudioFiles != null && item.AudioFiles.Any())

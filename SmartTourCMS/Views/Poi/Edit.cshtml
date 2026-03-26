@@ -54,7 +54,16 @@
                         
                         <input type="hidden" asp-for="ImageUrl" />
                     </div>
-
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label asp-for="OpenTime" class="form-label fw-bold">Giờ mở cửa</label>
+                            <input asp-for="OpenTime" type="time" class="form-control" />
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="CloseTime" class="form-label fw-bold">Giờ đóng cửa</label>
+                            <input asp-for="CloseTime" type="time" class="form-control" />
+                        </div>
+                    </div>
                     <hr />
                     <button type="submit" class="btn btn-warning w-100 shadow text-white fw-bold">
                         <i class="fa-solid fa-save"></i> Lưu thay đổi
