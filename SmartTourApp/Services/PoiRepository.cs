@@ -1,57 +1,148 @@
-﻿using SmartTour.Services;
-using SmartTour.Shared.Models;
+﻿using SmartTour.Shared.Models;
 using SmartTourApp.Data;
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 
-namespace SmartTourApp.Services;
-
-public class PoiRepository
+namespace SmartTourApp.Services
 {
-    private readonly Database db;
-    private readonly ApiService api;
-    private List<Poi>? cachedPois;
-
-    public PoiRepository(Database db, ApiService api)
+    public class PoiRepository
     {
-        this.db = db;
-        this.api = api;
-    }
+        private readonly Database db;
+        private List<Poi>? cachedPois;
+        private DateTime cacheTime;
+        private readonly SemaphoreSlim cacheLock = new(1, 1);
 
-    public async Task<List<Poi>> GetPois()
-    {
-        // ✅ cache sớm
-        if (cachedPois != null && cachedPois.Count > 0)
-            return cachedPois;
+        private readonly TimeSpan cacheTTL = TimeSpan.FromMinutes(5);
 
-        try
+        public PoiRepository(Database db)
         {
-            var server = await api.GetPois();
+            this.db = db;
+        }
 
-            if (server != null && server.Count > 0)
+        // ======================
+        // GET POIS
+        // ======================
+
+        public async Task<List<Poi>> GetPois()
+        {
+            if (cachedPois != null &&
+                DateTime.UtcNow - cacheTime < cacheTTL)
             {
-                // ✅ chạy DB ở background
-                _ = Task.Run(() => db.AddPois(server));
+                return cachedPois;
+            }
 
-                // ✅ KHÔNG copy nữa → dùng trực tiếp
-                cachedPois = server;
+            await cacheLock.WaitAsync();
+
+            try
+            {
+                if (cachedPois != null &&
+                    DateTime.UtcNow - cacheTime < cacheTTL)
+                {
+                    return cachedPois;
+                }
+
+                // TRY SERVER (GIẢ LẬP - KHÔNG API CŨ)
+                List<Poi>? server = null;
+
+                try
+                {
+                    await Task.Delay(50); // simulate API
+                    server = null; // chưa có backend
+                }
+                catch
+                {
+                    server = null;
+                }
+
+                if (server != null)
+                {
+                    cachedPois = server;
+                    cacheTime = DateTime.UtcNow;
+
+                    _ = Task.Run(async () =>
+                    {
+                        await SafeBackgroundSync(server);
+                    });
+
+                    return cachedPois;
+                }
+
+                // fallback local
+                var local = await Task.Run(() => db.GetPois());
+
+                cachedPois = local;
+                cacheTime = DateTime.UtcNow;
 
                 return cachedPois;
             }
+            finally
+            {
+                cacheLock.Release();
+            }
         }
-        catch (Exception ex)
+
+        // ======================
+        // BACKGROUND SYNC
+        // ======================
+
+        private async Task SafeBackgroundSync(List<Poi> server)
         {
-            System.Diagnostics.Debug.WriteLine("API FAIL: " + ex.Message);
+            try
+            {
+                db.AddPois(server);
+                await ProcessOutboxAsync();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(ex.Message);
+            }
         }
 
-        // ✅ load DB async để không block UI
-        var local = await Task.Run(() => db.GetPois());
+        // ======================
+        // OUTBOX PROCESSOR (SAFE)
+        // ======================
 
-        cachedPois = local ?? new List<Poi>();
+        public async Task ProcessOutboxAsync()
+        {
+            var items = db.GetOutboxItems();
 
-        return cachedPois;
-    }
+            foreach (var item in items)
+            {
+                try
+                {
+                    if (item.Type == "POI_UPSERT")
+                    {
+                        var poi = System.Text.Json.JsonSerializer.Deserialize<Poi>(item.Payload);
+                        if (poi == null) continue;
 
-    public List<Poi>? GetCachedPois()
-    {
-        return cachedPois;
+                        // 🔥 NO API (FIX LỖI UpsertPoi)
+                        await Task.Delay(20);
+
+                        db.MarkOutboxSynced(item.Id);
+                    }
+                }
+                catch
+                {
+                    db.IncreaseRetry(item.Id);
+                }
+            }
+        }
+
+        // ======================
+        // CACHE
+        // ======================
+
+        public List<Poi>? GetCachedPois()
+        {
+            return cachedPois;
+        }
+
+        public void ClearCache()
+        {
+            cachedPois = null;
+            cacheTime = DateTime.MinValue;
+        }
     }
 }

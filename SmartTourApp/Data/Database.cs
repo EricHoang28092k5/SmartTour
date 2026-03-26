@@ -1,200 +1,204 @@
-﻿using SQLite;
-using SmartTour.Shared.Models;
+﻿using SmartTour.Shared.Models;
+using SQLite;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 
-namespace SmartTourApp.Data;
-
-public class Database : IDisposable
+namespace SmartTourApp.Data
 {
-    private readonly SQLiteConnection db;
-    private readonly object locker = new();
-
-    public Database()
+    public class Database
     {
-        string path = Path.Combine(
-            FileSystem.AppDataDirectory,
-            "tour.db");
+        private readonly SQLiteConnection db;
+        private readonly object locker = new();
 
-        db = new SQLiteConnection(path);
-
-        InitTables();
-        CreateIndexes();
-    }
-
-    private void InitTables()
-    {
-        db.CreateTable<Poi>();
-        db.CreateTable<PlayLog>();
-        db.CreateTable<UserLocationLog>();
-        db.CreateTable<AppSetting>();
-    }
-
-    private void CreateIndexes()
-    {
-        db.Execute("CREATE INDEX IF NOT EXISTS idx_poi_lat ON Poi(Lat)");
-        db.Execute("CREATE INDEX IF NOT EXISTS idx_poi_lng ON Poi(Lng)");
-        db.Execute("CREATE INDEX IF NOT EXISTS idx_playlog_poi ON PlayLog(PoiId)");
-        db.Execute("CREATE INDEX IF NOT EXISTS idx_location_lat ON UserLocationLog(Latitude)");
-    }
-
-    // ======================
-    // POI
-    // ======================
-
-    public List<Poi> GetPois()
-    {
-        lock (locker)
+        public Database()
         {
-            return db.Table<Poi>().ToList();
+            var path = Path.Combine(FileSystem.AppDataDirectory, "tour.db");
+            db = new SQLiteConnection(path);
+
+            db.CreateTable<Poi>();
+            db.CreateTable<PlayLog>();
+            db.CreateTable<UserLocationLog>();
+            db.CreateTable<AppSetting>();
+            db.CreateTable<SyncOutbox>();
         }
-    }
 
-    public Poi? GetPoi(int id)
-    {
-        lock (locker)
+        // ======================
+        // POI
+        // ======================
+
+        public List<Poi> GetPois()
         {
-            return db.Find<Poi>(id);
+            lock (locker)
+                return db.Table<Poi>().ToList();
         }
-    }
 
-    public void AddPoi(Poi poi)
-    {
-        lock (locker)
+        public void AddPoi(Poi poi)
         {
-            var existing = db.Find<Poi>(poi.Id);
-
-            if (existing == null)
-                db.Insert(poi);
-            else
-                db.Update(poi);
-        }
-    }
-
-    public void AddPois(IEnumerable<Poi> pois)
-    {
-        lock (locker)
-        {
-            var existingIds = db.Table<Poi>().Select(p => p.Id).ToHashSet();
-
-            db.RunInTransaction(() =>
+            lock (locker)
             {
-                foreach (var poi in pois)
+                var existing = db.Find<Poi>(poi.Id);
+
+                if (existing == null)
+                    db.Insert(poi);
+                else
+                    db.Update(poi);
+
+                db.Insert(new SyncOutbox
                 {
-                    if (existingIds.Contains(poi.Id))
-                        db.Update(poi);
-                    else
-                        db.Insert(poi);
-                }
-            });
+                    Type = "POI_UPSERT",
+                    Payload = System.Text.Json.JsonSerializer.Serialize(poi),
+                    IsSynced = false,
+                    RetryCount = 0,
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
         }
-    }
 
-    // ======================
-    // PLAY LOG
-    // ======================
-
-    public void AddLog(PlayLog log)
-    {
-        lock (locker)
+        public void AddPois(IEnumerable<Poi> pois)
         {
-            db.Insert(log);
-        }
-    }
-
-    public List<PlayLog> GetLogs()
-    {
-        lock (locker)
-        {
-            return db.Table<PlayLog>().ToList();
-        }
-    }
-
-    // ======================
-    // LOCATION LOG
-    // ======================
-
-    private DateTime lastLogTime = DateTime.MinValue;
-
-    public void AddLocation(UserLocationLog log)
-    {
-        if ((DateTime.Now - lastLogTime).TotalSeconds < 10)
-            return;
-
-        lastLogTime = DateTime.Now;
-
-        lock (locker)
-        {
-            db.Insert(log);
-        }
-    }
-
-    public List<UserLocationLog> GetLocations()
-    {
-        lock (locker)
-        {
-            return db.Table<UserLocationLog>().ToList();
-        }
-    }
-
-    // ======================
-    // SETTINGS
-    // ======================
-
-    public void SaveSetting(string key, string value)
-    {
-        var existing = db.Table<AppSetting>()
-                         .FirstOrDefault(x => x.SettingKey == key);
-
-        if (existing == null)
-        {
-            db.Insert(new AppSetting
+            lock (locker)
             {
-                SettingKey = key,
-                SettingValue = value
-            });
-        }
-        else
-        {
-            existing.SettingValue = value;
-            db.Update(existing);
-        }
-    }
+                db.RunInTransaction(() =>
+                {
+                    foreach (var poi in pois)
+                    {
+                        var existing = db.Find<Poi>(poi.Id);
 
-    public string GetSetting(string key)
-    {
-        return db.Table<AppSetting>()
-                 .FirstOrDefault(x => x.SettingKey == key)
-                 ?.SettingValue;
+                        if (existing == null)
+                            db.Insert(poi);
+                        else
+                            db.Update(poi);
+                    }
+                });
+            }
+        }
+
+        // ======================
+        // SETTINGS (FIX ERROR HERE)
+        // ======================
+
+        public string GetSetting(string key)
+        {
+            lock (locker)
+            {
+                var item = db.Table<AppSetting>()
+                    .FirstOrDefault(x => x.SettingKey == key);
+
+                return item?.SettingValue ?? "";
+            }
+        }
+
+        public void SaveSetting(string key, string value)
+        {
+            lock (locker)
+            {
+                var existing = db.Table<AppSetting>()
+                    .FirstOrDefault(x => x.SettingKey == key);
+
+                if (existing == null)
+                {
+                    db.Insert(new AppSetting
+                    {
+                        SettingKey = key,
+                        SettingValue = value
+                    });
+                }
+                else
+                {
+                    existing.SettingValue = value;
+                    db.Update(existing);
+                }
+            }
+        }
+
+        // ======================
+        // LOGS (FIX AddLog ERROR)
+        // ======================
+
+        public void AddLog(PlayLog log)
+        {
+            lock (locker)
+                db.Insert(log);
+        }
+
+        public List<PlayLog> GetLogs()
+        {
+            lock (locker)
+                return db.Table<PlayLog>().ToList();
+        }
+
+        // ======================
+        // OUTBOX
+        // ======================
+
+        public List<SyncOutbox> GetOutboxItems()
+        {
+            lock (locker)
+            {
+                return db.Table<SyncOutbox>()
+                    .Where(x => !x.IsSynced && x.RetryCount < 5)
+                    .OrderBy(x => x.CreatedAt)
+                    .ToList();
+            }
+        }
+
+        public void MarkOutboxSynced(int id)
+        {
+            lock (locker)
+            {
+                var item = db.Find<SyncOutbox>(id);
+                if (item == null) return;
+
+                item.IsSynced = true;
+                db.Update(item);
+            }
+        }
+
+        public void IncreaseRetry(int id)
+        {
+            lock (locker)
+            {
+                var item = db.Find<SyncOutbox>(id);
+                if (item == null) return;
+
+                item.RetryCount++;
+                db.Update(item);
+            }
+        }
+
+        // ======================
+        // LOCATION
+        // ======================
+
+        public void AddLocation(UserLocationLog log)
+        {
+            lock (locker)
+                db.Insert(log);
+        }
+
+        public List<UserLocationLog> GetLocations()
+        {
+            lock (locker)
+                return db.Table<UserLocationLog>().ToList();
+        }
     }
 
     // ======================
-    // MAINTENANCE
+    // SyncOutbox (KEEP SAME FILE)
     // ======================
 
-    public void ClearLogs()
+    [Table("SyncOutbox")]
+    public class SyncOutbox
     {
-        lock (locker)
-        {
-            db.DeleteAll<PlayLog>();
-        }
-    }
+        [PrimaryKey, AutoIncrement]
+        public int Id { get; set; }
 
-    public void ClearLocations()
-    {
-        lock (locker)
-        {
-            db.DeleteAll<UserLocationLog>();
-        }
-    }
-
-    public void Dispose()
-    {
-        db?.Close();
-    }
-    public void ClearPois()
-    {
-        lock (locker)
-        {
-            db.DeleteAll<Poi>();
-        }
+        public string Type { get; set; } = "";
+        public string Payload { get; set; } = "";
+        public bool IsSynced { get; set; }
+        public int RetryCount { get; set; }
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }
 }

@@ -14,12 +14,13 @@ public class TtsService
         string targetLang = MapLang(lang);
 
         var locale = locales.FirstOrDefault(x =>
-            x.Language.Equals(targetLang, StringComparison.OrdinalIgnoreCase));
+            x.Language.StartsWith(targetLang, StringComparison.OrdinalIgnoreCase));
 
         // 🔥 fallback nếu không có locale
         if (locale == null)
         {
-            locale = locales.FirstOrDefault(x => x.Language.StartsWith("en"));
+            locale = locales.FirstOrDefault(x =>
+                x.Language.StartsWith("en", StringComparison.OrdinalIgnoreCase));
         }
 
         var options = new SpeechOptions
@@ -36,12 +37,12 @@ public class TtsService
     {
         return code switch
         {
-            "vi" => "vi-VN",
-            "en" => "en-US",
-            "ja" => "ja-JP",
-            "zh" => "zh-CN",
-            "ko" => "ko-KR",
-            _ => "en-US"
+            "vi" => "vi",
+            "en" => "en",
+            "ja" => "ja",
+            "zh" => "zh",
+            "ko" => "ko",
+            _ => "en"
         };
     }
 }
