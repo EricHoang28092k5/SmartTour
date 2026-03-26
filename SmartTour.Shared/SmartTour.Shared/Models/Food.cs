@@ -1,11 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Text;
 
 using System.Text.Json.Serialization;
 
 namespace SmartTour.Shared.Models
 {
+    [Table("Food")] // <-- DÁN CÁI BÙA NÀY NGAY TRÊN ĐẦU CLASS
     public class Food
     {
         public int Id { get; set; }

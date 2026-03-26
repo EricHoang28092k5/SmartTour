@@ -83,6 +83,11 @@
             <i class="fa-solid fa-play me-2"></i> Lịch sử nghe
         </a>
                 </li>
+    <li class="nav-item">
+    <a class="nav-link text-dark" asp-area="" asp-controller="Food" asp-action="Index">
+        <i class="fa-solid fa-utensils text-success"></i> Quản lý Thực đơn
+    </a>
+</li>
 @if (User.IsInRole("Admin"))
 {
 

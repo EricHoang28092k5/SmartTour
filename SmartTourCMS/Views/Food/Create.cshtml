@@ -1,0 +1,46 @@
+﻿@model SmartTour.Shared.Models.Food
+
+<div class="card shadow border-0 mt-4 mx-auto" style="max-width: 800px;">
+    <div class="card-header bg-success bg-gradient text-white">
+        <h4 class="mb-0"><i class="fa-solid fa-bowl-food"></i> Thêm món ăn mới</h4>
+    </div>
+    <div class="card-body p-4">
+        <form asp-action="Create" method="post" enctype="multipart/form-data">
+            
+            <div class="mb-4">
+                <label class="form-label fw-bold text-primary">Món ăn này thuộc Quán / Địa điểm nào?</label>
+                <select asp-for="PoiId" class="form-select border-primary" asp-items="ViewBag.PoiList" required>
+                    <option value="">-- Chọn quán ăn của bác --</option>
+                </select>
+            </div>
+
+            <div class="row">
+                <div class="col-md-7 mb-3">
+                    <label class="form-label fw-bold">Tên món ăn</label>
+                    <input asp-for="Name" class="form-control" placeholder="VD: Phở Bò Tái Nạm" required />
+                </div>
+                <div class="col-md-5 mb-3">
+                    <label class="form-label fw-bold">Giá tiền (VNĐ)</label>
+                    <input asp-for="Price" type="number" class="form-control" placeholder="VD: 50000" required />
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label fw-bold">Mô tả hấp dẫn</label>
+                <textarea asp-for="Description" class="form-control" rows="3" placeholder="VD: Nước dùng hầm xương 12 tiếng, thịt bò tươi xắt mỏng..."></textarea>
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label fw-bold">Ảnh đại diện món ăn</label>
+                <input type="file" name="imageFile" class="form-control" accept="image/*" required />
+            </div>
+
+            <hr class="text-muted" />
+
+            <div class="d-flex justify-content-end gap-2">
+                <a asp-action="Index" class="btn btn-light border"><i class="fa-solid fa-arrow-left"></i> Quay lại</a>
+                <button type="submit" class="btn btn-success px-4"><i class="fa-solid fa-cloud-arrow-up"></i> Lưu lên Thực đơn</button>
+            </div>
+        </form>
+    </div>
+</div>
