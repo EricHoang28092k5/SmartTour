@@ -1,7 +1,7 @@
 ﻿using CloudinaryDotNet;
 using CloudinaryDotNet.Actions;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity; // Bổ sung Identity
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SmartTour.Shared.Models;
@@ -16,7 +16,7 @@ namespace SmartTourCMS.Controllers
     {
         private readonly AppDbContext _context;
         private readonly Cloudinary _cloudinary;
-        private readonly UserManager<IdentityUser> _userManager; // Bơm thêm UserManager
+        private readonly UserManager<IdentityUser> _userManager;
         private static readonly HttpClient _httpClient = new HttpClient();
 
         public PoiController(AppDbContext context, Cloudinary cloudinary, UserManager<IdentityUser> userManager)
@@ -25,7 +25,6 @@ namespace SmartTourCMS.Controllers
             _cloudinary = cloudinary;
             _userManager = userManager;
         }
-
 
         // --- 1. DANH SÁCH ĐỊA ĐIỂM (Lọc theo quyền) ---
         public async Task<IActionResult> Index()
@@ -44,12 +43,11 @@ namespace SmartTourCMS.Controllers
 
             var pois = await query.ToListAsync();
 
-            // MA THUẬT HIỂN THỊ: Lấy danh sách Email của tất cả User để dịch cái ID loằng ngoằng ra tên cho dễ đọc
             var users = _userManager.Users.ToList();
-            var userDict = users.ToDictionary(u => u.Id, u => u.Email); // Tạo từ điển Map ID -> Email
+            var userDict = users.ToDictionary(u => u.Id, u => u.Email);
 
             ViewBag.VendorDict = userDict;
-            ViewBag.IsAdmin = isAdmin; // Báo cho View biết ông này là Admin để hiện cột
+            ViewBag.IsAdmin = isAdmin;
 
             return View(pois);
         }
@@ -60,16 +58,12 @@ namespace SmartTourCMS.Controllers
         // --- 3. TẠO MỚI (POST) ---
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Create(Poi poi, IFormFile imageFile)
+        public async Task<IActionResult> Create(Poi poi, IFormFile imageFile, List<IFormFile> galleryFiles)
         {
             var user = await _userManager.GetUserAsync(User);
-            if (user != null)
-            {
-                // Tự động đóng dấu Sổ đỏ cho ông đang tạo
-                poi.VendorId = user.Id;
-            }
+            if (user != null) poi.VendorId = user.Id;
 
-            // 1. Upload ảnh
+            // 1. Upload ảnh bìa
             if (imageFile != null && imageFile.Length > 0)
             {
                 var uploadParams = new ImageUploadParams()
@@ -81,11 +75,36 @@ namespace SmartTourCMS.Controllers
                 poi.ImageUrl = uploadResult.SecureUrl.ToString();
             }
 
-            // 2. Lưu POI gốc
+            // 2. Lưu POI gốc để lấy cái ID trước
             _context.Pois.Add(poi);
             await _context.SaveChangesAsync();
 
-            // 3. TỰ ĐỘNG DỊCH ĐA NGÔN NGỮ
+            // 3. VÒNG LẶP UPLOAD ALBUM ẢNH PHỤ LÊN CLOUDINARY
+            if (galleryFiles != null && galleryFiles.Count > 0)
+            {
+                foreach (var file in galleryFiles)
+                {
+                    if (file.Length > 0)
+                    {
+                        var uploadParams = new ImageUploadParams()
+                        {
+                            File = new FileDescription(file.FileName, file.OpenReadStream()),
+                            Folder = "SmartTour/PoiGalleries"
+                        };
+                        var uploadResult = await _cloudinary.UploadAsync(uploadParams);
+
+                        var poiImage = new PoiImage
+                        {
+                            PoiId = poi.Id,
+                            ImageUrl = uploadResult.SecureUrl.ToString()
+                        };
+                        _context.PoiImages.Add(poiImage);
+                    }
+                }
+                await _context.SaveChangesAsync();
+            }
+
+            // 4. TỰ ĐỘNG DỊCH ĐA NGÔN NGỮ
             try
             {
                 var allLanguages = await _context.Languages.ToListAsync();
@@ -129,6 +148,7 @@ namespace SmartTourCMS.Controllers
             return RedirectToAction(nameof(Index));
         }
 
+        // Hàm hỗ trợ dịch Google
         private async Task<string> AutoTranslateAsync(string text, string targetLang)
         {
             try
@@ -144,15 +164,20 @@ namespace SmartTourCMS.Controllers
             }
         }
 
+        // --- 5. SỬA ĐỊA ĐIỂM (POST) ---
         // --- 4. SỬA ĐỊA ĐIỂM (GET) ---
         [HttpGet]
         public async Task<IActionResult> Edit(int? id)
         {
             if (id == null) return NotFound();
-            var poi = await _context.Pois.FindAsync(id);
+
+            // BƠM THÊM Include(p => p.PoiImages) ĐỂ LẤY ALBUM ẢNH CŨ RA
+            var poi = await _context.Pois
+                .Include(p => p.PoiImages)
+                .FirstOrDefaultAsync(p => p.Id == id);
+
             if (poi == null) return NotFound();
 
-            // BẢO MẬT: Check xem có phải chủ nhà không
             var user = await _userManager.GetUserAsync(User);
             if (!await _userManager.IsInRoleAsync(user, "Admin") && poi.VendorId != user.Id)
             {
@@ -165,20 +190,21 @@ namespace SmartTourCMS.Controllers
         // --- 5. SỬA ĐỊA ĐIỂM (POST) ---
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Edit(int id, Poi poi, IFormFile? imageFile)
+        // Thêm tham số newGalleryFiles để hứng ảnh mới up thêm
+        public async Task<IActionResult> Edit(int id, Poi poi, IFormFile? imageFile, List<IFormFile>? newGalleryFiles)
         {
             if (id != poi.Id) return NotFound();
 
             var existingPoi = await _context.Pois.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id);
             if (existingPoi == null) return NotFound();
 
-            // BẢO MẬT CẤP 2
             var user = await _userManager.GetUserAsync(User);
             if (!await _userManager.IsInRoleAsync(user, "Admin") && existingPoi.VendorId != user.Id)
             {
                 return Forbid();
             }
 
+            // 1. Cập nhật ảnh bìa chính (như cũ)
             if (imageFile != null && imageFile.Length > 0)
             {
                 var uploadParams = new ImageUploadParams()
@@ -196,12 +222,36 @@ namespace SmartTourCMS.Controllers
 
             try
             {
-                // Giữ nguyên VendorId cũ kẻo bị mất
                 poi.VendorId = existingPoi.VendorId;
-
                 _context.Update(poi);
                 await _context.SaveChangesAsync();
-                TempData["success"] = "Cập nhật thành công!";
+
+                // 2. NẾU CÓ UP THÊM ẢNH MỚI VÀO ALBUM THÌ CHẠY VÒNG LẶP UP TIẾP
+                if (newGalleryFiles != null && newGalleryFiles.Count > 0)
+                {
+                    foreach (var file in newGalleryFiles)
+                    {
+                        if (file.Length > 0)
+                        {
+                            var uploadParams = new ImageUploadParams()
+                            {
+                                File = new FileDescription(file.FileName, file.OpenReadStream()),
+                                Folder = "SmartTour/PoiGalleries"
+                            };
+                            var uploadResult = await _cloudinary.UploadAsync(uploadParams);
+
+                            var poiImage = new PoiImage
+                            {
+                                PoiId = poi.Id,
+                                ImageUrl = uploadResult.SecureUrl.ToString()
+                            };
+                            _context.PoiImages.Add(poiImage);
+                        }
+                    }
+                    await _context.SaveChangesAsync();
+                }
+
+                TempData["success"] = "Cập nhật địa điểm và Album thành công!";
             }
             catch (Exception ex)
             {
@@ -212,20 +262,42 @@ namespace SmartTourCMS.Controllers
             return RedirectToAction(nameof(Index));
         }
 
-        // --- 6. XÓA ĐỊA ĐIỂM ---
-        // --- 6. XÓA ĐỊA ĐIỂM (Phiên bản nhổ cỏ tận gốc) ---
+        // --- 5.5. HÀM MỚI: XÓA LẺ 1 ẢNH TRONG ALBUM ---
+        [HttpPost]
+        public async Task<IActionResult> DeleteGalleryImage(int imageId)
+        {
+            var image = await _context.PoiImages.Include(i => i.Poi).FirstOrDefaultAsync(i => i.Id == imageId);
+            if (image == null) return NotFound();
+
+            // Bảo mật: Chủ nhà mới được xóa
+            var user = await _userManager.GetUserAsync(User);
+            if (!await _userManager.IsInRoleAsync(user, "Admin") && image.Poi.VendorId != user.Id)
+            {
+                return Forbid();
+            }
+
+            // Xóa khỏi DB
+            _context.PoiImages.Remove(image);
+            await _context.SaveChangesAsync();
+
+            TempData["success"] = "Đã xóa 1 ảnh khỏi Album!";
+            // Xóa xong thì load lại trang Edit của chính cái POI đó
+            return RedirectToAction(nameof(Edit), new { id = image.PoiId });
+        }
+
+        // --- 6. XÓA ĐỊA ĐIỂM (Đã cập nhật nhổ cỏ cả PoiImages) ---
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Delete(int id)
         {
-            // Bơm thêm Include để lôi đầu đám "con cái" (Audio) lên
+            // Bơm thêm Include để lôi đầu đám con cái (Audio và Gallery) lên
             var poi = await _context.Pois
                 .Include(p => p.AudioFiles)
+                .Include(p => p.PoiImages) // Kéo theo mảng album ảnh phụ
                 .FirstOrDefaultAsync(p => p.Id == id);
 
             if (poi == null) return NotFound();
 
-            // BẢO MẬT: Chặn xóa lén
             var user = await _userManager.GetUserAsync(User);
             if (!await _userManager.IsInRoleAsync(user, "Admin") && poi.VendorId != user.Id)
             {
@@ -234,25 +306,25 @@ namespace SmartTourCMS.Controllers
 
             try
             {
-                // BƯỚC 1: Xóa sạch các Bản dịch (PoiTranslations) của địa điểm này
+                // BƯỚC 1: Xóa sạch các Bản dịch
                 var translations = _context.PoiTranslations.Where(t => t.PoiId == id);
                 _context.PoiTranslations.RemoveRange(translations);
 
-                // BƯỚC 2: Xóa sạch các File âm thanh (AudioFiles) (nếu có)
+                // BƯỚC 2: Xóa sạch các File âm thanh
                 if (poi.AudioFiles != null && poi.AudioFiles.Any())
                 {
                     _context.AudioFiles.RemoveRange(poi.AudioFiles);
                 }
 
-                // BƯỚC 3: Nếu POI này đang nằm trong Tour nào đó, xóa luôn liên kết TourPoi
-                // (Bỏ comment 2 dòng dưới nếu bác có bảng TourPoi)
-                // var tourPois = _context.TourPois.Where(tp => tp.PoiId == id);
-                // _context.TourPois.RemoveRange(tourPois);
+                // BƯỚC 3: Xóa sạch Album ảnh phụ (Dọn rác triệt để)
+                if (poi.PoiImages != null && poi.PoiImages.Any())
+                {
+                    _context.PoiImages.RemoveRange(poi.PoiImages);
+                }
 
                 // BƯỚC 4: Cuối cùng mới "trảm" thằng POI gốc
                 _context.Pois.Remove(poi);
 
-                // Lưu một cục xuống DB
                 await _context.SaveChangesAsync();
                 TempData["success"] = "Đã dọn dẹp sạch sẽ và xóa địa điểm thành công!";
             }
@@ -265,19 +337,16 @@ namespace SmartTourCMS.Controllers
         }
 
         // --- 7. ADMIN GIAO ĐỊA ĐIỂM CHO VENDOR ---
-        [Authorize(Roles = "Admin")] // Hàm này ĐỘC QUYỀN cho Admin
+        [Authorize(Roles = "Admin")]
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> AssignToVendor(int poiId, string vendorEmail)
         {
             var poi = await _context.Pois.FindAsync(poiId);
-
-            // Tìm ông Vendor trong hệ thống bằng Email
             var vendorUser = await _userManager.FindByEmailAsync(vendorEmail);
 
             if (poi != null && vendorUser != null)
             {
-                // Cập nhật Sổ đỏ (VendorId) sang cho ông Vendor mới
                 poi.VendorId = vendorUser.Id;
                 await _context.SaveChangesAsync();
                 TempData["success"] = $"Đã gán địa điểm cho {vendorEmail} quản lý!";
