@@ -1,5 +1,6 @@
 ﻿using SmartTour.Shared.Models;
 using SmartTourApp.Data;
+using SmartTour.Services;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -10,15 +11,18 @@ namespace SmartTourApp.Services
     public class PoiRepository
     {
         private readonly Database db;
+        private readonly ApiService api;
+
         private List<Poi>? cachedPois;
         private DateTime cacheTime;
         private readonly SemaphoreSlim cacheLock = new(1, 1);
 
         private readonly TimeSpan cacheTTL = TimeSpan.FromMinutes(5);
 
-        public PoiRepository(Database db)
+        public PoiRepository(Database db, ApiService api)
         {
             this.db = db;
+            this.api = api;
         }
 
         // ======================
@@ -27,6 +31,7 @@ namespace SmartTourApp.Services
 
         public async Task<List<Poi>> GetPois()
         {
+            // 🔥 RETURN CACHE nếu còn hạn
             if (cachedPois != null &&
                 DateTime.UtcNow - cacheTime < cacheTTL)
             {
@@ -37,30 +42,37 @@ namespace SmartTourApp.Services
 
             try
             {
+                // double check sau khi lock
                 if (cachedPois != null &&
                     DateTime.UtcNow - cacheTime < cacheTTL)
                 {
                     return cachedPois;
                 }
 
-                // TRY SERVER (GIẢ LẬP - KHÔNG API CŨ)
                 List<Poi>? server = null;
 
+                // ======================
+                // TRY CALL API
+                // ======================
                 try
                 {
-                    await Task.Delay(50); // simulate API
-                    server = null; // chưa có backend
+                    server = await api.GetPois();
                 }
-                catch
+                catch (Exception ex)
                 {
+                    System.Diagnostics.Debug.WriteLine("API FAIL: " + ex.Message);
                     server = null;
                 }
 
-                if (server != null)
+                // ======================
+                // IF SERVER OK
+                // ======================
+                if (server != null && server.Count > 0)
                 {
                     cachedPois = server;
                     cacheTime = DateTime.UtcNow;
 
+                    // 🔥 background sync xuống local DB
                     _ = Task.Run(async () =>
                     {
                         await SafeBackgroundSync(server);
@@ -69,7 +81,9 @@ namespace SmartTourApp.Services
                     return cachedPois;
                 }
 
-                // fallback local
+                // ======================
+                // FALLBACK LOCAL
+                // ======================
                 var local = await Task.Run(() => db.GetPois());
 
                 cachedPois = local;
@@ -91,17 +105,20 @@ namespace SmartTourApp.Services
         {
             try
             {
+                // lưu server -> SQLite
                 db.AddPois(server);
+
+                // xử lý outbox (nếu có)
                 await ProcessOutboxAsync();
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine(ex.Message);
+                System.Diagnostics.Debug.WriteLine("SYNC ERROR: " + ex.Message);
             }
         }
 
         // ======================
-        // OUTBOX PROCESSOR (SAFE)
+        // OUTBOX PROCESSOR
         // ======================
 
         public async Task ProcessOutboxAsync()
@@ -117,8 +134,10 @@ namespace SmartTourApp.Services
                         var poi = System.Text.Json.JsonSerializer.Deserialize<Poi>(item.Payload);
                         if (poi == null) continue;
 
-                        // 🔥 NO API (FIX LỖI UpsertPoi)
-                        await Task.Delay(20);
+                        // 🔥 GỌI API thật nếu có endpoint
+                        // await api.UpsertPoi(poi);
+
+                        await Task.Delay(20); // tạm giả lập
 
                         db.MarkOutboxSynced(item.Id);
                     }
