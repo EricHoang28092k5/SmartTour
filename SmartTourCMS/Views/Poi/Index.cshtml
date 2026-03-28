@@ -1,4 +1,5 @@
-@model IEnumerable<SmartTour.Shared.Models.Poi>
+@using X.PagedList.Mvc.Core
+@model X.PagedList.IPagedList<SmartTour.Shared.Models.Poi>
 
 @{
     ViewData["Title"] = "Quản lý địa điểm";
@@ -123,6 +124,15 @@
             </tbody>
         </table>
     </div>
+    
+    @* THANH PHÂN TRANG THÊM VÀO ĐÂY *@
+    <div class="card-footer bg-white d-flex justify-content-center pt-3 pb-1 border-top-0">
+        @Html.PagedListPager(Model, page => Url.Action("Index", new { page = page }), new PagedListRenderOptions
+        {
+            LiElementClasses = new string[] { "page-item" },
+            PageClasses = new string[] { "page-link" }
+        })
+    </div>
 </div>
 
 @* 3. KHUNG MODAL HIỆN BẢN ĐỒ (POPUP) *@
@@ -153,12 +163,10 @@
         var currentMarker;
 
         function showMapModal(name, lat, lng) {
-        // Hiện modal
         var modalEl = document.getElementById('mapModal');
         var myModal = bootstrap.Modal.getOrCreateInstance(modalEl);
         myModal.show();
 
-        // Xử lý bản đồ khi modal hiện xong hoàn toàn
         modalEl.addEventListener('shown.bs.modal', function () {
         if (!quickMap) {
         quickMap = L.map('quickMap').setView([lat, lng], 15);
@@ -172,12 +180,11 @@
         if (currentMarker) quickMap.removeLayer(currentMarker);
         currentMarker = L.marker([lat, lng]).addTo(quickMap)
         .bindPopup("<b>" + name + "</b>").openPopup();
-                
-        // Fix lỗi vỡ tiles do Modal animation
+                    
         setTimeout(function(){
         quickMap.invalidateSize();
         }, 250);
-        }, { once: false }); // Để false để mỗi lần mở đều fix lại size
+        }, { once: false });
         }
 
         function filterTable() {
@@ -187,7 +194,8 @@
         var tr = table.getElementsByTagName("tr");
 
         for (var i = 1; i < tr.length; i++) {
-        var tdName = tr[i].getElementsByTagName("td")[0];
+        // Đã sửa thành td[1] để tìm kiếm theo cột "Tên địa điểm"
+        var tdName = tr[i].getElementsByTagName("td")[1];
         if (tdName) {
         var txtValue = tdName.textContent || tdName.innerText;
         tr[i].style.display = txtValue.toUpperCase().indexOf(filter) > -1 ? "" : "none";

@@ -7,7 +7,8 @@ using Microsoft.EntityFrameworkCore;
 using SmartTour.Shared.Models;
 using SmartTourBackend.Data;
 using System.Net.Http;
-
+using X.PagedList;
+using X.PagedList.Extensions; // Nhớ thêm dòng này lên trên cùng nhé
 namespace SmartTourCMS.Controllers
 {
     // 1. Mở cửa cho cả Admin và Vendor vào quản lý
@@ -27,7 +28,7 @@ namespace SmartTourCMS.Controllers
         }
 
         // --- 1. DANH SÁCH ĐỊA ĐIỂM (Lọc theo quyền) ---
-        public async Task<IActionResult> Index()
+        public async Task<IActionResult> Index(int? page)
         {
             var user = await _userManager.GetUserAsync(User);
             if (user == null) return RedirectToAction("Login", "Account");
@@ -41,7 +42,17 @@ namespace SmartTourCMS.Controllers
                 query = query.Where(p => p.VendorId == user.Id);
             }
 
-            var pois = await query.ToListAsync();
+            // --- PHẦN CODE MỚI THÊM VÀO ĐỂ PHÂN TRANG ---
+            // 1. Bắt buộc phải sắp xếp dữ liệu trước khi cắt trang (ví dụ sắp xếp Id mới nhất lên đầu)
+            query = query.OrderByDescending(p => p.Id);
+
+            // 2. Cấu hình trang
+            int pageSize = 10; // Số địa điểm hiển thị trên mỗi trang (bạn có thể đổi số này)
+            int pageNumber = page ?? 1; // Nếu không có tham số page thì mặc định là trang 1
+
+            // 3. Thay thế await query.ToListAsync() bằng ToPagedList()
+            var pagedPois = query.ToPagedList(pageNumber, pageSize);
+            // -------------------------------------------
 
             var users = _userManager.Users.ToList();
             var userDict = users.ToDictionary(u => u.Id, u => u.Email);
@@ -49,7 +60,8 @@ namespace SmartTourCMS.Controllers
             ViewBag.VendorDict = userDict;
             ViewBag.IsAdmin = isAdmin;
 
-            return View(pois);
+            // Trả về biến pagedPois thay vì pois
+            return View(pagedPois);
         }
 
         // --- 2. TẠO MỚI (GET) ---

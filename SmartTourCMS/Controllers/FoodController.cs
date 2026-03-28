@@ -6,8 +6,9 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering; // Dùng cho cái Dropdown chọn Quán
 using Microsoft.EntityFrameworkCore;
 using SmartTour.Shared.Models;
-using SmartTourBackend.Data;
 using SmartTour.Shared.Models;
+using SmartTourBackend.Data;
+using X.PagedList.Extensions;
 namespace SmartTourCMS.Controllers
 {
     // Bắt buộc phải đăng nhập và có quyền Admin hoặc Vendor mới được vào
@@ -26,9 +27,13 @@ namespace SmartTourCMS.Controllers
         }
 
         // --- 1. DANH SÁCH MÓN ĂN ---
-        public async Task<IActionResult> Index()
+        public async Task<IActionResult> Index(int? page)
         {
             var user = await _userManager.GetUserAsync(User);
+
+            // Thêm dòng này để chống lỗi văng app nếu rớt phiên đăng nhập
+            if (user == null) return RedirectToAction("Login", "Account");
+
             var isAdmin = await _userManager.IsInRoleAsync(user, "Admin");
 
             // Kéo danh sách món ăn, lôi luôn thằng Bố (Poi) lên để lấy tên Quán
@@ -40,7 +45,19 @@ namespace SmartTourCMS.Controllers
                 query = query.Where(f => f.Poi.VendorId == user.Id);
             }
 
-            return View(await query.ToListAsync());
+            // --- PHẦN CODE THÊM VÀO ĐỂ PHÂN TRANG ---
+            // 1. Sắp xếp dữ liệu (Ví dụ: Id giảm dần để món ăn mới thêm nằm trên cùng)
+            query = query.OrderByDescending(f => f.Id);
+
+            // 2. Cấu hình trang
+            int pageSize = 10; // Số món ăn hiển thị trên 1 trang
+            int pageNumber = page ?? 1; // Mặc định là trang 1
+
+            // 3. Cắt trang bằng ToPagedList thay vì ToListAsync()
+            var pagedFoods = query.ToPagedList(pageNumber, pageSize);
+
+            // Trả về pagedFoods
+            return View(pagedFoods);
         }
 
         // --- 2. GIAO DIỆN TẠO MÓN MỚI (GET) ---
