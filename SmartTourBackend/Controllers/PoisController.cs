@@ -23,6 +23,7 @@ namespace SmartTourBackend.Controllers
             return await _context.Pois
                 .Include(p => p.AudioFiles)
                    .Include(p => p.PoiImages)
+                   .Include(p => p.Foods) // <-- BƠM THÊM DÒNG NÀY ĐỂ KÉO LUÔN THỰC ĐƠN RA
                 .ToListAsync();
          
         }

@@ -1,0 +1,52 @@
+﻿@model SmartTour.Shared.Models.Food
+
+<div class="card shadow border-0 mt-4 mx-auto" style="max-width: 800px;">
+    <div class="card-header bg-primary bg-gradient text-white">
+        <h4 class="mb-0"><i class="fa-solid fa-pen-to-square"></i> Sửa thông tin món ăn</h4>
+    </div>
+    <div class="card-body p-4">
+        <form asp-action="Edit" method="post" enctype="multipart/form-data">
+            <input type="hidden" asp-for="Id" />
+            
+            <div class="mb-4">
+                <label class="form-label fw-bold text-primary">Thuộc Quán / Địa điểm</label>
+                <select asp-for="PoiId" class="form-select border-primary" asp-items="ViewBag.PoiList" required></select>
+            </div>
+
+            <div class="row">
+                <div class="col-md-7 mb-3">
+                    <label class="form-label fw-bold">Tên món ăn</label>
+                    <input asp-for="Name" class="form-control" required />
+                </div>
+                <div class="col-md-5 mb-3">
+                    <label class="form-label fw-bold">Giá tiền (VNĐ)</label>
+                    <input asp-for="Price" type="number" class="form-control" required />
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label fw-bold">Mô tả hấp dẫn</label>
+                <textarea asp-for="Description" class="form-control" rows="3"></textarea>
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label fw-bold">Ảnh đại diện</label>
+                @if (!string.IsNullOrEmpty(Model.ImageUrl))
+                {
+                    <div class="mb-2">
+                        <img src="@Model.ImageUrl" class="rounded shadow-sm" style="height: 120px; object-fit: cover;" />
+                    </div>
+                    <small class="text-muted d-block mb-2"><i>(Bỏ trống nếu muốn giữ nguyên ảnh hiện tại)</i></small>
+                }
+                <input type="file" name="imageFile" class="form-control" accept="image/*" />
+            </div>
+
+            <hr class="text-muted" />
+
+            <div class="d-flex justify-content-end gap-2">
+                <a asp-action="Index" class="btn btn-light border"><i class="fa-solid fa-arrow-left"></i> Hủy</a>
+                <button type="submit" class="btn btn-primary px-4"><i class="fa-solid fa-floppy-disk"></i> Lưu thay đổi</button>
+            </div>
+        </form>
+    </div>
+</div>

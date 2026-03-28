@@ -118,5 +118,75 @@ namespace SmartTourCMS.Controllers
             TempData["success"] = "Đã xóa món ăn khỏi Menu!";
             return RedirectToAction(nameof(Index));
         }
+        // --- 5. SỬA MÓN ĂN (GET) ---
+        [HttpGet]
+        public async Task<IActionResult> Edit(int? id)
+        {
+            if (id == null) return NotFound();
+
+            var food = await _context.Food.Include(f => f.Poi).FirstOrDefaultAsync(f => f.Id == id);
+            if (food == null) return NotFound();
+
+            var user = await _userManager.GetUserAsync(User);
+            var isAdmin = await _userManager.IsInRoleAsync(user, "Admin");
+
+            // Bảo mật: Vendor chỉ được sửa món của quán mình
+            if (!isAdmin && food.Poi.VendorId != user.Id) return Forbid();
+
+            // Đổ lại danh sách Quán cho Dropdown
+            var pois = isAdmin
+                ? await _context.Pois.ToListAsync()
+                : await _context.Pois.Where(p => p.VendorId == user.Id).ToListAsync();
+            ViewBag.PoiList = new SelectList(pois, "Id", "Name", food.PoiId);
+
+            return View(food);
+        }
+
+        // --- 6. SỬA MÓN ĂN (POST) ---
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> Edit(int id, Food food, IFormFile? imageFile)
+        {
+            if (id != food.Id) return NotFound();
+
+            var existingFood = await _context.Food.Include(f => f.Poi).AsNoTracking().FirstOrDefaultAsync(f => f.Id == id);
+            if (existingFood == null) return NotFound();
+
+            var user = await _userManager.GetUserAsync(User);
+            var isAdmin = await _userManager.IsInRoleAsync(user, "Admin");
+
+            if (!isAdmin && existingFood.Poi.VendorId != user.Id) return Forbid();
+
+            // Xử lý nếu người dùng up ảnh mới
+            if (imageFile != null && imageFile.Length > 0)
+            {
+                var uploadParams = new ImageUploadParams()
+                {
+                    File = new FileDescription(imageFile.FileName, imageFile.OpenReadStream()),
+                    Folder = "SmartTour/Foods"
+                };
+                var uploadResult = await _cloudinary.UploadAsync(uploadParams);
+                food.ImageUrl = uploadResult.SecureUrl.ToString();
+            }
+            else
+            {
+                // Nếu không chọn ảnh mới thì giữ nguyên ảnh cũ
+                food.ImageUrl = existingFood.ImageUrl;
+            }
+
+            try
+            {
+                _context.Update(food);
+                await _context.SaveChangesAsync();
+                TempData["success"] = "Cập nhật thông tin món ăn thành công!";
+            }
+            catch (Exception ex)
+            {
+                ModelState.AddModelError("", "Lỗi: " + ex.Message);
+                return View(food);
+            }
+
+            return RedirectToAction(nameof(Index));
+        }
     }
 }

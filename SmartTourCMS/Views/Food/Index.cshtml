@@ -45,13 +45,18 @@
                             <span class="badge bg-info text-dark border border-info">
                                 <i class="fa-solid fa-store"></i> @item.Poi?.Name
                             </span>
-                        </td>
-                        <td class="text-center">
-                            <form asp-action="Delete" asp-route-id="@item.Id" method="post" onsubmit="return confirm('Bác có chắc muốn xóa món @item.Name này khỏi thực đơn không?');">
-                                <button type="submit" class="btn btn-sm btn-outline-danger" title="Xóa món">
-                                    <i class="fa-solid fa-trash"></i> Xóa
-                                </button>
-                            </form>
+                            <td class="text-center">
+                                <div class="d-flex justify-content-center gap-2">
+                                    <a asp-action="Edit" asp-route-id="@item.Id" class="btn btn-sm btn-outline-primary" title="Sửa món">
+                                        <i class="fa-solid fa-pen-to-square"></i> Sửa
+                                    </a>
+        
+                                    <form asp-action="Delete" asp-route-id="@item.Id" method="post" onsubmit="return confirm('Bác có chắc muốn xóa món @item.Name này khỏi thực đơn không?');">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Xóa món">
+                                            <i class="fa-solid fa-trash"></i> Xóa
+                                        </button>
+                                    </form>
+                                </div>
                         </td>
                     </tr>
                 }
