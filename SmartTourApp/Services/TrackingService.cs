@@ -1,4 +1,10 @@
-﻿using Microsoft.Maui.Devices.Sensors;
+﻿#if ANDROID
+using Android.Content;
+using Android.App;
+using SmartTourApp.Platforms.Android;
+#endif
+
+using Microsoft.Maui.Devices.Sensors;
 using SmartTour.Shared.Models;
 
 namespace SmartTourApp.Services;
@@ -38,6 +44,10 @@ public class TrackingService
 
         pois = await repo.GetPois();
 
+#if ANDROID
+        StartForegroundService();
+#endif
+
         _ = Task.Run(async () =>
         {
             var timer = new PeriodicTimer(TimeSpan.FromSeconds(7));
@@ -66,6 +76,27 @@ public class TrackingService
             }
         });
     }
+
+#if ANDROID
+    private void StartForegroundService()
+    {
+        try
+        {
+            var context = Android.App.Application.Context;
+
+            var intent = new Intent(context, typeof(TrackingForegroundService));
+
+            if (OperatingSystem.IsAndroidVersionAtLeast(26))
+                context.StartForegroundService(intent);
+            else
+                context.StartService(intent);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine("Start service error: " + ex.Message);
+        }
+    }
+#endif
 
     public void Stop()
     {

@@ -11,11 +11,13 @@ public class NarrationEngine
     private readonly Database db;
     private readonly ApiService api;
     private readonly LanguageService lang;
-    private readonly Dictionary<int, List<TtsDto>> ttsCache = new();
 
+    private readonly Dictionary<int, List<TtsDto>> ttsCache = new();
     private readonly Dictionary<int, DateTime> history = new();
 
     private readonly Queue<Poi> queue = new();
+
+    private readonly object queueLock = new(); // 🔥 NEW
 
     private bool isPlaying;
 
@@ -42,19 +44,36 @@ public class NarrationEngine
                 return;
         }
 
-        queue.Enqueue(poi);
+        lock (queueLock)
+        {
+            queue.Enqueue(poi);
 
-        if (!isPlaying)
-            await ProcessQueue(location);
+            if (isPlaying)
+                return;
+
+            isPlaying = true;
+        }
+
+        _ = ProcessQueue(location); // 🔥 không await
     }
 
     private async Task ProcessQueue(Location location)
     {
-        isPlaying = true;
-
-        while (queue.Count > 0)
+        while (true)
         {
-            var poi = queue.Dequeue();
+            Poi? poi;
+
+            lock (queueLock)
+            {
+                if (queue.Count == 0)
+                {
+                    isPlaying = false;
+                    return;
+                }
+
+                poi = queue.Dequeue();
+            }
+
             List<TtsDto> scripts;
 
             if (!ttsCache.ContainsKey(poi.Id))
@@ -74,10 +93,10 @@ public class NarrationEngine
             {
                 scripts = ttsCache[poi.Id];
             }
+
             if (scripts == null || scripts.Count == 0)
                 continue;
 
-            // 🔥 chọn ngôn ngữ
             var currentLang = lang.Current;
 
             var selected = scripts
@@ -85,7 +104,6 @@ public class NarrationEngine
                 ?? scripts.FirstOrDefault(x => x.LanguageCode.StartsWith("en"))
                 ?? scripts.FirstOrDefault();
 
-            // 🔥 phát TTS
             if (selected != null && !string.IsNullOrWhiteSpace(selected.TtsScript))
             {
                 await tts.Speak(selected.TtsScript, selected.LanguageCode);
@@ -101,7 +119,5 @@ public class NarrationEngine
                 Lng = location.Longitude
             });
         }
-
-        isPlaying = false;
     }
 }

@@ -28,25 +28,29 @@ public class TrackingForegroundService : Service
 
         StartForeground(1, notification);
 
+        // 🔥 Giữ service sống
         return StartCommandResult.Sticky;
     }
 
     Notification CreateNotification()
     {
-        var builder = new NotificationCompat.Builder(this!, ChannelId)
-            .SetContentTitle("SmartTour")
-            .SetContentText("Đang theo dõi vị trí")
-            .SetSmallIcon(global::SmartTourApp.Resource.Mipmap.logo_app);
+        var builder = new NotificationCompat.Builder(this, ChannelId)
+            .SetContentTitle("SmartTour")!
+            .SetContentText("Đang theo dõi vị trí")!
+            .SetSmallIcon(global::SmartTourApp.Resource.Mipmap.logo_app)!
+            .SetOngoing(true)!;
 
-        return builder.Build()!;
+        var notification = builder.Build();
+
+        return notification ?? throw new InvalidOperationException("Could not create notification");
     }
 
     [SupportedOSPlatform("android26.0")]
     void CreateNotificationChannel()
     {
-        var service = GetSystemService(NotificationService);
+        var manager = GetSystemService(NotificationService) as NotificationManager;
 
-        if (service is not NotificationManager manager)
+        if (manager == null)
             return;
 
         var channel = new NotificationChannel(
