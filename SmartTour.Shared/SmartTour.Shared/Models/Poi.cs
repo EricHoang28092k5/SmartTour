@@ -29,13 +29,17 @@ public class Poi
     public string? TtsScript { get; set; } // Nội dung để đọc TTS nếu không có file Audio
 
     public bool IsActive { get; set; } = true;
+    [Ignore]
+    public bool IsNearest { get; set; }
     public string? CreatedBy { get; set; }
     public string? VendorId { get; set; }
     // Danh sách các ảnh phụ (Gallery)
+    [Ignore]
     public ICollection<PoiImage>? PoiImages { get; set; }
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     [Ignore]
     public virtual ICollection<AudioFile> AudioFiles { get; set; } = new List<AudioFile>();
+    [Ignore]
     // Danh sách các món ăn của địa điểm này (Menu)
     public ICollection<Food>? Foods { get; set; }
     // Thuộc tính này dùng để map với PostGIS trong Database

@@ -2,28 +2,134 @@
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     x:Class="SmartTourApp.Pages.PoiDetailPage"
-    Title="POI Detail">
+    BackgroundColor="#F6F7FB">
 
-    <ScrollView>
+    <Grid>
 
-        <VerticalStackLayout Padding="20">
+        <!-- MAIN -->
+        <ScrollView>
+            <VerticalStackLayout Spacing="20">
 
-            <Image
-                x:Name="PoiImage"
-                HeightRequest="200"
-                Aspect="AspectFill"/>
+                <!-- HERO -->
+                <Grid HeightRequest="280">
+                    <Image x:Name="PoiImage" Aspect="AspectFill"/>
+                    <BoxView Background="#80000000"/>
 
-            <Label
-                x:Name="PoiName"
-                FontSize="24"
-                FontAttributes="Bold"/>
+                    <Label x:Name="PoiName"
+                           FontSize="26"
+                           FontAttributes="Bold"
+                           TextColor="White"
+                           Margin="20"
+                           VerticalOptions="End"/>
+                </Grid>
 
-            <Label
-                x:Name="PoiDescription"
-                FontSize="16"/>
+                <!-- TAB -->
+                <Grid Margin="16,0" ColumnDefinitions="*,*">
+                    <Button x:Name="OverviewTab"
+                            Text="Tổng quan"
+                            Clicked="ShowOverview"
+                            BackgroundColor="#1976D2"
+                            TextColor="White"
+                            CornerRadius="14"/>
 
-        </VerticalStackLayout>
+                    <Button x:Name="MenuTab"
+                            Grid.Column="1"
+                            Text="Thực đơn"
+                            Clicked="ShowMenu"
+                            BackgroundColor="#EEE"
+                            TextColor="#333"
+                            CornerRadius="14"/>
+                </Grid>
 
-    </ScrollView>
+                <!-- OVERVIEW -->
+                <VerticalStackLayout x:Name="OverviewSection" Margin="16,0">
+                    <Label Text="📝 Giới thiệu"
+                           FontAttributes="Bold"/>
 
+                    <Label x:Name="PoiDescription"
+                           FontSize="14"
+                           TextColor="#444"/>
+                </VerticalStackLayout>
+
+                <!-- FOOD LIST -->
+                <CollectionView x:Name="FoodList"
+                                Margin="16,0"
+                                IsVisible="False">
+
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate>
+
+                            <!-- 🔥 BORDER THAY FRAME -->
+                            <Border StrokeShape="RoundRectangle 18"
+                                    BackgroundColor="White"
+                                    Margin="0,0,0,16"
+                                    StrokeThickness="0">
+
+                                <Grid ColumnDefinitions="110,*">
+
+                                    <!-- IMAGE -->
+                                    <Image Source="{Binding ImageUrl}"
+                                           HeightRequest="100"
+                                           Aspect="AspectFill">
+
+                                        <Image.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnFoodImageTapped"/>
+                                        </Image.GestureRecognizers>
+                                    </Image>
+
+                                    <!-- INFO -->
+                                    <VerticalStackLayout Grid.Column="1"
+                                                         Padding="10"
+                                                         Spacing="4">
+
+                                        <Label Text="{Binding Name}"
+                                               FontAttributes="Bold"/>
+
+                                        <Label Text="{Binding Description}"
+                                               FontSize="12"
+                                               TextColor="#777"/>
+
+                                        <Label Text="{Binding Price, StringFormat='{}{0:N0} đ'}"
+                                               TextColor="#1976D2"
+                                               FontAttributes="Bold"/>
+                                    </VerticalStackLayout>
+
+                                </Grid>
+
+                                <!-- SHADOW (chuẩn Border .NET 10) -->
+                                <Border.Shadow>
+                                    <Shadow Brush="#22000000"
+                                            Offset="0,6"
+                                            Radius="12"
+                                            Opacity="0.8"/>
+                                </Border.Shadow>
+
+                            </Border>
+
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+
+                </CollectionView>
+
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <!-- FULL SCREEN IMAGE VIEW -->
+        <Grid x:Name="ImageViewer"
+              BackgroundColor="#CC000000"
+              IsVisible="False"
+              Opacity="0">
+
+            <Grid.GestureRecognizers>
+                <TapGestureRecognizer Tapped="CloseImageViewer"/>
+            </Grid.GestureRecognizers>
+
+            <Image x:Name="PreviewImage"
+                   Aspect="AspectFit"
+                   HorizontalOptions="Center"
+                   VerticalOptions="Center"
+                   Scale="0.8"/>
+        </Grid>
+
+    </Grid>
 </ContentPage>

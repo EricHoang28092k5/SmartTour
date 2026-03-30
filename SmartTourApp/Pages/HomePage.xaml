@@ -5,30 +5,23 @@
     BackgroundColor="#F6F7FB">
 
     <ScrollView>
-
-        <VerticalStackLayout Spacing="20">
+        <VerticalStackLayout Spacing="24">
 
             <!-- HERO -->
-            <Grid HeightRequest="300">
-
+            <Grid HeightRequest="280">
                 <Image x:Name="HeroImage"
-                       Aspect="AspectFill"/>
+                       Aspect="AspectFill"
+                       Opacity="0"/>
 
-                <BoxView>
-                    <BoxView.Background>
-                        <LinearGradientBrush StartPoint="0,1" EndPoint="0,0">
-                            <GradientStop Color="#CC000000" Offset="0"/>
-                            <GradientStop Color="#00000000" Offset="1"/>
-                        </LinearGradientBrush>
-                    </BoxView.Background>
-                </BoxView>
+                <BoxView Background="#80000000"/>
 
                 <VerticalStackLayout Padding="20"
-                                     VerticalOptions="End">
+                                     VerticalOptions="End"
+                                     Spacing="6">
 
-                    <Label Text="✨ Recommended"
-                           TextColor="White"
-                           FontSize="12"/>
+                    <Label Text="📍 Gần bạn nhất"
+                           FontSize="12"
+                           TextColor="White"/>
 
                     <Label x:Name="HeroTitle"
                            FontSize="26"
@@ -46,85 +39,53 @@
                             TextColor="#1976D2"
                             CornerRadius="18"/>
                 </VerticalStackLayout>
-
             </Grid>
 
-            <!-- QUICK ACTION -->
-            <Grid Padding="16" ColumnDefinitions="*,*,*">
-
-                <VerticalStackLayout HorizontalOptions="Center">
-                    <Label Text="🗺" FontSize="26"/>
-                    <Label Text="Map" FontSize="12"/>
-                    <VerticalStackLayout.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OpenMap"/>
-                    </VerticalStackLayout.GestureRecognizers>
-                </VerticalStackLayout>
-
-                <VerticalStackLayout Grid.Column="1" HorizontalOptions="Center">
-                    <Label Text="📷" FontSize="26"/>
-                    <Label Text="QR" FontSize="12"/>
-                    <VerticalStackLayout.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OpenQR"/>
-                    </VerticalStackLayout.GestureRecognizers>
-                </VerticalStackLayout>
-
-                <VerticalStackLayout Grid.Column="2" HorizontalOptions="Center">
-                    <Label Text="⚙" FontSize="26"/>
-                    <Label Text="Settings" FontSize="12"/>
-                    <VerticalStackLayout.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OpenSettings"/>
-                    </VerticalStackLayout.GestureRecognizers>
-                </VerticalStackLayout>
-
-            </Grid>
-
-            <Label Text="📍 Gần bạn"
+            <Label Text="✨ Địa điểm gần bạn"
                    Margin="16,0"
-                   FontSize="18"
+                   FontSize="20"
                    FontAttributes="Bold"/>
 
-            <CollectionView
-                x:Name="PoiList"
-                Margin="16,0"
-                SelectionMode="None">
+            <!-- LIST -->
+            <CollectionView x:Name="PoiList"
+                            Margin="16,0"
+                            SelectionMode="None">
 
                 <CollectionView.ItemTemplate>
                     <DataTemplate>
 
-                        <Border
-                            Margin="0,0,0,16"
-                            BackgroundColor="White"
-                            Shadow="0,10,30,#22000000">
+                        <Border StrokeShape="RoundRectangle 18"
+                                BackgroundColor="White"
+                                Margin="0,0,0,16">
 
-                            <Border.StrokeShape>
-                                <RoundRectangle CornerRadius="20"/>
-                            </Border.StrokeShape>
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer
+                                    Tapped="OpenDetailTap"
+                                    CommandParameter="{Binding .}" />
+                            </Border.GestureRecognizers>
 
-                            <Grid ColumnDefinitions="110,*"
-                                  HeightRequest="120">
+                            <Grid ColumnDefinitions="120,*"
+                                  HeightRequest="130">
 
                                 <Image Source="{Binding ImageUrl}"
                                        Aspect="AspectFill"/>
 
                                 <VerticalStackLayout Grid.Column="1"
-                                                     Padding="10"
+                                                     Padding="12"
                                                      Spacing="6">
 
                                     <Label Text="{Binding Name}"
-                                           FontSize="16"
+                                           FontSize="15"
                                            FontAttributes="Bold"/>
 
                                     <Label Text="{Binding Description}"
                                            FontSize="12"
-                                           TextColor="#666"/>
+                                           TextColor="#777"
+                                           LineBreakMode="TailTruncation"/>
 
-                                    <Button Text="🎧 Nghe"
-                                            Clicked="PlayPoi"
-                                            CommandParameter="{Binding .}"
-                                            HeightRequest="34"
-                                            CornerRadius="12"
-                                            BackgroundColor="#1976D2"
-                                            TextColor="White"/>
+                                    <Label Text="⭐ Popular"
+                                           FontSize="11"
+                                           TextColor="#999"/>
 
                                 </VerticalStackLayout>
 
@@ -133,13 +94,10 @@
                         </Border>
 
                     </DataTemplate>
-
                 </CollectionView.ItemTemplate>
 
             </CollectionView>
 
         </VerticalStackLayout>
-
     </ScrollView>
-
 </ContentPage>

@@ -12,8 +12,8 @@ public partial class HomePage : ContentPage
     private Poi? nearest;
     private Location? userLoc;
 
-    private bool isLoaded = false;
-    private bool isPlaying = false;
+    private bool isLoaded;
+    private bool isPlaying;
 
     public HomePage(PoiRepository repo, NarrationEngine narration)
     {
@@ -26,73 +26,69 @@ public partial class HomePage : ContentPage
     {
         base.OnAppearing();
 
-        // ✅ KHÔNG reload lại nữa
-        if (isLoaded)
-            return;
-
-        LoadData();
+        if (!isLoaded)
+            _ = LoadAsync();
     }
 
-    private async void LoadData()
+    private async Task LoadAsync()
     {
-        // ✅ lấy cache trước (instant)
+        isLoaded = true;
+
+        HeroTitle.Text = "Đang tải...";
+
         pois = repo.GetCachedPois() ?? await repo.GetPois();
 
         PoiList.ItemsSource = pois;
 
-        isLoaded = true;
-
-        // ✅ load location async (không block UI)
-        _ = Task.Run(async () =>
-        {
-            var loc = await Geolocation.GetLastKnownLocationAsync();
-
-            if (loc != null)
-            {
-                userLoc = loc;
-
-                MainThread.BeginInvokeOnMainThread(() =>
-                {
-                    FindNearest();
-                    SortPois();
-                });
-            }
-        });
+        await LoadLocationAsync();
     }
 
-    private void FindNearest()
+    private async Task LoadLocationAsync()
     {
-        double min = double.MaxValue;
+        var loc = await Geolocation.GetLastKnownLocationAsync();
+        if (loc == null) return;
 
-        foreach (var p in pois)
-        {
-            var dist = Location.CalculateDistance(
+        userLoc = loc;
+
+        FindNearest();
+        SortPois();
+    }
+
+    private async void FindNearest()
+    {
+        if (userLoc == null || pois.Count == 0) return;
+
+        nearest = pois
+            .OrderBy(p => Location.CalculateDistance(
                 userLoc,
                 new Location(p.Lat, p.Lng),
-                DistanceUnits.Kilometers);
+                DistanceUnits.Kilometers))
+            .FirstOrDefault();
 
-            if (dist < min)
-            {
-                min = dist;
-                nearest = p;
-            }
-        }
+        if (nearest == null) return;
 
-        if (nearest != null)
-        {
-            HeroTitle.Text = nearest.Name;
-            HeroImage.Source = nearest.ImageUrl;
+        foreach (var p in pois)
+            p.IsNearest = p.Id == nearest.Id;
 
-            double meters = min * 1000;
+        HeroTitle.Text = nearest.Name;
+        HeroImage.Source = nearest.ImageUrl;
 
-            HeroDistance.Text = meters < 1000
-                ? $"{(int)meters} m"
-                : $"{Math.Round(min, 1)} km";
-        }
+        await HeroImage.FadeToAsync(1, 400);
+
+        var dist = Location.CalculateDistance(
+            userLoc,
+            new Location(nearest.Lat, nearest.Lng),
+            DistanceUnits.Kilometers);
+
+        HeroDistance.Text = dist < 1
+            ? $"{(int)(dist * 1000)} m"
+            : $"{Math.Round(dist, 1)} km";
     }
 
     private void SortPois()
     {
+        if (userLoc == null) return;
+
         pois = pois.OrderBy(p =>
             Location.CalculateDistance(
                 userLoc,
@@ -100,11 +96,9 @@ public partial class HomePage : ContentPage
                 DistanceUnits.Kilometers))
             .ToList();
 
-        // ❗ chỉ update lại source 1 lần duy nhất
         PoiList.ItemsSource = pois;
     }
 
-    // 🎧 HERO
     private async void PlayNearest(object sender, EventArgs e)
     {
         if (nearest == null || userLoc == null || isPlaying) return;
@@ -118,37 +112,15 @@ public partial class HomePage : ContentPage
         isPlaying = false;
     }
 
-    // 🎧 LIST
-    private void PlayPoi(object sender, EventArgs e)
+    private async void OpenDetailTap(object sender, TappedEventArgs e)
     {
-        if (isPlaying || userLoc == null) return;
-
-        if (sender is Button btn && btn.CommandParameter is Poi poi)
+        if (sender is Border border && border.BindingContext is Poi poi)
         {
-            isPlaying = true;
+            await border.ScaleToAsync(0.97, 80);
+            await border.ScaleToAsync(1, 80);
 
-            btn.Text = "🔊 Đang phát...";
-
-            // ❗ không await → không block UI
-            _ = Task.Run(async () =>
-            {
-                await narration.Play(poi, userLoc);
-
-                MainThread.BeginInvokeOnMainThread(() =>
-                {
-                    btn.Text = "🎧 Nghe";
-                    isPlaying = false;
-                });
-            });
+            await Shell.Current.GoToAsync(nameof(PoiDetailPage), true,
+                new Dictionary<string, object> { ["poi"] = poi });
         }
     }
-
-    private async void OpenMap(object sender, EventArgs e)
-        => await Shell.Current.GoToAsync("//MapPage");
-
-    private async void OpenQR(object sender, EventArgs e)
-        => await Shell.Current.GoToAsync("//QrScannerPage");
-
-    private async void OpenSettings(object sender, EventArgs e)
-        => await Shell.Current.GoToAsync("//SettingsPage");
 }
