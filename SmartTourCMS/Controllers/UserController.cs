@@ -19,47 +19,78 @@ namespace SmartTourCMS.Controllers
         }
 
         // --- 1. DANH SÁCH NGƯỜI DÙNG ---
+        // --- 1. DANH SÁCH NGƯỜI DÙNG (Bản nâng cấp) ---
         public async Task<IActionResult> Index()
         {
             var users = await _userManager.Users.ToListAsync();
-            return View(users);
+            var userRolesList = new List<UserWithRoleViewModel>();
+
+            // Lặp qua từng ông để kiểm tra xem đang cầm thẻ bài gì
+            foreach (var user in users)
+            {
+                // Lôi thẻ bài (Role) của ông này ra
+                var roles = await _userManager.GetRolesAsync(user);
+
+                // Kiểm tra xem ông này có đang bị khóa tài khoản không
+                var isLocked = user.LockoutEnd != null && user.LockoutEnd > DateTimeOffset.UtcNow;
+
+                userRolesList.Add(new UserWithRoleViewModel
+                {
+                    Id = user.Id,
+                    UserName = user.UserName,
+                    Email = user.Email,
+                    IsLockedOut = isLocked,
+                    Roles = roles
+                });
+            }
+
+            return View(userRolesList);
+        }
+        // --- 2. TẠO VENDOR MỚI (GET) ---
+        // --- 2. TẠO TÀI KHOẢN MỚI ĐA NĂNG (GET) ---
+        [HttpGet]
+        public IActionResult CreateVendor() // (Bác có thể đổi tên hàm thành CreateUser)
+        {
+            // Truyền danh sách các chức vụ ra ngoài View
+            ViewBag.Roles = new List<string> { "Admin", "Vendor", "User" };
+            return View();
         }
 
-        // --- 2. TẠO VENDOR MỚI (GET) ---
-        [HttpGet]
-        public IActionResult CreateVendor() => View();
-
-        // --- 3. TẠO VENDOR MỚI (POST) ---
+        // --- 3. TẠO TÀI KHOẢN MỚI ĐA NĂNG (POST) ---
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> CreateVendor(CreateVendorViewModel model)
         {
-            if (!ModelState.IsValid) return View(model);
+            if (!ModelState.IsValid)
+            {
+                ViewBag.Roles = new List<string> { "Admin", "Vendor", "User" }; // Lỗi thì vẫn phải truyền lại danh sách Role
+                return View(model);
+            }
 
             var user = new IdentityUser
             {
                 UserName = model.Email,
                 Email = model.Email,
-                EmailConfirmed = true // Mặc định cho phép login luôn, khỏi bắt xác thực email lằng nhằng
+                EmailConfirmed = true
             };
 
             var result = await _userManager.CreateAsync(user, model.Password);
 
             if (result.Succeeded)
             {
-                // MA THUẬT PHÂN QUYỀN (ĐÃ ĐƯỢC MỞ KHÓA)
-                if (!await _roleManager.RoleExistsAsync("Vendor"))
+                // KIỂM TRA VÀ GẮN ĐÚNG CÁI THẺ BÀI MÀ ADMIN ĐÃ CHỌN
+                if (!string.IsNullOrEmpty(model.Role))
                 {
-                    await _roleManager.CreateAsync(new IdentityRole("Vendor"));
+                    if (!await _roleManager.RoleExistsAsync(model.Role))
+                    {
+                        await _roleManager.CreateAsync(new IdentityRole(model.Role));
+                    }
+                    await _userManager.AddToRoleAsync(user, model.Role);
                 }
 
-                // Gắn thẻ ngành "Vendor" cho thanh niên này
-                await _userManager.AddToRoleAsync(user, "Vendor");
-
-                // Bật tính năng cho phép khóa tài khoản
                 await _userManager.SetLockoutEnabledAsync(user, true);
 
-                TempData["Success"] = "Đã tạo tài khoản Vendor thành công!";
+                TempData["Success"] = $"Đã tạo tài khoản {model.Role} thành công!";
                 return RedirectToAction("Index");
             }
 
@@ -68,6 +99,7 @@ namespace SmartTourCMS.Controllers
                 ModelState.AddModelError(string.Empty, error.Description);
             }
 
+            ViewBag.Roles = new List<string> { "Admin", "Vendor", "User" };
             return View(model);
         }
 

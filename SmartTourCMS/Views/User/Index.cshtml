@@ -15,7 +15,9 @@
                         <tr>
                             <th class="ps-4 py-3">Email / Username</th>
                             <th class="text-center py-3">Trạng thái</th>
+                            <th class="text-center py-3">Vai trò</th>
                             <th class="text-center py-3">Thao tác</th>
+
                         </tr>
                     </thead>
                     <tbody>
@@ -27,7 +29,7 @@
                                     <td class="ps-4 fw-semibold text-secondary">@user.Email</td>
                                     
                                     <td class="text-center">
-                                        @if (user.LockoutEnd != null && user.LockoutEnd > DateTime.Now)
+                                        @if (user.IsLockedOut)
                                         {
                                             <span class="badge rounded-pill bg-danger px-3 py-2 shadow-sm">
                                                 <i class="fas fa-lock me-1"></i> Đang bị khóa
@@ -40,15 +42,30 @@
                                             </span>
                                         }
                                     </td>
-                                    
+
+                                    <td>
+                                        @if (user.Roles.Contains("Admin"))
+                                        {
+                                            <span class="badge bg-danger">Trùm cuối (Admin)</span>
+                                        }
+                                        else if (user.Roles.Contains("Vendor"))
+                                        {
+                                            <span class="badge bg-success">Chủ quán (Vendor)</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary">Khách hàng (User)</span>
+                                        }
+                                    </td>
+
                                     <td>
                                         <div class="d-flex justify-content-center gap-2">
                                             <form asp-action="ToggleLock" asp-route-id="@user.Id" method="post" class="m-0">
-                                                <button type="submit" class="btn btn-sm @(user.LockoutEnd > DateTime.Now ? "btn-outline-success" : "btn-outline-danger") fw-bold">
-                                                    @(user.LockoutEnd > DateTime.Now ? "Mở khóa" : "Khóa tài khoản")
+                                                <button type="submit" class="btn btn-sm @(user.IsLockedOut ? "btn-outline-success" : "btn-outline-danger") fw-bold">
+                                                    @(user.IsLockedOut ? "Mở khóa" : "Khóa tài khoản")
                                                 </button>
                                             </form>
-                                            
+
                                             <a asp-controller="User" asp-action="ResetPassword" asp-route-id="@user.Id" class="btn btn-info btn-sm text-white fw-bold">
                                                 <i class="fas fa-key me-1"></i> Đổi mật khẩu
                                             </a>
