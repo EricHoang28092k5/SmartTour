@@ -1,13 +1,13 @@
 ﻿using SmartTour.Services;
 using SmartTour.Shared.Models;
 using SmartTourApp.Data;
+using SmartTourApp.Services;
 using static SmartTour.Services.ApiService;
-
-namespace SmartTourApp.Services;
 
 public class NarrationEngine
 {
     private readonly TtsService tts;
+    private readonly AudioService audio;
     private readonly Database db;
     private readonly ApiService api;
     private readonly LanguageService lang;
@@ -15,19 +15,22 @@ public class NarrationEngine
     private readonly Dictionary<int, List<TtsDto>> ttsCache = new();
     private readonly Dictionary<int, DateTime> history = new();
 
-    private readonly Queue<Poi> queue = new();
+    private readonly object lockObj = new();
 
-    private readonly object queueLock = new(); // 🔥 NEW
+    private CancellationTokenSource? cts;
+    private Poi? currentPoi;
 
-    private bool isPlaying;
+    private const int COOLDOWN_MINUTES = 10;
 
     public NarrationEngine(
         TtsService tts,
+        AudioService audio,
         Database db,
         ApiService api,
         LanguageService lang)
     {
         this.tts = tts;
+        this.audio = audio;
         this.db = db;
         this.api = api;
         this.lang = lang;
@@ -38,75 +41,48 @@ public class NarrationEngine
         if (poi == null)
             return;
 
-        if (history.ContainsKey(poi.Id))
-        {
-            if ((DateTime.Now - history[poi.Id]).TotalMinutes < 10)
-                return;
-        }
+        // cooldown
+        if (history.ContainsKey(poi.Id) &&
+            (DateTime.Now - history[poi.Id]).TotalMinutes < COOLDOWN_MINUTES)
+            return;
 
-        lock (queueLock)
+        lock (lockObj)
         {
-            queue.Enqueue(poi);
-
-            if (isPlaying)
+            // 🔥 interrupt nếu priority cao hơn
+            if (currentPoi != null && currentPoi.Priority > poi.Priority)
                 return;
 
-            isPlaying = true;
+            cts?.Cancel();
+            cts = new CancellationTokenSource();
+            currentPoi = poi;
         }
 
-        _ = ProcessQueue(location); // 🔥 không await
-    }
+        var token = cts.Token;
 
-    private async Task ProcessQueue(Location location)
-    {
-        while (true)
+        try
         {
-            Poi? poi;
+            var scripts = await GetScripts(poi);
 
-            lock (queueLock)
-            {
-                if (queue.Count == 0)
-                {
-                    isPlaying = false;
-                    return;
-                }
+            var selected = SelectLang(scripts);
+            if (selected == null)
+                return;
 
-                poi = queue.Dequeue();
-            }
+            bool played = false;
 
-            List<TtsDto> scripts;
-
-            if (!ttsCache.ContainsKey(poi.Id))
+            // 🔥 audio first + fallback
+            if (!string.IsNullOrWhiteSpace(poi.AudioUrl))
             {
                 try
                 {
-                    scripts = await api.GetTtsScripts(poi.Id);
-                    ttsCache[poi.Id] = scripts ?? new List<TtsDto>();
+                    await audio.Play(poi.AudioUrl, token);
+                    played = true;
                 }
-                catch
-                {
-                    scripts = new List<TtsDto>();
-                    ttsCache[poi.Id] = scripts;
-                }
-            }
-            else
-            {
-                scripts = ttsCache[poi.Id];
+                catch { }
             }
 
-            if (scripts == null || scripts.Count == 0)
-                continue;
-
-            var currentLang = lang.Current;
-
-            var selected = scripts
-                .FirstOrDefault(x => x.LanguageCode.StartsWith(currentLang))
-                ?? scripts.FirstOrDefault(x => x.LanguageCode.StartsWith("en"))
-                ?? scripts.FirstOrDefault();
-
-            if (selected != null && !string.IsNullOrWhiteSpace(selected.TtsScript))
+            if (!played && !string.IsNullOrWhiteSpace(selected.TtsScript))
             {
-                await tts.Speak(selected.TtsScript, selected.LanguageCode);
+                await tts.Speak(selected.TtsScript, selected.LanguageCode, token);
             }
 
             history[poi.Id] = DateTime.Now;
@@ -119,5 +95,44 @@ public class NarrationEngine
                 Lng = location.Longitude
             });
         }
+        catch (OperationCanceledException)
+        {
+            // bị interrupt
+        }
+    }
+
+    public void Stop()
+    {
+        cts?.Cancel();
+        audio.Stop();
+        tts.Stop();
+    }
+
+    private async Task<List<TtsDto>> GetScripts(Poi poi)
+    {
+        if (!ttsCache.ContainsKey(poi.Id))
+        {
+            try
+            {
+                var scripts = await api.GetTtsScripts(poi.Id);
+                ttsCache[poi.Id] = scripts ?? new();
+            }
+            catch
+            {
+                ttsCache[poi.Id] = new();
+            }
+        }
+
+        return ttsCache[poi.Id];
+    }
+
+    private TtsDto? SelectLang(List<TtsDto> scripts)
+    {
+        var currentLang = lang.Current;
+
+        return scripts
+            .FirstOrDefault(x => x.LanguageCode.StartsWith(currentLang))
+            ?? scripts.FirstOrDefault(x => x.LanguageCode.StartsWith("en"))
+            ?? scripts.FirstOrDefault();
     }
 }

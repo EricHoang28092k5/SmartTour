@@ -28,4 +28,13 @@ public partial class App : Application
 
         return new Window(loadingPage);
     }
+    protected override void OnSleep()
+    {
+        base.OnSleep();
+
+        var narration = Current?.Handler?.MauiContext?.Services
+            .GetService<NarrationEngine>();
+
+        narration?.Stop();
+    }
 }

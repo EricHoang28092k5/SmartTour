@@ -18,11 +18,13 @@ namespace SmartTourApp.Services
         private readonly SemaphoreSlim cacheLock = new(1, 1);
 
         private readonly TimeSpan cacheTTL = TimeSpan.FromMinutes(5);
+        private readonly AudioService audio;
 
-        public PoiRepository(Database db, ApiService api)
+        public PoiRepository(Database db, ApiService api, AudioService audio)
         {
             this.db = db;
             this.api = api;
+            this.audio = audio;
         }
 
         // ======================
@@ -75,7 +77,27 @@ namespace SmartTourApp.Services
                     // 🔥 background sync xuống local DB
                     _ = Task.Run(async () =>
                     {
-                        await SafeBackgroundSync(server);
+                        try
+                        {
+                            var urls = new List<string>();
+
+                            foreach (var poi in cachedPois.Take(5)) // 🔥 chỉ preload gần nhất
+                            {
+                                var scripts = await api.GetTtsScripts(poi.Id);
+
+                                foreach (var s in scripts)
+                                {
+                                    if (!string.IsNullOrWhiteSpace(s.TtsScript) &&
+                                        s.TtsScript.StartsWith("http"))
+                                    {
+                                        urls.Add(s.TtsScript);
+                                    }
+                                }
+                            }
+
+                            await audio.Preload(urls);
+                        }
+                        catch { }
                     });
 
                     return cachedPois;

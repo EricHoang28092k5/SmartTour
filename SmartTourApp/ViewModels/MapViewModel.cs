@@ -19,6 +19,7 @@ public class MapViewModel
 
     public MemoryLayer UserLayer = new();
     public MemoryLayer PoiLayer = new();
+    public MemoryLayer HeatLayer = new();
 
     private PointFeature? userFeature;
     private PointFeature? pulseFeature;
@@ -217,5 +218,36 @@ public class MapViewModel
         }
 
         PoiLayer.DataHasChanged();
+    }
+    public void LoadHeatMap(Map map, List<UserLocationLog> logs)
+    {
+        var features = new List<PointFeature>();
+
+        foreach (var l in logs)
+        {
+            var spherical = SphericalMercator.FromLonLat(
+                (double)l.Longitude,
+                (double)l.Latitude);
+
+            var f = new PointFeature(new MPoint(spherical.x, spherical.y))
+            {
+                Styles =
+            {
+                new SymbolStyle
+                {
+                    SymbolScale = 0.6,
+                    Fill = new Brush(new Color(255, 0, 0, 80))
+                }
+            }
+            };
+
+            features.Add(f);
+        }
+
+        HeatLayer.Features = features;
+        HeatLayer.DataHasChanged();
+
+        if (!map.Layers.Contains(HeatLayer))
+            map.Layers.Add(HeatLayer);
     }
 }

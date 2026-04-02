@@ -4,10 +4,18 @@ namespace SmartTourApp.Services;
 
 public class TtsService
 {
-    public async Task Speak(string text, string lang = "vi")
+    private CancellationTokenSource? internalCts;
+
+    public async Task Speak(string text, string lang = "vi", CancellationToken externalToken = default)
     {
         if (string.IsNullOrWhiteSpace(text))
             return;
+
+        // 🔥 cancel cái đang nói
+        internalCts?.Cancel();
+
+        internalCts = CancellationTokenSource.CreateLinkedTokenSource(externalToken);
+        var token = internalCts.Token;
 
         var locales = await TextToSpeech.Default.GetLocalesAsync();
 
@@ -16,7 +24,6 @@ public class TtsService
         var locale = locales.FirstOrDefault(x =>
             x.Language.StartsWith(targetLang, StringComparison.OrdinalIgnoreCase));
 
-        // 🔥 fallback nếu không có locale
         if (locale == null)
         {
             locale = locales.FirstOrDefault(x =>
@@ -30,7 +37,19 @@ public class TtsService
             Volume = 1.0f
         };
 
-        await TextToSpeech.Default.SpeakAsync(text, options);
+        try
+        {
+            await TextToSpeech.Default.SpeakAsync(text, options, token);
+        }
+        catch (OperationCanceledException)
+        {
+            // bị interrupt → OK
+        }
+    }
+
+    public void Stop()
+    {
+        internalCts?.Cancel();
     }
 
     private string MapLang(string code)

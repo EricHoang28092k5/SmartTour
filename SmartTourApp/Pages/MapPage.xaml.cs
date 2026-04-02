@@ -5,6 +5,7 @@ using Mapsui.Tiling;
 using Mapsui.Tiling.Layers;
 using Microsoft.Maui.Devices.Sensors;
 using SmartTour.Shared.Models;
+using SmartTourApp.Data;
 using SmartTourApp.Services;
 using SmartTourApp.ViewModels;
 using System.Linq;
@@ -93,6 +94,14 @@ public partial class MapPage : ContentPage
     {
         try
         {
+            var db = Application.Current?.Handler?.MauiContext?.Services
+                .GetService<Database>();
+
+            if (db != null)
+            {
+                var logs = db.GetLocations();
+                vm.LoadHeatMap(TourMap.Map, logs);
+            }
             if (TourMap.Map == null)
             {
                 var map = new Mapsui.Map();

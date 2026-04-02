@@ -1,13 +1,5 @@
-﻿#if ANDROID
-using Android.Content;
-using Android.App;
-using SmartTourApp.Platforms.Android;
-#endif
-
-using Microsoft.Maui.Devices.Sensors;
-using SmartTour.Shared.Models;
-
-namespace SmartTourApp.Services;
+﻿using SmartTour.Shared.Models;
+using SmartTourApp.Services;
 
 public class TrackingService
 {
@@ -17,8 +9,11 @@ public class TrackingService
     private readonly PoiRepository repo;
     private readonly LocationLogger logger;
 
-    private bool isRunning = false;
+    private CancellationTokenSource? cts;
+
     private List<Poi> pois = new();
+    private Location? lastLocation;
+    private int interval = 7;
 
     public event Action<Location>? OnLocationChanged;
 
@@ -38,68 +33,77 @@ public class TrackingService
 
     public async Task Start()
     {
-        if (isRunning) return;
+        if (cts != null) return;
 
-        isRunning = true;
+        cts = new CancellationTokenSource();
+        var token = cts.Token;
 
         pois = await repo.GetPois();
 
-#if ANDROID
-        StartForegroundService();
-#endif
-
         _ = Task.Run(async () =>
         {
-            var timer = new PeriodicTimer(TimeSpan.FromSeconds(7));
-
-            try
+            while (!token.IsCancellationRequested)
             {
-                while (isRunning && await timer.WaitForNextTickAsync())
+                try
                 {
                     var loc = await location.GetLocation();
 
-                    if (loc == null) continue;
+                    if (loc == null)
+                    {
+                        await Task.Delay(5000, token);
+                        continue;
+                    }
 
                     logger.Log(loc);
-
                     OnLocationChanged?.Invoke(loc);
+
+                    AdjustInterval(loc);
 
                     var poi = geo.FindBestPoi(loc, pois);
 
                     if (poi != null)
                         await narration.Play(poi, loc);
+
+                    await Task.Delay(interval * 1000, token);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine("Tracking error: " + ex.Message);
                 }
             }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine("Tracking error: " + ex.Message);
-            }
-        });
+        }, token);
     }
-
-#if ANDROID
-    private void StartForegroundService()
-    {
-        try
-        {
-            var context = Android.App.Application.Context;
-
-            var intent = new Intent(context, typeof(TrackingForegroundService));
-
-            if (OperatingSystem.IsAndroidVersionAtLeast(26))
-                context.StartForegroundService(intent);
-            else
-                context.StartService(intent);
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine("Start service error: " + ex.Message);
-        }
-    }
-#endif
 
     public void Stop()
     {
-        isRunning = false;
+        cts?.Cancel();
+        cts = null;
+    }
+
+    private void AdjustInterval(Location loc)
+    {
+        if (lastLocation == null)
+        {
+            lastLocation = loc;
+            return;
+        }
+
+        var dist = Location.CalculateDistance(
+            lastLocation,
+            loc,
+            DistanceUnits.Kilometers);
+
+        if (dist < 0.01)
+            interval = 15;
+        else if (dist < 0.05)
+            interval = 10;
+        else
+            interval = 5;
+
+        lastLocation = loc;
     }
 }
