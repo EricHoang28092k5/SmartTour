@@ -1,0 +1,41 @@
+﻿@model IEnumerable<SmartTour.Shared.Models.Category>
+
+<div class="d-flex justify-content-between align-items-center mb-4 mt-3">
+    <h2 class="fw-bold text-primary"><i class="fa-solid fa-layer-group"></i> Quản lý Phân loại Địa điểm</h2>
+    <a asp-action="Create" class="btn btn-primary fw-bold">
+        <i class="fa-solid fa-plus"></i> Thêm Danh mục mới
+    </a>
+</div>
+
+<div class="card shadow-sm border-0">
+    <div class="card-body p-0">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-dark">
+                <tr>
+                    <th class="ps-3">Icon</th>
+                    <th>Tên Danh mục</th>
+                    <th>Mô tả</th>
+                    <th>Màu Ghim (Map)</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in Model)
+                {
+                    <tr>
+                        <td class="ps-3">
+                            @if (!string.IsNullOrEmpty(item.IconUrl))
+                            {
+                                <img src="@item.IconUrl" alt="icon" style="width: 40px; height: 40px; object-fit: contain;" />
+                            }
+                        </td>
+                        <td class="fw-bold">@item.Name</td>
+                        <td>@item.Description</td>
+                        <td>
+                            <span class="badge" style="background-color: @item.ColorCode; color: white;">@item.ColorCode</span>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

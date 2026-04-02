@@ -1,37 +1,133 @@
 ﻿@model SmartTour.Shared.Models.Tour
 
+@{
+    ViewData["Title"] = "Tạo Hành Trình Mới";
+}
+
 <div class="container mt-4">
-    <h2>➕ Tạo Hành Trình Mới</h2>
+    <div class="d-flex align-items-center mb-3">
+        <h2 class="text-primary mb-0"><i class="fa-solid fa-route"></i> Tạo Hành Trình Mới</h2>
+    </div>
     <hr />
+
     <form asp-action="Create" method="post">
+        <div id="hiddenInputsContainer"></div>
+
         <div class="row">
+            
             <div class="col-md-5">
-                <div class="mb-3">
-                    <label class="form-label">Tên Tour</label>
-                    <input asp-for="Name" class="form-control" placeholder="Ví dụ: Tour Di Tích Quận 1" required />
+                <div class="card shadow-sm border-0 mb-4">
+                    <div class="card-body">
+                        <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+                        <div class="mb-3">
+                            <label asp-for="Name" class="form-label fw-bold">Tên Tour <span class="text-danger">*</span></label>
+                            <input asp-for="Name" class="form-control" placeholder="Ví dụ: Tour Di Tích Trấn Biên..." required />
+                            <span asp-validation-for="Name" class="text-danger small"></span>
+                        </div>
+
+                        <div class="mb-4">
+                            <label asp-for="Description" class="form-label fw-bold">Mô tả chi tiết</label>
+                            <textarea asp-for="Description" class="form-control" rows="5" placeholder="Nhập giới thiệu về hành trình này..."></textarea>
+                            <span asp-validation-for="Description" class="text-danger small"></span>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100 fw-bold shadow">
+                            <i class="fa-solid fa-floppy-disk"></i> Lưu Hành Trình
+                        </button>
+                        <a asp-action="Index" class="btn btn-light border w-100 mt-2 text-decoration-none text-muted">
+                            <i class="fa-solid fa-arrow-left"></i> Quay lại danh sách
+                        </a>
+                    </div>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label">Mô tả</label>
-                    <textarea asp-for="Description" class="form-control" rows="4"></textarea>
-                </div>
-                <button type="submit" class="btn btn-primary w-100">Lưu Hành Trình</button>
             </div>
 
             <div class="col-md-7">
-                <label class="form-label">Chọn các địa điểm vào Tour:</label>
-                <div class="card p-3" style="max-height: 400px; overflow-y: auto;">
-                    @foreach (var poi in ViewBag.Pois)
-                    {
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="checkbox" name="selectedPoiIds" value="@poi.Id" id="poi_@poi.Id">
-                            <label class="form-check-label" for="poi_@poi.Id">
-                                <strong>@poi.Name</strong> <br />
-                                <small class="text-muted">@poi.Lat, @poi.Lng</small>
-                            </label>
+                <div class="card shadow-sm border-0">
+                    <div class="card-header bg-white pb-0 border-0">
+                        <label class="form-label fw-bold text-success">
+                            <i class="fa-solid fa-map-location-dot"></i> Chọn các địa điểm vào Tour:
+                        </label>
+                        <div class="input-group input-group-sm mb-2">
+                            <span class="input-group-text bg-white"><i class="fa-solid fa-magnifying-glass"></i></span>
+                            <input type="text" id="searchPoi" class="form-control" placeholder="Tìm nhanh tên địa điểm...">
                         </div>
-                    }
+                    </div>
+
+                    <div class="card-body pt-2">
+                        <div class="p-2 bg-light border rounded" style="max-height: 450px; overflow-y: auto;" id="poiList">
+                            
+                            @if (ViewBag.Pois != null)
+                            {
+                                foreach (var poi in ViewBag.Pois)
+                                {
+                                    <div class="form-check custom-checkbox mb-3 poi-item bg-white p-2 border rounded shadow-sm d-flex align-items-center">
+                                        <input class="form-check-input mx-2 chk-poi" type="checkbox" value="@poi.Id" id="poi_@poi.Id" style="transform: scale(1.3); cursor: pointer;">
+                                        <label class="form-check-label w-100 m-0" for="poi_@poi.Id" style="cursor: pointer;">
+                                            <span class="fw-bold text-dark">@poi.Name</span> <br />
+                                            <small class="text-muted"><i class="fa-solid fa-location-dot text-danger"></i> Tọa độ: @poi.Lat, @poi.Lng</small>
+                                        </label>
+                                    </div>
+                                }
+                            }
+                            else
+                            {
+                                <div class="alert alert-warning text-center">
+                                    <i class="fa-solid fa-triangle-exclamation"></i> Chưa có địa điểm nào trong hệ thống! Hãy thêm Điểm đến trước.
+                                </div>
+                            }
+
+                        </div>
+                    </div>
                 </div>
             </div>
+
         </div>
     </form>
 </div>
+
+@section Scripts {
+    <script>
+        // 1. Tính năng lọc/tìm kiếm nhanh
+        document.getElementById('searchPoi').addEventListener('keyup', function() {
+            let filter = this.value.toLowerCase();
+            let items = document.querySelectorAll('.poi-item');
+
+            items.forEach(function(item) {
+                let text = item.innerText.toLowerCase();
+                if (text.includes(filter)) {
+                    item.style.display = ''; // Hiện nếu có chứa chữ
+                } else {
+                    item.style.display = 'none'; // Ẩn đi nếu không khớp
+                }
+            });
+        });
+
+        // 2. TÍNH NĂNG NHỚ THỨ TỰ CLICK ĐỂ SẮP XẾP LỘ TRÌNH (ORDER INDEX)
+        let selectedOrder = [];
+        
+        document.querySelectorAll('.chk-poi').forEach(chk => {
+            chk.addEventListener('change', function() {
+                let id = this.value;
+                
+                if (this.checked) {
+                    selectedOrder.push(id); // Nếu tích chọn -> Nhét vào cuối mảng
+                } else {
+                    selectedOrder = selectedOrder.filter(item => item !== id); // Bỏ tích -> Xóa khỏi mảng
+                }
+                
+                // Cập nhật lại thùng chứa vô hình mỗi lần click
+                let container = document.getElementById('hiddenInputsContainer');
+                container.innerHTML = '';
+                
+                selectedOrder.forEach(poiId => {
+                    // C# sẽ đọc cái này và gom vào rổ SelectedPoiIds theo đúng thứ tự mảng JS
+                    container.innerHTML += `<input type="hidden" name="SelectedPoiIds" value="${poiId}" />`;
+                });
+            });
+        });
+    </script>
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+}

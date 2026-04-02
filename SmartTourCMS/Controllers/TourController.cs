@@ -41,40 +41,51 @@ namespace SmartTourCMS.Controllers
 
         // 2. Trang Tạo mới (GET)
         [HttpGet]
-        public async Task<IActionResult> Create()
+        public IActionResult Create()
         {
-            ViewBag.Pois = await _context.Pois.ToListAsync();
+            // Lôi toàn bộ danh sách POI dưới Database lên
+            // Bác nhớ using Microsoft.EntityFrameworkCore; nếu nó báo đỏ hàm ToList() nhé
+            ViewBag.Pois = _context.Pois.ToList();
+
             return View();
         }
 
         // 3. Logic Tạo mới (POST)
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Create(Tour tour, int[] selectedPoiIds)
+        [HttpPost]
+        public async Task<IActionResult> Create(Tour tour)
         {
-            var currentUser = await _userManager.GetUserAsync(User);
-            if (currentUser != null)
-            {
-                tour.VendorId = currentUser.Id; // Gán chủ sở hữu
-            }
-
             if (ModelState.IsValid)
             {
+                // 1. Lưu Tour xuống để lấy ID trước
                 _context.Tours.Add(tour);
                 await _context.SaveChangesAsync();
 
-                if (selectedPoiIds != null)
+                // 2. Lấy đống ID trong cái rổ ráp vào bảng TourPoi của bác
+                if (tour.SelectedPoiIds != null && tour.SelectedPoiIds.Any())
                 {
-                    int order = 1;
-                    foreach (var poiId in selectedPoiIds)
+                    int stt = 1; // Biến đếm để xài cho cột OrderIndex
+
+                    foreach (var poiId in tour.SelectedPoiIds)
                     {
-                        _context.TourPois.Add(new TourPoi { TourId = tour.Id, PoiId = poiId, OrderIndex = order++ });
+                        var tourPoi = new TourPoi
+                        {
+                            TourId = tour.Id,
+                            PoiId = poiId,
+                            OrderIndex = stt // Ơn giời, tận dụng luôn cột OrderIndex của bác để sắp xếp!
+                        };
+
+                        _context.TourPois.Add(tourPoi);
+                        stt++; // Tăng số thứ tự lên (1, 2, 3...)
                     }
+
                     await _context.SaveChangesAsync();
                 }
+
+                TempData["success"] = "Tạo Tour thành công!";
                 return RedirectToAction(nameof(Index));
             }
-            ViewBag.Pois = await _context.Pois.ToListAsync();
             return View(tour);
         }
 
@@ -84,11 +95,13 @@ namespace SmartTourCMS.Controllers
             if (id == null) return NotFound();
 
             var tour = await _context.Tours
+                // BÙA CHÚ: Ép nó sắp xếp tăng dần theo cột OrderIndex (1, 2, 3...)
                 .Include(t => t.TourPois.OrderBy(tp => tp.OrderIndex))
-                .ThenInclude(tp => tp.Poi)
+                    .ThenInclude(tp => tp.Poi)
                 .FirstOrDefaultAsync(m => m.Id == id);
 
             if (tour == null) return NotFound();
+
             return View(tour);
         }
 

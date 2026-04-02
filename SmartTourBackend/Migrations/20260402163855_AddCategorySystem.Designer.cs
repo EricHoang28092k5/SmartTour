@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using SmartTourBackend.Data;
@@ -11,9 +12,11 @@ using SmartTourBackend.Data;
 namespace SmartTourBackend.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260402163855_AddCategorySystem")]
+    partial class AddCategorySystem
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -274,32 +277,6 @@ namespace SmartTourBackend.Migrations
                     b.ToTable("AudioFiles");
                 });
 
-            modelBuilder.Entity("SmartTour.Shared.Models.Category", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("ColorCode")
-                        .HasColumnType("text");
-
-                    b.Property<string>("Description")
-                        .HasColumnType("text");
-
-                    b.Property<string>("IconUrl")
-                        .HasColumnType("text");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("Category");
-                });
-
             modelBuilder.Entity("SmartTour.Shared.Models.Food", b =>
                 {
                     b.Property<int>("Id")
@@ -426,9 +403,6 @@ namespace SmartTourBackend.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<int?>("CategoryId")
-                        .HasColumnType("integer");
-
                     b.Property<TimeSpan?>("CloseTime")
                         .HasColumnType("interval");
 
@@ -478,8 +452,6 @@ namespace SmartTourBackend.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("CategoryId");
 
                     b.ToTable("Pois");
                 });
@@ -726,15 +698,6 @@ namespace SmartTourBackend.Migrations
                     b.Navigation("Poi");
                 });
 
-            modelBuilder.Entity("SmartTour.Shared.Models.Poi", b =>
-                {
-                    b.HasOne("SmartTour.Shared.Models.Category", "Category")
-                        .WithMany("Pois")
-                        .HasForeignKey("CategoryId");
-
-                    b.Navigation("Category");
-                });
-
             modelBuilder.Entity("SmartTour.Shared.Models.PoiImage", b =>
                 {
                     b.HasOne("SmartTour.Shared.Models.Poi", "Poi")
@@ -782,11 +745,6 @@ namespace SmartTourBackend.Migrations
                     b.Navigation("Poi");
 
                     b.Navigation("Tour");
-                });
-
-            modelBuilder.Entity("SmartTour.Shared.Models.Category", b =>
-                {
-                    b.Navigation("Pois");
                 });
 
             modelBuilder.Entity("SmartTour.Shared.Models.Poi", b =>

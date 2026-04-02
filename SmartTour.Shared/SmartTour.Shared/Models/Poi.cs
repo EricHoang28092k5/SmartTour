@@ -50,4 +50,7 @@ public class Poi
     public object? GeoLocation { get; set; }
     public TimeSpan? OpenTime { get; set; }
     public TimeSpan? CloseTime { get; set; }
+    public int? CategoryId { get; set; }
+
+    public Category? Category { get; set; }
 }
