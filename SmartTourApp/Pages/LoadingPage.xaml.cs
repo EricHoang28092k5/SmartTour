@@ -7,51 +7,117 @@ public partial class LoadingPage : ContentPage
 {
     private readonly PoiRepository repo;
     private readonly TrackingService tracking;
+
     private double progress = 0;
+
+    // 🔥 quản lý animation lifecycle
+    private CancellationTokenSource? animationCts;
 
     public LoadingPage(PoiRepository repo, TrackingService tracking)
     {
         InitializeComponent();
         this.repo = repo;
         this.tracking = tracking;
-
-        StartLogoAnimation();
-        StartShineAnimation();
-        StartBackgroundAnimation();
     }
 
     protected override async void OnAppearing()
     {
         base.OnAppearing();
 
+        // 🔥 kill animation cũ
+        animationCts?.Cancel();
+        animationCts = new CancellationTokenSource();
+
+        ResetUI();
+
+        StartLogoAnimation(animationCts.Token);
+        StartShineAnimation(animationCts.Token);
+        StartBackgroundAnimation(animationCts.Token);
+
+        await InitAsync();
+    }
+
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+
+        // 🔥 cực quan trọng để tránh UI bug
+        animationCts?.Cancel();
+    }
+
+    private async Task InitAsync()
+    {
         try
         {
-            double step = 0.25;
+            var services = Application.Current?.Handler?.MauiContext?.Services;
 
-            // ✅ chạy preload song song (KHÔNG block UI)
-            var loadPoiTask = Task.Run(() => repo.GetPois());
+            var narration = services?.GetService<NarrationEngine>();
+            var locationService = services?.GetService<LocationService>();
+            var geo = services?.GetService<GeofencingEngine>();
 
-            // 1️⃣ Load POI (UI fake nhưng data chạy thật)
-            await UpdateStatusAsync("Đang tải POI...", step);
+            narration?.Reset();
+            tracking.Stop();
 
-            // ✅ đảm bảo data load xong trước khi qua bước tiếp
-            await loadPoiTask;
+            await UpdateStatusAsync("Đang tải POI...", 0.25);
 
-            // 2️⃣ Preload TTS
-            await UpdateStatusAsync("Khởi tạo TTS...", step * 2);
+            var pois = await repo.GetPois();
 
-            // 3️⃣ Start Tracking (lúc này POI đã có cache → nhanh)
+            await UpdateStatusAsync("Khởi tạo TTS...", 0.5);
+
             StatusLabel.Text = "Khởi tạo Tracking...";
-            await Task.Run(() => tracking.Start());
-            await AnimateProgressTo(step * 3);
+            await Task.Delay(300);
 
-            // 4️⃣ Complete
+            await tracking.Start();
+
+            // 🔥 AUTO PLAY CHUẨN
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    if (locationService == null || geo == null || narration == null)
+                        return;
+
+                    Location? loc = null;
+
+                    // 🔥 retry GPS
+                    for (int i = 0; i < 5; i++)
+                    {
+                        loc = await locationService.GetLocation();
+
+                        if (loc != null)
+                            break;
+
+                        await Task.Delay(1500);
+                    }
+
+                    if (loc == null) return;
+
+                    var poi = geo.FindBestPoi(loc, pois);
+
+                    if (poi != null)
+                    {
+                        System.Diagnostics.Debug.WriteLine("🔥 AUTO PLAY: " + poi.Name);
+
+                        // 🔥 đảm bảo phát luôn
+                        await narration.PlayManual(poi, loc);
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine("❌ No POI in radius");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine("Auto play error: " + ex.Message);
+                }
+            });
+
+            await AnimateProgressTo(0.75);
             await UpdateStatusAsync("Hoàn tất!", 1.0);
 
             await this.FadeToAsync(0, 400);
 
-            if (Application.Current?.Windows.Count > 0)
-                Application.Current.Windows[0].Page = new AppShell();
+            Application.Current!.MainPage = new AppShell();
         }
         catch (Exception ex)
         {
@@ -71,43 +137,83 @@ public partial class LoadingPage : ContentPage
         while (progress < target)
         {
             progress += 0.01;
+
             await MainThread.InvokeOnMainThreadAsync(() =>
             {
                 ProgressBarContainer.WidthRequest = 300 * progress;
             });
+
             await Task.Delay(20);
         }
     }
 
-    private async void StartLogoAnimation()
-    {
-        while (true)
-        {
-            await Task.WhenAll(
-                LogoBorder.ScaleToAsync(1.0, 600, Easing.SinInOut),
-                LogoBorder.RotateToAsync(360, 2000, Easing.Linear)
-            );
+    // =========================
+    // 🔥 ANIMATION (ANTI BUG)
+    // =========================
 
-            LogoBorder.Rotation = 0;
-            await LogoBorder.ScaleToAsync(0.9, 600, Easing.SinInOut);
+    private async void StartLogoAnimation(CancellationToken token)
+    {
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                LogoBorder.Rotation = 0;
+
+                await Task.WhenAll(
+                    LogoBorder.ScaleToAsync(1.0, 600, Easing.SinInOut),
+                    LogoBorder.RotateToAsync(360, 2000, Easing.Linear)
+                );
+
+                // 🔥 reset transform tránh lệch UI
+                LogoBorder.Rotation = 0;
+                LogoBorder.TranslationX = 0;
+                LogoBorder.TranslationY = 0;
+
+                await LogoBorder.ScaleToAsync(0.9, 600, Easing.SinInOut);
+            }
         }
+        catch (TaskCanceledException) { }
     }
 
-    private void StartShineAnimation()
+    private void StartShineAnimation(CancellationToken token)
     {
-        this.Dispatcher.StartTimer(TimeSpan.FromMilliseconds(30), () =>
+        Dispatcher.StartTimer(TimeSpan.FromMilliseconds(30), () =>
         {
+            if (token.IsCancellationRequested) return false;
+
             double offset = (DateTime.Now.TimeOfDay.TotalMilliseconds % 1500) / 1500.0;
             ShineBox.TranslationX = 300 * offset - 60;
+
             return true;
         });
     }
-    private async void StartBackgroundAnimation()
+
+    private async void StartBackgroundAnimation(CancellationToken token)
     {
-        while (true)
+        try
         {
-            await ProgressBackground.FadeToAsync(0.6, 800, Easing.SinInOut);
-            await ProgressBackground.FadeToAsync(1.0, 800, Easing.SinInOut);
+            while (!token.IsCancellationRequested)
+            {
+                await ProgressBackground.FadeToAsync(0.6, 800, Easing.SinInOut);
+                await ProgressBackground.FadeToAsync(1.0, 800, Easing.SinInOut);
+            }
         }
+        catch (TaskCanceledException) { }
+    }
+
+    private void ResetUI()
+    {
+        // 🔥 reset transform tránh lệch sau reset app
+        LogoBorder.Rotation = 0;
+        LogoBorder.Scale = 1;
+        LogoBorder.TranslationX = 0;
+        LogoBorder.TranslationY = 0;
+
+        // progress
+        progress = 0;
+        ProgressBarContainer.WidthRequest = 0;
+
+        // text
+        StatusLabel.Text = "Đang khởi động...";
     }
 }

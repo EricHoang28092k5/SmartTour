@@ -36,20 +36,19 @@ public class NarrationEngine
         this.lang = lang;
     }
 
-    public async Task Play(Poi? poi, Location location)
+    // 🔥 FIX: thêm force
+    public async Task Play(Poi? poi, Location location, bool force = false)
     {
-        if (poi == null)
-            return;
+        if (poi == null) return;
 
-        // cooldown
-        if (history.ContainsKey(poi.Id) &&
+        if (!force &&
+            history.ContainsKey(poi.Id) &&
             (DateTime.Now - history[poi.Id]).TotalMinutes < COOLDOWN_MINUTES)
             return;
 
         lock (lockObj)
         {
-            // 🔥 interrupt nếu priority cao hơn
-            if (currentPoi != null && currentPoi.Priority > poi.Priority)
+            if (!force && currentPoi != null && currentPoi.Priority > poi.Priority)
                 return;
 
             cts?.Cancel();
@@ -62,14 +61,12 @@ public class NarrationEngine
         try
         {
             var scripts = await GetScripts(poi);
-
             var selected = SelectLang(scripts);
-            if (selected == null)
-                return;
+
+            if (selected == null) return;
 
             bool played = false;
 
-            // 🔥 audio first + fallback
             if (!string.IsNullOrWhiteSpace(poi.AudioUrl))
             {
                 try
@@ -95,15 +92,63 @@ public class NarrationEngine
                 Lng = location.Longitude
             });
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) { }
+    }
+
+    public async Task PlayManual(Poi poi, Location location)
+    {
+        if (poi == null) return;
+
+        cts?.Cancel();
+        cts = new CancellationTokenSource();
+
+        var token = cts.Token;
+
+        try
         {
-            // bị interrupt
+            var scripts = await GetScripts(poi);
+            var selected = SelectLang(scripts);
+
+            if (selected == null) return;
+
+            bool played = false;
+
+            if (!string.IsNullOrWhiteSpace(poi.AudioUrl))
+            {
+                try
+                {
+                    await audio.Play(poi.AudioUrl, token);
+                    played = true;
+                }
+                catch { }
+            }
+
+            if (!played && !string.IsNullOrWhiteSpace(selected.TtsScript))
+            {
+                await tts.Speak(selected.TtsScript, selected.LanguageCode, token);
+            }
+
+            history[poi.Id] = DateTime.Now;
         }
+        catch (OperationCanceledException) { }
     }
 
     public void Stop()
     {
         cts?.Cancel();
+        audio.Stop();
+        tts.Stop();
+    }
+
+    public void Reset()
+    {
+        history.Clear();
+        ttsCache.Clear();
+        currentPoi = null;
+
+        cts?.Cancel();
+
+        // 🔥 FIX
         audio.Stop();
         tts.Stop();
     }

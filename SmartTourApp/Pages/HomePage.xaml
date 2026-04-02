@@ -47,55 +47,44 @@
                    FontAttributes="Bold"/>
 
             <!-- LIST -->
-            <CollectionView x:Name="PoiList"
-                            Margin="16,0"
-                            SelectionMode="None">
-
+            <CollectionView x:Name="PoiList" Margin="16,0" SelectionMode="None">
                 <CollectionView.ItemTemplate>
                     <DataTemplate>
+                        <Border StrokeShape="RoundRectangle 18" BackgroundColor="White" Margin="0,0,0,16">
+                            <Grid ColumnDefinitions="120,*,60" HeightRequest="130">
 
-                        <Border StrokeShape="RoundRectangle 18"
-                                BackgroundColor="White"
-                                Margin="0,0,0,16">
+                                <Image Source="{Binding ImageUrl}" Aspect="AspectFill"/>
 
-                            <Border.GestureRecognizers>
-                                <TapGestureRecognizer
-                                    Tapped="OpenDetailTap"
-                                    CommandParameter="{Binding .}" />
-                            </Border.GestureRecognizers>
-
-                            <Grid ColumnDefinitions="120,*"
-                                  HeightRequest="130">
-
-                                <Image Source="{Binding ImageUrl}"
-                                       Aspect="AspectFill"/>
-
-                                <VerticalStackLayout Grid.Column="1"
-                                                     Padding="12"
-                                                     Spacing="6">
-
-                                    <Label Text="{Binding Name}"
-                                           FontSize="15"
-                                           FontAttributes="Bold"/>
-
-                                    <Label Text="{Binding Description}"
-                                           FontSize="12"
-                                           TextColor="#777"
-                                           LineBreakMode="TailTruncation"/>
-
-                                    <Label Text="⭐ Popular"
-                                           FontSize="11"
-                                           TextColor="#999"/>
-
+                                <VerticalStackLayout Grid.Column="1" Padding="12" Spacing="6">
+                                    <Label Text="{Binding Name}" FontSize="15" FontAttributes="Bold"/>
+                                    <Label Text="{Binding Description}" FontSize="12" TextColor="#777"/>
+                                    <Label Text="⭐ Popular" FontSize="11" TextColor="#999"/>
                                 </VerticalStackLayout>
 
+                                <!-- AUDIO BUTTON -->
+                                <Grid Grid.Column="2" VerticalOptions="Center" HorizontalOptions="Center">
+                                    <Border WidthRequest="44" HeightRequest="44"
+                BackgroundColor="#1976D2"
+                StrokeShape="RoundRectangle 22">
+
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer 
+                    Tapped="PlayPoiAudio"
+                    CommandParameter="{Binding .}" />
+                                        </Border.GestureRecognizers>
+
+                                        <Label Text="▶"
+                   FontSize="18"
+                   TextColor="White"
+                   HorizontalOptions="Center"
+                   VerticalOptions="Center"/>
+                                    </Border>
+                                </Grid>
+
                             </Grid>
-
                         </Border>
-
                     </DataTemplate>
                 </CollectionView.ItemTemplate>
-
             </CollectionView>
 
         </VerticalStackLayout>

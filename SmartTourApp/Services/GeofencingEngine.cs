@@ -6,9 +6,9 @@ namespace SmartTourApp.Services;
 public class GeofencingEngine
 {
     private HashSet<int> activeZones = new();
+    private Dictionary<int, DateTime> lastTrigger = new();
 
-    private Dictionary<int, DateTime> lastTrigger = new(); // NEW
-    private const int COOLDOWN_SECONDS = 30; // NEW
+    private const int COOLDOWN_SECONDS = 30;
     private const double EXIT_BUFFER = 1.2;
 
     public Poi? FindBestPoi(Location user, List<Poi> pois)
@@ -25,7 +25,6 @@ public class GeofencingEngine
 
             if (meters <= poi.Radius)
             {
-                // debounce
                 if (lastTrigger.ContainsKey(poi.Id))
                 {
                     if ((DateTime.Now - lastTrigger[poi.Id]).TotalSeconds < COOLDOWN_SECONDS)
@@ -36,7 +35,6 @@ public class GeofencingEngine
             }
             else
             {
-                // EXIT
                 if (meters > poi.Radius * EXIT_BUFFER)
                     activeZones.Remove(poi.Id);
             }
@@ -50,7 +48,6 @@ public class GeofencingEngine
             .ThenBy(x => x.dist)
             .First().poi;
 
-        // ENTER
         if (!activeZones.Contains(best.Id))
         {
             activeZones.Add(best.Id);
@@ -59,5 +56,12 @@ public class GeofencingEngine
         }
 
         return null;
+    }
+
+    // 🔥 FIX QUAN TRỌNG
+    public void Reset()
+    {
+        activeZones.Clear();
+        lastTrigger.Clear();
     }
 }

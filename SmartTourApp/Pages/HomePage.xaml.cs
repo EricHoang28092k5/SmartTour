@@ -101,15 +101,30 @@ public partial class HomePage : ContentPage
 
     private async void PlayNearest(object sender, EventArgs e)
     {
-        if (nearest == null || userLoc == null || isPlaying) return;
+        if (nearest == null || userLoc == null) return;
 
-        isPlaying = true;
-        HeroPlayBtn.Text = "🔊 Đang phát...";
+        // 🔥 nếu đang phát → stop (toggle)
+        if (isPlaying)
+        {
+            narration.Stop();
+            isPlaying = false;
+            HeroPlayBtn.Text = "🎧 Nghe ngay";
+            return;
+        }
 
-        await narration.Play(nearest, userLoc);
+        try
+        {
+            isPlaying = true;
+            HeroPlayBtn.Text = "🔊 Đang phát...";
 
-        HeroPlayBtn.Text = "🎧 Nghe ngay";
-        isPlaying = false;
+            // 🔥 DÙNG MANUAL
+            await narration.PlayManual(nearest, userLoc);
+        }
+        finally
+        {
+            isPlaying = false;
+            HeroPlayBtn.Text = "🎧 Nghe ngay";
+        }
     }
 
     private async void OpenDetailTap(object sender, TappedEventArgs e)
@@ -121,6 +136,37 @@ public partial class HomePage : ContentPage
 
             await Shell.Current.GoToAsync(nameof(PoiDetailPage), true,
                 new Dictionary<string, object> { ["poi"] = poi });
+        }
+    }
+    private bool isItemPlaying = false;
+    private Poi? currentPlayingPoi;
+
+    // 🔥 PLAY AUDIO POI
+    private async void PlayPoiAudio(object sender, TappedEventArgs e)
+    {
+        if (sender is not Element el || el.BindingContext is not Poi poi) return;
+        if (userLoc == null) return;
+
+        // toggle stop
+        if (isItemPlaying && currentPlayingPoi?.Id == poi.Id)
+        {
+            narration.Stop();
+            isItemPlaying = false;
+            currentPlayingPoi = null;
+            return;
+        }
+
+        try
+        {
+            isItemPlaying = true;
+            currentPlayingPoi = poi;
+
+            await narration.PlayManual(poi, userLoc); // 🔥 dùng manual
+        }
+        finally
+        {
+            isItemPlaying = false;
+            currentPlayingPoi = null;
         }
     }
 }

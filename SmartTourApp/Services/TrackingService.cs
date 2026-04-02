@@ -13,7 +13,7 @@ public class TrackingService
 
     private List<Poi> pois = new();
     private Location? lastLocation;
-    private int interval = 7;
+    private int interval = 3;
 
     public event Action<Location>? OnLocationChanged;
 
