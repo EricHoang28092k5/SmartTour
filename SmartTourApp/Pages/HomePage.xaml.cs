@@ -129,14 +129,16 @@ public partial class HomePage : ContentPage
 
     private async void OpenDetailTap(object sender, TappedEventArgs e)
     {
-        if (sender is Border border && border.BindingContext is Poi poi)
-        {
-            await border.ScaleToAsync(0.97, 80);
-            await border.ScaleToAsync(1, 80);
+        if (sender is not VisualElement el) return;
 
-            await Shell.Current.GoToAsync(nameof(PoiDetailPage), true,
-                new Dictionary<string, object> { ["poi"] = poi });
-        }
+        var poi = el.BindingContext as Poi;
+        if (poi == null) return;
+
+        await el.ScaleToAsync(0.97, 80);
+        await el.ScaleToAsync(1, 80);
+
+        await Shell.Current.GoToAsync(nameof(PoiDetailPage), true,
+            new Dictionary<string, object> { ["poi"] = poi });
     }
     private bool isItemPlaying = false;
     private Poi? currentPlayingPoi;
@@ -168,5 +170,12 @@ public partial class HomePage : ContentPage
             isItemPlaying = false;
             currentPlayingPoi = null;
         }
+    }
+    private async void GoToMapRoute(object sender, TappedEventArgs e)
+    {
+        if (sender is not Element el || el.BindingContext is not Poi poi)
+            return;
+
+        await Shell.Current.GoToAsync($"//map?targetPoi={poi.Id}");
     }
 }

@@ -9,20 +9,24 @@
     <TabBar>
 
         <ShellContent
-            Title="Home"
-            ContentTemplate="{DataTemplate pages:HomePage}" />
+        Title="Home"
+        Route="home"
+        ContentTemplate="{DataTemplate pages:HomePage}" />
 
         <ShellContent
-            Title="Map"
-            ContentTemplate="{DataTemplate pages:MapPage}" />
+        Title="Map"
+        Route="map"
+        ContentTemplate="{DataTemplate pages:MapPage}" />
 
         <ShellContent
-            Title="QR Scan"
-            ContentTemplate="{DataTemplate pages:QrScannerPage}" />
+        Title="QR Scan"
+        Route="qr"
+        ContentTemplate="{DataTemplate pages:QrScannerPage}" />
 
         <ShellContent
-            Title="Settings"
-            ContentTemplate="{DataTemplate pages:SettingsPage}" />
+        Title="Settings"
+        Route="settings"
+        ContentTemplate="{DataTemplate pages:SettingsPage}" />
 
     </TabBar>
 

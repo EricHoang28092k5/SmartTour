@@ -51,35 +51,67 @@
                 <CollectionView.ItemTemplate>
                     <DataTemplate>
                         <Border StrokeShape="RoundRectangle 18" BackgroundColor="White" Margin="0,0,0,16">
-                            <Grid ColumnDefinitions="120,*,60" HeightRequest="130">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer 
+                                    Tapped="OpenDetailTap"
+                                    CommandParameter="{Binding .}" />
+                            </Border.GestureRecognizers>
 
+                            <Grid ColumnDefinitions="120,*,90" HeightRequest="130">
+
+                                <!-- IMAGE -->
                                 <Image Source="{Binding ImageUrl}" Aspect="AspectFill"/>
 
+                                <!-- INFO -->
                                 <VerticalStackLayout Grid.Column="1" Padding="12" Spacing="6">
                                     <Label Text="{Binding Name}" FontSize="15" FontAttributes="Bold"/>
                                     <Label Text="{Binding Description}" FontSize="12" TextColor="#777"/>
                                     <Label Text="⭐ Popular" FontSize="11" TextColor="#999"/>
                                 </VerticalStackLayout>
 
-                                <!-- AUDIO BUTTON -->
-                                <Grid Grid.Column="2" VerticalOptions="Center" HorizontalOptions="Center">
+                                <!-- ACTION -->
+                                <VerticalStackLayout Grid.Column="2"
+                                                     Spacing="10"
+                                                     VerticalOptions="Center"
+                                                     HorizontalOptions="Center">
+
+                                    <!-- PLAY -->
                                     <Border WidthRequest="44" HeightRequest="44"
-                BackgroundColor="#1976D2"
-                StrokeShape="RoundRectangle 22">
+                                            BackgroundColor="#1976D2"
+                                            StrokeShape="RoundRectangle 22">
 
                                         <Border.GestureRecognizers>
                                             <TapGestureRecognizer 
-                    Tapped="PlayPoiAudio"
-                    CommandParameter="{Binding .}" />
+                                                Tapped="PlayPoiAudio"
+                                                CommandParameter="{Binding .}" />
                                         </Border.GestureRecognizers>
 
                                         <Label Text="▶"
-                   FontSize="18"
-                   TextColor="White"
-                   HorizontalOptions="Center"
-                   VerticalOptions="Center"/>
+                                               FontSize="18"
+                                               TextColor="White"
+                                               HorizontalOptions="Center"
+                                               VerticalOptions="Center"/>
                                     </Border>
-                                </Grid>
+
+                                    <!-- ROUTE -->
+                                    <Border WidthRequest="44" HeightRequest="44"
+                                            BackgroundColor="#00C853"
+                                            StrokeShape="RoundRectangle 22">
+
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer 
+                                                Tapped="GoToMapRoute"
+                                                CommandParameter="{Binding .}" />
+                                        </Border.GestureRecognizers>
+
+                                        <Label Text="🧭"
+                                               FontSize="18"
+                                               TextColor="White"
+                                               HorizontalOptions="Center"
+                                               VerticalOptions="Center"/>
+                                    </Border>
+
+                                </VerticalStackLayout>
 
                             </Grid>
                         </Border>
