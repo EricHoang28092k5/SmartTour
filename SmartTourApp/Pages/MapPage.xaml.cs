@@ -12,6 +12,7 @@ using System.Linq;
 
 namespace SmartTourApp.Pages;
 
+[QueryProperty(nameof(TargetPoiId), "targetPoi")]
 public partial class MapPage : ContentPage
 {
     private bool followUser = true;
@@ -27,6 +28,9 @@ public partial class MapPage : ContentPage
     private bool trackingStarted = false;
     private bool firstZoom = true;
 
+    public string? TargetPoiId { get; set; }
+    private bool openedFromRoute = false;
+
     public MapPage(
         TrackingService tracking,
         PoiRepository repo,
@@ -36,7 +40,8 @@ public partial class MapPage : ContentPage
 
         TourMap.Map!.Navigator.ViewportChanged += (s, e) =>
         {
-            followUser = false;
+            if (!openedFromRoute)
+                followUser = false;
         };
 
         this.tracking = tracking;
@@ -65,14 +70,48 @@ public partial class MapPage : ContentPage
             await tracking.Start();
             trackingStarted = true;
         }
-        followUser = true;
 
         var loc = await Geolocation.GetLastKnownLocationAsync();
         if (loc == null)
-            loc = await Geolocation.GetLocationAsync(new GeolocationRequest(GeolocationAccuracy.Medium, TimeSpan.FromSeconds(5)));
+            loc = await Geolocation.GetLocationAsync(
+                new GeolocationRequest(GeolocationAccuracy.Medium, TimeSpan.FromSeconds(5)));
 
-        if (loc != null && TourMap?.Map?.Navigator != null)
+        if (TourMap?.Map?.Navigator == null || loc == null)
+            return;
+
+        // 🔥 CASE: đi từ Home → focus POI
+        if (!string.IsNullOrEmpty(TargetPoiId))
         {
+            if (pois.Count == 0)
+            {
+                await Task.Delay(300); // chờ load
+                return;
+            }
+            var poi = pois.FirstOrDefault(p => p.Id.ToString() == TargetPoiId);
+
+            if (poi != null)
+            {
+                openedFromRoute = true;
+                followUser = false;
+
+                var mercator = SphericalMercator.FromLonLat(
+                    poi.Lng,
+                    poi.Lat);
+
+                var pos = new MPoint(mercator.x, mercator.y);
+
+                TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 0.5, 600, Mapsui.Animations.Easing.CubicOut);
+
+                vm.HighlightPoi(TourMap.Map, poi.Lat, poi.Lng);
+            }
+
+            TargetPoiId = null; // 🔥 reset
+        }
+        else
+        {
+            followUser = true;
+            openedFromRoute = false;
+
             var mercator = SphericalMercator.FromLonLat(
                 loc.Longitude,
                 loc.Latitude);
@@ -80,6 +119,7 @@ public partial class MapPage : ContentPage
             var pos = new MPoint(mercator.x, mercator.y);
 
             TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 0.5, 600, Mapsui.Animations.Easing.CubicOut);
+
             vm.UpdateUser(TourMap.Map, loc, false);
         }
     }
@@ -120,6 +160,10 @@ public partial class MapPage : ContentPage
             }
 
             pois = await repo.GetPois();
+            if (!string.IsNullOrEmpty(TargetPoiId))
+            {
+                HandleRouteAfterLoad();
+            }
 
             vm.LoadPois(TourMap.Map, pois);
 
@@ -128,19 +172,6 @@ public partial class MapPage : ContentPage
 
             if (!TourMap.Map.Layers.Contains(vm.UserLayer))
                 TourMap.Map.Layers.Add(vm.UserLayer);
-
-            if (pois.Count > 0 && TourMap?.Map?.Navigator != null)
-            {
-                var first = pois[0];
-
-                var mercator = SphericalMercator.FromLonLat(
-                    first.Lng,
-                    first.Lat);
-
-                var pos = new MPoint(mercator.x, mercator.y);
-
-                TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 500);
-            }
 
             TourMap?.Refresh();
 
@@ -161,7 +192,7 @@ public partial class MapPage : ContentPage
         {
             vm.UpdateUser(TourMap.Map, loc);
 
-            if (TourMap?.Map?.Navigator != null && followUser)
+            if (TourMap?.Map?.Navigator != null && followUser && !openedFromRoute)
             {
                 var mercator = SphericalMercator.FromLonLat(
                     loc.Longitude,
@@ -236,6 +267,7 @@ public partial class MapPage : ContentPage
     private async void LocateUser_Clicked(object sender, EventArgs e)
     {
         followUser = true;
+        openedFromRoute = false;
 
         var loc = await Geolocation.GetLastKnownLocationAsync();
 
@@ -249,5 +281,21 @@ public partial class MapPage : ContentPage
         var pos = new MPoint(mercator.x, mercator.y);
 
         TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 0.5);
+    }
+    private void HandleRouteAfterLoad()
+    {
+        var poi = pois.FirstOrDefault(p => p.Id.ToString() == TargetPoiId);
+        if (poi == null) return;
+
+        openedFromRoute = true;
+        followUser = false;
+
+        var mercator = SphericalMercator.FromLonLat(poi.Lng, poi.Lat);
+        var pos = new MPoint(mercator.x, mercator.y);
+
+        TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 0.5, 600);
+        vm.HighlightPoi(TourMap.Map, poi.Lat, poi.Lng);
+
+        TargetPoiId = null;
     }
 }

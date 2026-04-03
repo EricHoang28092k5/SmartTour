@@ -6,7 +6,6 @@
 
     <Grid>
 
-        <!-- MAIN -->
         <ScrollView>
             <VerticalStackLayout Spacing="20">
 
@@ -22,6 +21,17 @@
                            Margin="20"
                            VerticalOptions="End"/>
                 </Grid>
+
+                <!-- 🔥 OPEN TIME STATUS -->
+                <HorizontalStackLayout Margin="16,0" Spacing="6">
+                    <Label x:Name="OpenStatus"
+                           FontAttributes="Bold"
+                           FontSize="14"/>
+
+                    <Label x:Name="OpenDetail"
+                           FontSize="14"
+                           TextColor="#666"/>
+                </HorizontalStackLayout>
 
                 <!-- TAB -->
                 <Grid Margin="16,0" ColumnDefinitions="*,*">
@@ -59,7 +69,6 @@
                     <CollectionView.ItemTemplate>
                         <DataTemplate>
 
-                            <!-- 🔥 BORDER THAY FRAME -->
                             <Border StrokeShape="RoundRectangle 18"
                                     BackgroundColor="White"
                                     Margin="0,0,0,16"
@@ -67,17 +76,14 @@
 
                                 <Grid ColumnDefinitions="110,*">
 
-                                    <!-- IMAGE -->
                                     <Image Source="{Binding ImageUrl}"
                                            HeightRequest="100"
                                            Aspect="AspectFill">
-
                                         <Image.GestureRecognizers>
                                             <TapGestureRecognizer Tapped="OnFoodImageTapped"/>
                                         </Image.GestureRecognizers>
                                     </Image>
 
-                                    <!-- INFO -->
                                     <VerticalStackLayout Grid.Column="1"
                                                          Padding="10"
                                                          Spacing="4">
@@ -96,7 +102,6 @@
 
                                 </Grid>
 
-                                <!-- SHADOW (chuẩn Border .NET 10) -->
                                 <Border.Shadow>
                                     <Shadow Brush="#22000000"
                                             Offset="0,6"
@@ -114,7 +119,7 @@
             </VerticalStackLayout>
         </ScrollView>
 
-        <!-- FULL SCREEN IMAGE VIEW -->
+        <!-- IMAGE VIEWER -->
         <Grid x:Name="ImageViewer"
               BackgroundColor="#CC000000"
               IsVisible="False"

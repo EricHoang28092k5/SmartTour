@@ -33,10 +33,85 @@ public partial class PoiDetailPage : ContentPage
             : poi.Description;
 
         FoodList.ItemsSource = poi.Foods ?? new List<Food>();
+
+        UpdateOpenStatus(); // 🔥 NEW
     }
 
     // ======================
-    // TAB SWITCH (NO LAG)
+    // 🔥 OPEN STATUS LOGIC
+    // ======================
+
+    private void UpdateOpenStatus()
+    {
+        if (poi == null || poi.OpenTime == null || poi.CloseTime == null)
+            return;
+
+        var now = DateTime.Now;
+
+        var open = DateTime.Today.Add(poi.OpenTime.Value);
+        var close = DateTime.Today.Add(poi.CloseTime.Value);
+
+        // MỞ CẢ NGÀY
+        if (poi.OpenTime == poi.CloseTime)
+        {
+            OpenStatus.Text = "🔵 Mở cả ngày";
+            OpenDetail.Text = "";
+            return;
+        }
+
+        // CHƯA MỞ
+        if (now < open)
+        {
+            OpenStatus.Text = "🔴 Đã đóng cửa";
+            OpenDetail.Text = $"Mở lúc {open:HH:mm}";
+            return;
+        }
+
+        // ĐANG MỞ
+        if (now >= open && now < close)
+        {
+            // TRƯỚC 1 TIẾNG
+            if (now >= close.AddHours(-1))
+            {
+                OpenStatus.Text = "🟠 Sắp đóng cửa";
+                OpenDetail.Text = $"{close:HH:mm}";
+            }
+            else
+            {
+                OpenStatus.Text = "🟢 Đang mở cửa";
+                OpenDetail.Text = $"Đóng cửa lúc {close:HH:mm}";
+            }
+
+            return;
+        }
+
+        // SAU GIỜ ĐÓNG → NGÀY MAI
+        if (now >= close)
+        {
+            var tomorrow = DateTime.Today.AddDays(1).Add(poi.OpenTime.Value);
+
+            OpenStatus.Text = "🔴 Đã đóng cửa";
+            OpenDetail.Text = $"Mở lúc {tomorrow:HH:mm} {GetVietnameseDay(tomorrow)}";
+        }
+    }
+
+    private string GetVietnameseDay(DateTime date)
+    {
+        return date.DayOfWeek switch
+        {
+            DayOfWeek.Monday => "Thứ 2",
+            DayOfWeek.Tuesday => "Thứ 3",
+            DayOfWeek.Wednesday => "Thứ 4",
+            DayOfWeek.Thursday => "Thứ 5",
+            DayOfWeek.Friday => "Thứ 6",
+            DayOfWeek.Saturday => "Thứ 7",
+            DayOfWeek.Sunday => "Chủ nhật",
+            _ => ""
+        };
+    }
+
+    // ======================
+    // TAB SWITCH
     // ======================
 
     private void ShowOverview(object sender, EventArgs e)
@@ -64,7 +139,7 @@ public partial class PoiDetailPage : ContentPage
     }
 
     // ======================
-    // 🔥 FULL SCREEN IMAGE
+    // IMAGE VIEWER
     // ======================
 
     private async void OnFoodImageTapped(object sender, TappedEventArgs e)
