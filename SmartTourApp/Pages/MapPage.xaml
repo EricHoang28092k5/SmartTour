@@ -156,18 +156,22 @@
                     <HorizontalStackLayout Spacing="12">
 
                         <Border Style="{StaticResource ActionBtn}">
-                            <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
-                                <Image
-                                    Source="route.png"
-                                    WidthRequest="18"
-                                    HeightRequest="18"
-                                    VerticalOptions="Center"/>
-                                <Label
-                                    Text="Đường đi"
-                                    Style="{StaticResource ActionText}"
-                                    VerticalOptions="Center"/>
+                            <Grid>
+                                <Grid.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="Route_Clicked"/>
+                                </Grid.GestureRecognizers>
 
-                            </HorizontalStackLayout>
+                                <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
+                                    <Image
+                                        Source="route.png"
+                                        WidthRequest="18"
+                                        HeightRequest="18"/>
+
+                                    <Label
+                                        Text="Đường đi"
+                                        Style="{StaticResource ActionText}"/>
+                                </HorizontalStackLayout>
+                            </Grid>
                         </Border>
 
                         <Border Style="{StaticResource ActionBtn}">

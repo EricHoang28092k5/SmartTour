@@ -1,15 +1,17 @@
 ﻿using Mapsui;
+using Mapsui.Features;
 using Mapsui.Layers;
+using Mapsui.Nts;
 using Mapsui.Projections;
 using Mapsui.Styles;
-using Mapsui.Features;
 using Microsoft.Maui.Devices.Sensors;
+using NtsGeometry = NetTopologySuite.Geometries;
 using SmartTour.Shared.Models;
 using System.Linq;
-
-using Map = Mapsui.Map;
-using Color = Mapsui.Styles.Color;
+using System.Globalization;
 using Brush = Mapsui.Styles.Brush;
+using Color = Mapsui.Styles.Color;
+using Map = Mapsui.Map;
 
 namespace SmartTourApp.ViewModels;
 
@@ -20,6 +22,9 @@ public class MapViewModel
     public MemoryLayer UserLayer = new();
     public MemoryLayer PoiLayer = new();
     public MemoryLayer HeatLayer = new();
+
+    // 🔥 NEW
+    public MemoryLayer RouteLayer = new();
 
     private PointFeature? userFeature;
     private PointFeature? pulseFeature;
@@ -32,7 +37,6 @@ public class MapViewModel
     private double pulseScale = 1.0;
     private bool pulseGrowing = true;
 
-    // Tái sử dụng style POI để tránh tạo nhiều lần
     private static readonly ImageStyle poiIconStyle = new ImageStyle
     {
         Image = "embedded://SmartTourApp.Resources.Images.mappin.png",
@@ -71,7 +75,6 @@ public class MapViewModel
 
         if (userFeature == null)
         {
-            // Tạo các feature lần đầu và gắn style
             accuracyFeature = new PointFeature(newPoint)
             {
                 Styles = {
@@ -111,7 +114,6 @@ public class MapViewModel
         }
         else
         {
-            // Cập nhật tọa độ bằng cách gán Point mới
             accuracyFeature!.Point.X = newPoint.X;
             accuracyFeature!.Point.Y = newPoint.Y;
             pulseFeature!.Point.X = newPoint.X;
@@ -124,48 +126,58 @@ public class MapViewModel
 
         if (centerMap && map?.Navigator != null)
         {
-            // Lia máy mượt mà trong 500ms, zoom level 0.5 (hoặc mức bạn muốn)
             map.Navigator.CenterOnAndZoomTo(newPoint, 0.5, 500, Mapsui.Animations.Easing.CubicOut);
         }
     }
 
     // =============================
-    // PULSE ANIMATION
+    // 🔥 ROUTE DRAW
     // =============================
-    private void StartPulseAnimation()
+    public async Task DrawRoute(Map map, Location from, Poi to)
     {
-        var dispatcher = Application.Current?.Dispatcher;
-        if (dispatcher == null)
+        var points = await GetRoutePoints(from, to);
+
+        if (points.Count < 2)
             return;
 
-        dispatcher.StartTimer(TimeSpan.FromMilliseconds(60), () =>
+        var line = new NtsGeometry.LineString(
+            points.Select(p => new NtsGeometry.Coordinate(p.X, p.Y)).ToArray()
+        );
+
+        var feature = new GeometryFeature
         {
-            if (pulseFeature == null)
-                return true;
+            Geometry = line
+        };
 
-            var style = pulseFeature.Styles.FirstOrDefault() as SymbolStyle;
-            if (style == null)
-                return true;
-
-            // Cập nhật scale pulse
-            pulseScale = pulseGrowing ? pulseScale + 0.04 : pulseScale - 0.04;
-
-            if (pulseScale > 1.6) pulseGrowing = false;
-            if (pulseScale < 1.0) pulseGrowing = true;
-
-            // Chỉ cập nhật nếu thực sự thay đổi scale
-            if (Math.Abs(style.SymbolScale - pulseScale) > 0.01)
-            {
-                style.SymbolScale = pulseScale;
-                UserLayer.DataHasChanged();
-            }
-
-            return true;
+        feature.Styles.Add(new VectorStyle
+        {
+            Line = new Pen(Color.White, 8)
         });
+
+        feature.Styles.Add(new VectorStyle
+        {
+            Line = new Pen(new Color(33, 150, 243), 5)
+        });
+
+        RouteLayer.Features = new[] { feature };
+        RouteLayer.DataHasChanged();
+
+        if (!map.Layers.Contains(RouteLayer))
+            map.Layers.Add(RouteLayer);
+
+        var bbox = feature.Extent;
+        if (bbox != null)
+            map.Navigator.ZoomToBox(bbox, MBoxFit.Fit);
+    }
+
+    public void ClearRoute()
+    {
+        RouteLayer.Features = null;
+        RouteLayer.DataHasChanged();
     }
 
     // =============================
-    // LOAD POI (GIỮ NGUYÊN)
+    // POI + HEAT + HIGHLIGHT (GIỮ NGUYÊN)
     // =============================
     public void LoadPois(Map map, List<Poi> pois)
     {
@@ -178,7 +190,7 @@ public class MapViewModel
 
             var feature = new PointFeature(new MPoint(spherical.x, spherical.y))
             {
-                Styles = { poiIconStyle } // tái sử dụng style
+                Styles = { poiIconStyle }
             };
 
             poiFeatures.Add(feature);
@@ -188,9 +200,6 @@ public class MapViewModel
         PoiLayer.DataHasChanged();
     }
 
-    // =============================
-    // HIGHLIGHT POI (GIỮ NGUYÊN)
-    // =============================
     public void HighlightPoi(Map map, double lat, double lng)
     {
         var spherical = SphericalMercator.FromLonLat(lng, lat);
@@ -209,7 +218,7 @@ public class MapViewModel
                 }
             };
 
-            poiFeatures.Add(highlightFeature); // thêm 1 lần
+            poiFeatures.Add(highlightFeature);
         }
         else
         {
@@ -219,6 +228,7 @@ public class MapViewModel
 
         PoiLayer.DataHasChanged();
     }
+
     public void LoadHeatMap(Map map, List<UserLocationLog> logs)
     {
         var features = new List<PointFeature>();
@@ -249,5 +259,77 @@ public class MapViewModel
 
         if (!map.Layers.Contains(HeatLayer))
             map.Layers.Add(HeatLayer);
+    }
+
+    private void StartPulseAnimation()
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher == null)
+            return;
+
+        dispatcher.StartTimer(TimeSpan.FromMilliseconds(60), () =>
+        {
+            if (pulseFeature == null)
+                return true;
+
+            var style = pulseFeature.Styles.FirstOrDefault() as SymbolStyle;
+            if (style == null)
+                return true;
+
+            pulseScale = pulseGrowing ? pulseScale + 0.04 : pulseScale - 0.04;
+
+            if (pulseScale > 1.6) pulseGrowing = false;
+            if (pulseScale < 1.0) pulseGrowing = true;
+
+            if (Math.Abs(style.SymbolScale - pulseScale) > 0.01)
+            {
+                style.SymbolScale = pulseScale;
+                UserLayer.DataHasChanged();
+            }
+
+            return true;
+        });
+    }
+
+    public async Task<List<MPoint>> GetRoutePoints(Location from, Poi to)
+    {
+        var url =
+            $"https://router.project-osrm.org/route/v1/driving/" +
+            $"{from.Longitude.ToString(CultureInfo.InvariantCulture)}," +
+            $"{from.Latitude.ToString(CultureInfo.InvariantCulture)};" +
+            $"{to.Lng.ToString(CultureInfo.InvariantCulture)}," +
+            $"{to.Lat.ToString(CultureInfo.InvariantCulture)}" +
+            $"?overview=full&geometries=geojson";
+
+        using var http = new HttpClient();
+        var response = await http.GetAsync(url);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            throw new Exception($"OSRM error: {response.StatusCode} - {error}");
+        }
+
+        var json = await response.Content.ReadAsStringAsync();
+
+        var doc = System.Text.Json.JsonDocument.Parse(json);
+
+        var coords = doc.RootElement
+            .GetProperty("routes")[0]
+            .GetProperty("geometry")
+            .GetProperty("coordinates");
+
+        var points = new List<MPoint>();
+
+        foreach (var c in coords.EnumerateArray())
+        {
+            var lon = c[0].GetDouble();
+            var lat = c[1].GetDouble();
+
+            var mercator = SphericalMercator.FromLonLat(lon, lat);
+            points.Add(new MPoint(mercator.x, mercator.y));
+        }
+
+        return points;
     }
 }

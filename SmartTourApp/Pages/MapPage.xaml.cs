@@ -31,6 +31,9 @@ public partial class MapPage : ContentPage
     public string? TargetPoiId { get; set; }
     private bool openedFromRoute = false;
 
+    private Location? currentLocation;
+    private Poi? currentNearest;
+
     public MapPage(
         TrackingService tracking,
         PoiRepository repo,
@@ -241,6 +244,8 @@ public partial class MapPage : ContentPage
                 // 🔥 HIDE CARD
                 PoiCard.IsVisible = false;
             }
+            currentLocation = loc;
+            currentNearest = nearest;
         });
     }
 
@@ -304,5 +309,13 @@ public partial class MapPage : ContentPage
         vm.HighlightPoi(TourMap.Map, poi.Lat, poi.Lng);
 
         TargetPoiId = null;
+    }
+
+    private async void Route_Clicked(object sender, EventArgs e)
+    {
+        if (currentLocation == null || currentNearest == null)
+            return;
+
+        await vm.DrawRoute(TourMap.Map, currentLocation, currentNearest);
     }
 }
