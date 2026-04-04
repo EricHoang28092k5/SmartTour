@@ -436,5 +436,33 @@
         <Setter Property="UnselectedTabColor" Value="{AppThemeBinding Light={StaticResource Gray200}, Dark={StaticResource Gray950}}" />
         <Setter Property="SelectedTabColor" Value="{AppThemeBinding Light={StaticResource Gray950}, Dark={StaticResource Gray200}}" />
     </Style>
+    <Style x:Key="ActionBtn" TargetType="Border">
+        <Setter Property="Padding" Value="12,8"/>
+        <Setter Property="BackgroundColor" Value="#E0F2F1"/>
+        <Setter Property="StrokeThickness" Value="0"/>
+        <Setter Property="StrokeShape">
+            <RoundRectangle CornerRadius="20"/>
+        </Setter>
+    </Style>
+
+    <Style x:Key="ActionBtnPrimary" TargetType="Border">
+        <Setter Property="Padding" Value="12,8"/>
+        <Setter Property="BackgroundColor" Value="#B2EBF2"/>
+        <Setter Property="StrokeThickness" Value="0"/>
+        <Setter Property="StrokeShape">
+            <RoundRectangle CornerRadius="20"/>
+        </Setter>
+    </Style>
+
+    <Style x:Key="ActionText" TargetType="Label">
+        <Setter Property="TextColor" Value="#006064"/>
+        <Setter Property="FontSize" Value="14"/>
+    </Style>
+
+    <Style x:Key="ActionTextPrimary" TargetType="Label">
+        <Setter Property="TextColor" Value="#004D40"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="FontAttributes" Value="Bold"/>
+    </Style>
 
 </ResourceDictionary>

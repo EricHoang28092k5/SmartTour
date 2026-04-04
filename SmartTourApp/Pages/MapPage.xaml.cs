@@ -228,11 +228,18 @@ public partial class MapPage : ContentPage
             if (nearest != null)
             {
                 NearestPoiLabel.Text = nearest.Name;
+
+                // 🔥 SHOW CARD
+                PoiCard.IsVisible = true;
+
                 vm.HighlightPoi(TourMap.Map, nearest.Lat, nearest.Lng);
             }
             else
             {
-                NearestPoiLabel.Text = "Không có POI gần";
+                NearestPoiLabel.Text = "";
+
+                // 🔥 HIDE CARD
+                PoiCard.IsVisible = false;
             }
         });
     }
