@@ -19,6 +19,11 @@
         ContentTemplate="{DataTemplate pages:MapPage}" />
 
         <ShellContent
+        Title="Tour"
+        Route="tour"
+        ContentTemplate="{DataTemplate pages:TourPage}" />
+
+        <ShellContent
         Title="QR Scan"
         Route="qr"
         ContentTemplate="{DataTemplate pages:QrScannerPage}" />

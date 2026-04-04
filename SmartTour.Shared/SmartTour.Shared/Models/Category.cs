@@ -1,10 +1,12 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
+using SQLite;
 
 namespace SmartTour.Shared.Models
 {
     public class Category
     {
+        [PrimaryKey, AutoIncrement]
         public int Id { get; set; }
 
         [Required(ErrorMessage = "Tên danh mục không được để trống")]
@@ -20,6 +22,7 @@ namespace SmartTour.Shared.Models
 
         // --- MỐI QUAN HỆ (1 Danh mục chứa nhiều POI) ---
         [JsonIgnore]
+        [SQLite.Ignore]
         public ICollection<Poi>? Pois { get; set; }
     }
 }

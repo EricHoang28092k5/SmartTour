@@ -45,4 +45,18 @@ public class ApiService
         public string Title { get; set; } = "";
         public string TtsScript { get; set; } = "";
     }
+
+    public async Task<TourResponse?> GetTours()
+    {
+        try
+        {
+            var res = await http.GetFromJsonAsync<TourResponse>("api/tours");
+            return res;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine("API TOUR ERROR: " + ex.Message);
+            throw;
+        }
+    }
 }
