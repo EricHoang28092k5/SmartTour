@@ -36,6 +36,10 @@ public class MapViewModel
 
     private double pulseScale = 1.0;
     private bool pulseGrowing = true;
+    private DateTime lastUserRefresh = DateTime.MinValue;
+    private DateTime lastPoiRefresh = DateTime.MinValue;
+    private List<MPoint>? cachedRoute;
+    private string? lastRouteKey;
 
     private static readonly ImageStyle poiIconStyle = new ImageStyle
     {
@@ -121,7 +125,11 @@ public class MapViewModel
             userFeature!.Point.X = newPoint.X;
             userFeature!.Point.Y = newPoint.Y;
 
-            UserLayer.DataHasChanged();
+            if ((DateTime.Now - lastUserRefresh).TotalMilliseconds > 100)
+            {
+                UserLayer.DataHasChanged();
+                lastUserRefresh = DateTime.Now;
+            }
         }
 
         if (centerMap && map?.Navigator != null)
@@ -135,7 +143,20 @@ public class MapViewModel
     // =============================
     public async Task DrawRoute(Map map, Location from, Poi to)
     {
-        var points = await GetRoutePoints(from, to);
+        var key = $"{Math.Round(from.Latitude, 4)},{Math.Round(from.Longitude, 4)}-{to.Id}";
+
+        List<MPoint> points;
+
+        if (key == lastRouteKey && cachedRoute != null)
+        {
+            points = cachedRoute;
+        }
+        else
+        {
+            points = await GetRoutePoints(from, to);
+            cachedRoute = points;
+            lastRouteKey = key;
+        }
 
         if (points.Count < 2)
             return;
@@ -158,22 +179,26 @@ public class MapViewModel
         {
             Line = new Pen(new Color(33, 150, 243), 5)
         });
-
-        RouteLayer.Features = new[] { feature };
+        RouteLayer.Features = new List<IFeature> { feature };
         RouteLayer.DataHasChanged();
 
         if (!map.Layers.Contains(RouteLayer))
             map.Layers.Add(RouteLayer);
 
         var bbox = feature.Extent;
-        if (bbox != null)
-            map.Navigator.ZoomToBox(bbox, MBoxFit.Fit);
+        if (bbox != null && map.Navigator.Viewport != null)
+        {
+            map.Navigator.ZoomToBox(bbox, MBoxFit.Fit, 500);
+        }
     }
 
     public void ClearRoute()
     {
-        RouteLayer.Features = null;
-        RouteLayer.DataHasChanged();
+        if (RouteLayer.Features != null)
+        {
+            RouteLayer.Features = new List<IFeature>();
+            RouteLayer.DataHasChanged();
+        }
     }
 
     // =============================
@@ -181,6 +206,9 @@ public class MapViewModel
     // =============================
     public void LoadPois(Map map, List<Poi> pois)
     {
+        if (poiFeatures.Count == pois.Count && poiFeatures.Count > 0)
+            return;
+
         poiFeatures.Clear();
         PoiLayer.Style = null;
 
@@ -197,7 +225,11 @@ public class MapViewModel
         }
 
         PoiLayer.Features = poiFeatures;
-        PoiLayer.DataHasChanged();
+        if ((DateTime.Now - lastPoiRefresh).TotalMilliseconds > 200)
+        {
+            PoiLayer.DataHasChanged();
+            lastPoiRefresh = DateTime.Now;
+        }
     }
 
     public void HighlightPoi(Map map, double lat, double lng)
@@ -218,7 +250,8 @@ public class MapViewModel
                 }
             };
 
-            poiFeatures.Add(highlightFeature);
+            if (!poiFeatures.Any(f => f == highlightFeature))
+                poiFeatures.Add(highlightFeature);
         }
         else
         {
@@ -226,14 +259,18 @@ public class MapViewModel
             highlightFeature.Point.Y = newPoint.Y;
         }
 
-        PoiLayer.DataHasChanged();
+        if ((DateTime.Now - lastPoiRefresh).TotalMilliseconds > 200)
+        {
+            PoiLayer.DataHasChanged();
+            lastPoiRefresh = DateTime.Now;
+        }
     }
 
     public void LoadHeatMap(Map map, List<UserLocationLog> logs)
     {
         var features = new List<PointFeature>();
 
-        foreach (var l in logs)
+        foreach (var l in logs.Where((x, i) => i % 10 == 0).Take(300))
         {
             var spherical = SphericalMercator.FromLonLat(
                 (double)l.Longitude,
@@ -281,16 +318,24 @@ public class MapViewModel
             if (pulseScale > 1.6) pulseGrowing = false;
             if (pulseScale < 1.0) pulseGrowing = true;
 
-            if (Math.Abs(style.SymbolScale - pulseScale) > 0.01)
+            if (Math.Abs(style.SymbolScale - pulseScale) > 0.05)
             {
                 style.SymbolScale = pulseScale;
-                UserLayer.DataHasChanged();
+                if ((DateTime.Now - lastUserRefresh).TotalMilliseconds > 100)
+                {
+                    UserLayer.DataHasChanged();
+                    lastUserRefresh = DateTime.Now;
+                }
             }
 
             return true;
         });
     }
-
+    private static readonly HttpClient http = new HttpClient();
+    static MapViewModel()
+    {
+        http.Timeout = TimeSpan.FromSeconds(10);
+    }
     public async Task<List<MPoint>> GetRoutePoints(Location from, Poi to)
     {
         var url =
@@ -301,7 +346,6 @@ public class MapViewModel
             $"{to.Lat.ToString(CultureInfo.InvariantCulture)}" +
             $"?overview=full&geometries=geojson";
 
-        using var http = new HttpClient();
         var response = await http.GetAsync(url);
 
         if (!response.IsSuccessStatusCode)

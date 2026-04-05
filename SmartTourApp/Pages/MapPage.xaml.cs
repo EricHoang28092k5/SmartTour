@@ -28,6 +28,8 @@ public partial class MapPage : ContentPage
     private bool trackingStarted = false;
     private bool firstZoom = true;
 
+    private DateTime lastCenterTime = DateTime.MinValue;
+
     public string? TargetPoiId { get; set; }
     private bool openedFromRoute = false;
 
@@ -132,6 +134,7 @@ public partial class MapPage : ContentPage
         base.OnDisappearing();
         tracking.OnLocationChanged -= UpdateLocation;
     }
+    private bool layersAdded = false;
 
     private async Task InitMap()
     {
@@ -170,11 +173,13 @@ public partial class MapPage : ContentPage
 
             vm.LoadPois(TourMap.Map, pois);
 
-            if (!TourMap.Map.Layers.Contains(vm.PoiLayer))
+            if (!layersAdded)
+            {
                 TourMap.Map.Layers.Add(vm.PoiLayer);
-
-            if (!TourMap.Map.Layers.Contains(vm.UserLayer))
                 TourMap.Map.Layers.Add(vm.UserLayer);
+                TourMap.Map.Layers.Add(vm.RouteLayer);
+                layersAdded = true;
+            }
 
             TourMap?.Refresh();
 
@@ -188,33 +193,30 @@ public partial class MapPage : ContentPage
 
     private void UpdateLocation(Location loc)
     {
+        if (currentLocation != null)
+        {
+            var moved = Location.CalculateDistance(
+                currentLocation,
+                loc,
+                DistanceUnits.Kilometers);
+
+            if (moved < 0.01) // 10m
+                return;
+        }
+
         if (loc == null || TourMap?.Map == null)
             return;
 
-        MainThread.BeginInvokeOnMainThread(() =>
+        _ = Task.Run(() =>
         {
-            vm.UpdateUser(TourMap.Map, loc);
-
-            if (TourMap?.Map?.Navigator != null && followUser && !openedFromRoute)
-            {
-                var mercator = SphericalMercator.FromLonLat(
-                    loc.Longitude,
-                    loc.Latitude);
-
-                var pos = new MPoint(mercator.x, mercator.y);
-
-                TourMap.Map.Navigator.CenterOn(pos);
-
-                firstZoom = false;
-            }
-
-            if (pois.Count == 0)
-                return;
+            var nearbyPois = pois.Where(p =>
+    Math.Abs(p.Lat - loc.Latitude) < 0.02 &&
+    Math.Abs(p.Lng - loc.Longitude) < 0.02);
 
             Poi? nearest = null;
             double minDist = double.MaxValue;
 
-            foreach (var p in pois)
+            foreach (var p in nearbyPois)
             {
                 var dist = Location.CalculateDistance(
                     loc,
@@ -228,25 +230,61 @@ public partial class MapPage : ContentPage
                 }
             }
 
+            return nearest;
+        })
+.ContinueWith(t =>
+{
+    if (t.IsFaulted)
+        return;
+
+    var nearest = t.Result;
+
+    MainThread.BeginInvokeOnMainThread(() =>
+    {
+        vm.UpdateUser(TourMap.Map, loc);
+        if (TourMap?.Map?.Navigator != null && followUser && !openedFromRoute)
+        {
+            var mercator = SphericalMercator.FromLonLat(
+                loc.Longitude,
+                loc.Latitude);
+
+            var pos = new MPoint(mercator.x, mercator.y);
+
+            if (firstZoom)
+            {
+                TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 0.5);
+                firstZoom = false;
+            }
+            else
+            {
+                if ((DateTime.Now - lastCenterTime).TotalMilliseconds > 500)
+                {
+                    TourMap.Map.Navigator.CenterOn(pos);
+                    lastCenterTime = DateTime.Now;
+                }
+            }
+        }
+
+        if (currentNearest?.Id != nearest?.Id)
+        {
+            vm.ClearRoute();
             if (nearest != null)
             {
                 NearestPoiLabel.Text = nearest.Name;
-
-                // 🔥 SHOW CARD
                 PoiCard.IsVisible = true;
 
                 vm.HighlightPoi(TourMap.Map, nearest.Lat, nearest.Lng);
             }
             else
             {
-                NearestPoiLabel.Text = "";
-
-                // 🔥 HIDE CARD
                 PoiCard.IsVisible = false;
             }
-            currentLocation = loc;
-            currentNearest = nearest;
-        });
+        }
+
+        currentLocation = loc;
+        currentNearest = nearest;
+    });
+}, TaskScheduler.Default);
     }
 
     private void RemoveLoggingWidget()
