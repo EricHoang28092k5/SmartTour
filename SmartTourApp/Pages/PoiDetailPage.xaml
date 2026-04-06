@@ -4,12 +4,13 @@
     x:Class="SmartTourApp.Pages.PoiDetailPage"
     BackgroundColor="#F6F7FB">
 
-    <Grid>
+    <Grid RowDefinitions="*, Auto">
 
-        <ScrollView>
-            <VerticalStackLayout Spacing="20">
+        <!-- ================= CONTENT ================= -->
+        <ScrollView Grid.Row="0">
+            <VerticalStackLayout Spacing="20" Padding="0,0,0,30">
 
-                <!-- HERO -->
+                <!-- IMAGE HEADER -->
                 <Grid HeightRequest="280">
                     <Image x:Name="PoiImage" Aspect="AspectFill"/>
                     <BoxView Background="#80000000"/>
@@ -22,7 +23,7 @@
                            VerticalOptions="End"/>
                 </Grid>
 
-                <!-- 🔥 OPEN TIME STATUS -->
+                <!-- OPEN STATUS -->
                 <HorizontalStackLayout Margin="16,0" Spacing="6">
                     <Label x:Name="OpenStatus"
                            FontAttributes="Bold"
@@ -33,7 +34,7 @@
                            TextColor="#666"/>
                 </HorizontalStackLayout>
 
-                <!-- TAB -->
+                <!-- TABS -->
                 <Grid Margin="16,0" ColumnDefinitions="*,*">
                     <Button x:Name="OverviewTab"
                             Text="Tổng quan"
@@ -54,28 +55,25 @@
                 <!-- OVERVIEW -->
                 <VerticalStackLayout x:Name="OverviewSection" Margin="16,0">
                     <Label Text="📝 Giới thiệu"
-                           FontAttributes="Bold"/>
-
+                           FontAttributes="Bold"
+                           Margin="0,0,0,8"/>
                     <Label x:Name="PoiDescription"
                            FontSize="14"
-                           TextColor="#444"/>
+                           TextColor="#444"
+                           LineHeight="1.4"/>
                 </VerticalStackLayout>
 
-                <!-- FOOD LIST -->
+                <!-- MENU -->
                 <CollectionView x:Name="FoodList"
                                 Margin="16,0"
                                 IsVisible="False">
-
                     <CollectionView.ItemTemplate>
                         <DataTemplate>
-
                             <Border StrokeShape="RoundRectangle 18"
                                     BackgroundColor="White"
                                     Margin="0,0,0,16"
                                     StrokeThickness="0">
-
                                 <Grid ColumnDefinitions="110,*">
-
                                     <Image Source="{Binding ImageUrl}"
                                            HeightRequest="100"
                                            Aspect="AspectFill">
@@ -84,43 +82,101 @@
                                         </Image.GestureRecognizers>
                                     </Image>
 
-                                    <VerticalStackLayout Grid.Column="1"
-                                                         Padding="10"
-                                                         Spacing="4">
-
-                                        <Label Text="{Binding Name}"
-                                               FontAttributes="Bold"/>
-
-                                        <Label Text="{Binding Description}"
-                                               FontSize="12"
-                                               TextColor="#777"/>
-
+                                    <VerticalStackLayout Grid.Column="1" Padding="10" Spacing="4">
+                                        <Label Text="{Binding Name}" FontAttributes="Bold"/>
+                                        <Label Text="{Binding Description}" FontSize="12" TextColor="#777"/>
                                         <Label Text="{Binding Price, StringFormat='{}{0:N0} đ'}"
                                                TextColor="#1976D2"
                                                FontAttributes="Bold"/>
                                     </VerticalStackLayout>
-
                                 </Grid>
-
-                                <Border.Shadow>
-                                    <Shadow Brush="#22000000"
-                                            Offset="0,6"
-                                            Radius="12"
-                                            Opacity="0.8"/>
-                                </Border.Shadow>
-
                             </Border>
-
                         </DataTemplate>
                     </CollectionView.ItemTemplate>
-
                 </CollectionView>
 
             </VerticalStackLayout>
         </ScrollView>
 
+        <!-- ================= AUDIO BAR (ONLY OVERVIEW) ================= -->
+        <Border x:Name="AudioBar"
+                Grid.Row="1"
+                BackgroundColor="White"
+                StrokeThickness="0"
+                Padding="16,12,16,25">
+
+            <Border.Shadow>
+                <Shadow Brush="Black" Offset="0,-3" Radius="15" Opacity="0.1"/>
+            </Border.Shadow>
+
+            <VerticalStackLayout Spacing="8">
+
+                <!-- SLIDER -->
+                <Grid ColumnDefinitions="Auto,*,Auto" VerticalOptions="Center">
+
+                    <Label x:Name="CurrentTimeLabel"
+                           Text="00:00"
+                           FontSize="11"
+                           TextColor="#1976D2"
+                           VerticalOptions="Center"/>
+
+                    <Slider x:Name="ProgressSlider"
+                            Minimum="0"
+                            Maximum="0"
+                            DragStarted="OnSeekStarted"
+                            DragCompleted="OnSeekCompleted"
+                            ValueChanged="OnSeek"/>
+
+                    <Label x:Name="TotalTimeLabel"
+                           Grid.Column="2"
+                           Text="00:00"
+                           FontSize="11"
+                           TextColor="#777"
+                           VerticalOptions="Center"/>
+                </Grid>
+
+                <!-- CONTROL -->
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="15">
+
+                    <Button x:Name="PlayBtn"
+                            Text="▶"
+                            FontSize="20"
+                            Clicked="OnPlayClicked"
+                            BackgroundColor="#1976D2"
+                            TextColor="White"
+                            CornerRadius="24"
+                            WidthRequest="48"
+                            HeightRequest="48"/>
+
+                    <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                        <Label Text="Audio Guide"
+                               TextColor="#333"
+                               FontSize="14"
+                               FontAttributes="Bold"/>
+                        <Label Text="Đang phát thuyết minh..."
+                               FontSize="11"
+                               TextColor="#999"/>
+                    </VerticalStackLayout>
+
+                    <Button x:Name="PauseBtn"
+                            Grid.Column="2"
+                            Text="⏸"
+                            FontSize="20"
+                            Clicked="OnPauseClicked"
+                            BackgroundColor="#F0F0F0"
+                            TextColor="#333"
+                            CornerRadius="24"
+                            WidthRequest="48"
+                            HeightRequest="48"
+                            IsEnabled="False"/>
+                </Grid>
+
+            </VerticalStackLayout>
+        </Border>
+
         <!-- IMAGE VIEWER -->
         <Grid x:Name="ImageViewer"
+              Grid.RowSpan="2"
               BackgroundColor="#CC000000"
               IsVisible="False"
               Opacity="0">
@@ -131,9 +187,9 @@
 
             <Image x:Name="PreviewImage"
                    Aspect="AspectFit"
+                   Scale="0.8"
                    HorizontalOptions="Center"
-                   VerticalOptions="Center"
-                   Scale="0.8"/>
+                   VerticalOptions="Center"/>
         </Grid>
 
     </Grid>

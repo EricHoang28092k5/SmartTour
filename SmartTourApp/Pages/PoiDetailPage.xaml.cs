@@ -1,4 +1,5 @@
 ﻿using SmartTour.Shared.Models;
+using SmartTourApp.Services;
 
 namespace SmartTourApp.Pages;
 
@@ -6,9 +7,14 @@ namespace SmartTourApp.Pages;
 public partial class PoiDetailPage : ContentPage
 {
     private Poi poi;
+    private readonly PoiDetailAudioManager audio;
+
+    private bool isSeeking = false;
+    private double duration = 0;
 
     public Poi Poi
     {
+        get => poi;
         set
         {
             poi = value;
@@ -16,112 +22,99 @@ public partial class PoiDetailPage : ContentPage
         }
     }
 
-    public PoiDetailPage()
+    public PoiDetailPage(PoiDetailAudioManager audio)
     {
         InitializeComponent();
+        this.audio = audio;
+
+        audio.OnProgress += sec =>
+        {
+            if (isSeeking) return;
+
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                ProgressSlider.Value = sec;
+                CurrentTimeLabel.Text = Format(sec);
+            });
+        };
+
+        audio.OnDuration += d =>
+        {
+            duration = d;
+
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                ProgressSlider.Maximum = d;
+                TotalTimeLabel.Text = Format(d);
+            });
+        };
     }
 
     private void BindData()
     {
         if (poi == null) return;
 
+        if (poi.Foods != null && poi.Foods.Any())
+            FoodList.ItemsSource = poi.Foods;
+
         PoiName.Text = poi.Name;
         PoiImage.Source = poi.ImageUrl;
-
         PoiDescription.Text = string.IsNullOrWhiteSpace(poi.Description)
             ? "Chưa có mô tả"
             : poi.Description;
 
-        FoodList.ItemsSource = poi.Foods ?? new List<Food>();
-
-        UpdateOpenStatus(); // 🔥 NEW
+        UpdateOpenStatus();
     }
 
-    // ======================
-    // 🔥 OPEN STATUS LOGIC
-    // ======================
+    // ================= AUDIO =================
 
-    private void UpdateOpenStatus()
+    private async void OnPlayClicked(object sender, EventArgs e)
     {
-        if (poi == null || poi.OpenTime == null || poi.CloseTime == null)
-            return;
+        if (poi == null) return;
 
-        var now = DateTime.Now;
+        await audio.Play(poi);
 
-        var open = DateTime.Today.Add(poi.OpenTime.Value);
-        var close = DateTime.Today.Add(poi.CloseTime.Value);
-
-        // MỞ CẢ NGÀY
-        if (poi.OpenTime == poi.CloseTime)
-        {
-            OpenStatus.Text = "🔵 Mở cả ngày";
-            OpenDetail.Text = "";
-            return;
-        }
-
-        // CHƯA MỞ
-        if (now < open)
-        {
-            OpenStatus.Text = "🔴 Đã đóng cửa";
-            OpenDetail.Text = $"Mở lúc {open:HH:mm}";
-            return;
-        }
-
-        // ĐANG MỞ
-        if (now >= open && now < close)
-        {
-            // TRƯỚC 1 TIẾNG
-            if (now >= close.AddHours(-1))
-            {
-                OpenStatus.Text = "🟠 Sắp đóng cửa";
-                OpenDetail.Text = $"{close:HH:mm}";
-            }
-            else
-            {
-                OpenStatus.Text = "🟢 Đang mở cửa";
-                OpenDetail.Text = $"Đóng cửa lúc {close:HH:mm}";
-            }
-
-            return;
-        }
-
-        // SAU GIỜ ĐÓNG → NGÀY MAI
-        if (now >= close)
-        {
-            var tomorrow = DateTime.Today.AddDays(1).Add(poi.OpenTime.Value);
-
-            OpenStatus.Text = "🔴 Đã đóng cửa";
-            OpenDetail.Text = $"Mở lúc {tomorrow:HH:mm} {GetVietnameseDay(tomorrow)}";
-        }
+        PlayBtn.IsEnabled = false;
+        PauseBtn.IsEnabled = true;
     }
 
-    private string GetVietnameseDay(DateTime date)
+    private void OnPauseClicked(object sender, EventArgs e)
     {
-        return date.DayOfWeek switch
-        {
-            DayOfWeek.Monday => "Thứ 2",
-            DayOfWeek.Tuesday => "Thứ 3",
-            DayOfWeek.Wednesday => "Thứ 4",
-            DayOfWeek.Thursday => "Thứ 5",
-            DayOfWeek.Friday => "Thứ 6",
-            DayOfWeek.Saturday => "Thứ 7",
-            DayOfWeek.Sunday => "Chủ nhật",
-            _ => ""
-        };
+        audio.Pause();
+
+        PlayBtn.IsEnabled = true;
+        PauseBtn.IsEnabled = false;
     }
 
-    // ======================
-    // TAB SWITCH
-    // ======================
+    // ================= SEEK =================
+
+    private void OnSeekStarted(object sender, EventArgs e)
+    {
+        isSeeking = true;
+    }
+
+    private void OnSeekCompleted(object sender, EventArgs e)
+    {
+        isSeeking = false;
+        audio.Seek(ProgressSlider.Value);
+    }
+
+    private void OnSeek(object sender, ValueChangedEventArgs e)
+    {
+        if (isSeeking)
+            audio.Seek(e.NewValue);
+    }
+
+    // ================= TAB UX =================
 
     private void ShowOverview(object sender, EventArgs e)
     {
         OverviewSection.IsVisible = true;
         FoodList.IsVisible = false;
+        AudioBar.IsVisible = true;
 
         OverviewTab.BackgroundColor = Color.FromArgb("#1976D2");
         OverviewTab.TextColor = Colors.White;
-
         MenuTab.BackgroundColor = Color.FromArgb("#EEE");
         MenuTab.TextColor = Colors.Black;
     }
@@ -130,32 +123,40 @@ public partial class PoiDetailPage : ContentPage
     {
         OverviewSection.IsVisible = false;
         FoodList.IsVisible = true;
+        AudioBar.IsVisible = false; // 🔥 UX requirement
 
         MenuTab.BackgroundColor = Color.FromArgb("#1976D2");
         MenuTab.TextColor = Colors.White;
-
         OverviewTab.BackgroundColor = Color.FromArgb("#EEE");
         OverviewTab.TextColor = Colors.Black;
     }
 
-    // ======================
-    // IMAGE VIEWER
-    // ======================
+    // ================= UTIL =================
+
+    private string Format(double sec)
+    {
+        var t = TimeSpan.FromSeconds(sec);
+        return $"{t.Minutes:D2}:{t.Seconds:D2}";
+    }
+
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        audio.Stop();
+    }
+
+    // ================= IMAGE =================
 
     private async void OnFoodImageTapped(object sender, TappedEventArgs e)
     {
         if (sender is Microsoft.Maui.Controls.Image img && img.BindingContext is Food food)
         {
-            if (string.IsNullOrWhiteSpace(food.ImageUrl))
-                return;
-
             PreviewImage.Source = food.ImageUrl;
-
             ImageViewer.IsVisible = true;
 
             await Task.WhenAll(
-                ImageViewer.FadeToAsync(1, 150),
-                PreviewImage.ScaleToAsync(1, 200, Easing.CubicOut)
+                ImageViewer.FadeTo(1, 150),
+                PreviewImage.ScaleTo(1, 200)
             );
         }
     }
@@ -163,10 +164,40 @@ public partial class PoiDetailPage : ContentPage
     private async void CloseImageViewer(object sender, EventArgs e)
     {
         await Task.WhenAll(
-            ImageViewer.FadeToAsync(0, 150),
-            PreviewImage.ScaleToAsync(0.8, 150)
+            ImageViewer.FadeTo(0, 150),
+            PreviewImage.ScaleTo(0.8, 150)
         );
 
         ImageViewer.IsVisible = false;
+    }
+
+    private void UpdateOpenStatus()
+    {
+        if (poi == null || poi.OpenTime == null || poi.CloseTime == null)
+            return;
+
+        var now = DateTime.Now.TimeOfDay;
+        var open = poi.OpenTime.Value;
+        var close = poi.CloseTime.Value;
+
+        if (open == close)
+        {
+            OpenStatus.Text = "🔵 Mở cả ngày";
+            OpenStatus.TextColor = Colors.Blue;
+            return;
+        }
+
+        if (now >= open && now <= close)
+        {
+            OpenStatus.Text = "🟢 Đang mở cửa";
+            OpenStatus.TextColor = Colors.Green;
+            OpenDetail.Text = $"Đóng lúc {close:hh\\:mm}";
+        }
+        else
+        {
+            OpenStatus.Text = "🔴 Đã đóng cửa";
+            OpenStatus.TextColor = Colors.Red;
+            OpenDetail.Text = $"Mở lúc {open:hh\\:mm}";
+        }
     }
 }

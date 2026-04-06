@@ -35,11 +35,12 @@ public static class MauiProgram
 
         builder.Services.AddSingleton<LocationService>();
         builder.Services.AddSingleton<AudioService>();
+        builder.Services.AddSingleton<PoiDetailAudioManager>();
         builder.Services.AddSingleton<GeofencingEngine>();
         builder.Services.AddSingleton<NarrationEngine>();
         builder.Services.AddHttpClient<ApiService>(client =>
         {
-            client.BaseAddress = new Uri("http://192.168.1.8:5165/");
+            client.BaseAddress = new Uri("http://192.168.1.4:5165/");
         });
         builder.Services.AddSingleton<PoiRepository>();
         builder.Services.AddSingleton<Database>();
@@ -54,6 +55,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<HomePage>();
         builder.Services.AddSingleton<MapPage>();
         builder.Services.AddSingleton<TourPage>();
+        builder.Services.AddTransient<PoiDetailPage>();
 
 #if DEBUG
         builder.Logging.ClearProviders();
