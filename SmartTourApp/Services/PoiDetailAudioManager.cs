@@ -13,6 +13,7 @@ public class PoiDetailAudioManager
 {
     private readonly ApiService api;
     private readonly LanguageService lang;
+    private readonly AudioListenTracker tracker;
 
 #if ANDROID
     private readonly ExoPlayerService exo = new();
@@ -22,24 +23,54 @@ public class PoiDetailAudioManager
 
     public event Action<double>? OnProgress;
     public event Action<double>? OnDuration;
+
+    /// <summary>
+    /// Fired when audio completes naturally — UI should reset to beginning.
+    /// </summary>
+    public event Action? OnCompleted;
+
     public bool IsPlaying { get; private set; }
 
-    public PoiDetailAudioManager(ApiService api, LanguageService lang)
+    private Poi? currentPoi;
+    private double currentDuration;
+    private double lastProgressSec;
+
+    public PoiDetailAudioManager(ApiService api, LanguageService lang, AudioListenTracker tracker)
     {
         this.api = api;
         this.lang = lang;
+        this.tracker = tracker;
 
         if (!Directory.Exists(cacheDir))
             Directory.CreateDirectory(cacheDir);
 
 #if ANDROID
-        exo.OnProgress += p => OnProgress?.Invoke(p);
-        exo.OnDuration += d => OnDuration?.Invoke(d);
+        exo.OnProgress += p =>
+        {
+            lastProgressSec = p;
+            OnProgress?.Invoke(p);
+
+            // 🔥 Detect natural completion (within 0.5s of duration end)
+            if (currentDuration > 0 && p >= currentDuration - 0.5)
+            {
+                HandleCompleted();
+            }
+        };
+
+        exo.OnDuration += d =>
+        {
+            currentDuration = d;
+            OnDuration?.Invoke(d);
+        };
 #endif
     }
 
     public async Task Play(Poi poi)
     {
+        currentPoi = poi;
+        currentDuration = 0;
+        lastProgressSec = 0;
+
         var scripts = await api.GetTtsScripts(poi.Id);
 
         var selected = scripts.FirstOrDefault(x =>
@@ -57,6 +88,9 @@ public class PoiDetailAudioManager
 #endif
 
         IsPlaying = true;
+
+        // 🔥 Start listen tracking
+        tracker.StartSession(poi.Id, 0, 0);
     }
 
     public void Resume()
@@ -65,6 +99,10 @@ public class PoiDetailAudioManager
         exo.Resume();
 #endif
         IsPlaying = true;
+
+        // 🔥 Resume tracking
+        if (currentPoi != null)
+            tracker.StartSession(currentPoi.Id, 0, 0);
     }
 
     public void Pause()
@@ -73,6 +111,9 @@ public class PoiDetailAudioManager
         exo.Pause();
 #endif
         IsPlaying = false;
+
+        // 🔥 Pause tracking — accumulates time
+        tracker.PauseSession();
     }
 
     public void Seek(double sec)
@@ -80,6 +121,12 @@ public class PoiDetailAudioManager
 #if ANDROID
         exo.Seek(sec);
 #endif
+        // 🔥 On seek: pause accumulation (skip counts as pause)
+        tracker.OnSkip();
+
+        // If currently playing, restart the tracking clock
+        if (IsPlaying && currentPoi != null)
+            tracker.StartSession(currentPoi.Id, 0, 0);
     }
 
     public void Stop()
@@ -88,6 +135,40 @@ public class PoiDetailAudioManager
         exo.Stop();
 #endif
         IsPlaying = false;
+
+        // 🔥 Flush listen duration
+        tracker.StopSession();
+
+        currentPoi = null;
+        currentDuration = 0;
+        lastProgressSec = 0;
+    }
+
+    /// <summary>
+    /// Called when ExoPlayer progress reaches end — audio completed naturally.
+    /// Resets position to start, fires OnCompleted so UI can reset play button.
+    /// </summary>
+    private void HandleCompleted()
+    {
+        IsPlaying = false;
+
+        // 🔥 Flush listen session
+        tracker.StopSession();
+
+#if ANDROID
+        exo.Stop();
+        // Seek to 0 so next Play() starts fresh
+        exo.Seek(0);
+#endif
+
+        // Reset progress for UI
+        OnProgress?.Invoke(0);
+
+        // Notify UI to reset play button
+        OnCompleted?.Invoke();
+
+        currentDuration = 0;
+        lastProgressSec = 0;
     }
 
     private async Task<string> GenerateAudio(string text, int poiId)

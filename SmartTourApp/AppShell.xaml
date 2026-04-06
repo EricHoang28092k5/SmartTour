@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="utf-8" ?>
-
 <Shell
     x:Class="SmartTourApp.AppShell"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -9,30 +8,29 @@
     <TabBar>
 
         <ShellContent
-        Title="Home"
-        Route="home"
-        ContentTemplate="{DataTemplate pages:HomePage}" />
+            Title="Home"
+            Route="home"
+            ContentTemplate="{DataTemplate pages:HomePage}" />
 
         <ShellContent
-        Title="Map"
-        Route="map"
-        ContentTemplate="{DataTemplate pages:MapPage}" />
+            Title="Map"
+            Route="map"
+            ContentTemplate="{DataTemplate pages:MapPage}" />
 
         <ShellContent
-        Title="Tour"
-        Route="tour"
-        ContentTemplate="{DataTemplate pages:TourPage}" />
+            Title="Tour"
+            Route="tour"
+            ContentTemplate="{DataTemplate pages:TourPage}" />
 
         <ShellContent
-        Title="QR Scan"
-        Route="qr"
-        ContentTemplate="{DataTemplate pages:QrScannerPage}" />
+            Title="QR Scan"
+            Route="qr"
+            ContentTemplate="{DataTemplate pages:QrScannerPage}" />
 
         <ShellContent
-        Title="Settings"
-        Route="settings"
-        ContentTemplate="{DataTemplate pages:SettingsPage}" />
+            Title="Settings"
+            Route="settings"
+            ContentTemplate="{DataTemplate pages:SettingsPage}" />
 
     </TabBar>
-
 </Shell>

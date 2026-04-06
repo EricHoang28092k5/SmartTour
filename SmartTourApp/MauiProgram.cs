@@ -35,8 +35,11 @@ public static class MauiProgram
 
         builder.Services.AddSingleton<LocationService>();
         builder.Services.AddSingleton<AudioService>();
-        builder.Services.AddSingleton<PoiDetailAudioManager>();
         builder.Services.AddSingleton<GeofencingEngine>();
+
+        builder.Services.AddSingleton<AudioListenTracker>();
+
+
         builder.Services.AddSingleton<NarrationEngine>();
         builder.Services.AddHttpClient<ApiService>(client =>
         {
@@ -50,6 +53,9 @@ public static class MauiProgram
         builder.Services.AddSingleton<TrackingService>();
         builder.Services.AddSingleton<OfflineService>();
         builder.Services.AddSingleton<LanguageService>();
+
+        builder.Services.AddSingleton<PoiDetailAudioManager>();
+
         builder.Services.AddSingleton<QrScannerPage>();
         builder.Services.AddSingleton<SettingsPage>();
         builder.Services.AddSingleton<HomePage>();

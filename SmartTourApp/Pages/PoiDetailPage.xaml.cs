@@ -1,5 +1,6 @@
 ﻿using SmartTour.Shared.Models;
 using SmartTourApp.Services;
+
 namespace SmartTourApp.Pages;
 
 [QueryProperty(nameof(Poi), "poi")]
@@ -10,6 +11,7 @@ public partial class PoiDetailPage : ContentPage
 
     private bool isSeeking = false;
     private double duration = 0;
+    private double progressBarTotalWidth = 0;
 
     // Track whether audio has been started at least once (for resume vs. fresh play)
     private bool hasStarted = false;
@@ -31,14 +33,22 @@ public partial class PoiDetailPage : ContentPage
         InitializeComponent();
         this.audio = audio;
 
+        // 🔥 Realtime progress → update fill bar width
         audio.OnProgress += sec =>
         {
             if (isSeeking) return;
 
             MainThread.BeginInvokeOnMainThread(() =>
             {
+                UpdateProgressFill(sec);
                 ProgressSlider.Value = sec;
                 CurrentTimeLabel.Text = Format(sec);
+
+                if (duration > 0)
+                {
+                    var remaining = Math.Max(0, duration - sec);
+                    RemainingTimeLabel.Text = Format(remaining);
+                }
             });
         };
 
@@ -50,8 +60,31 @@ public partial class PoiDetailPage : ContentPage
             {
                 ProgressSlider.Maximum = d;
                 TotalTimeLabel.Text = Format(d);
+                RemainingTimeLabel.Text = Format(d);
             });
         };
+
+        // 🔥 Audio completed naturally → reset to start
+        audio.OnCompleted += () =>
+        {
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                hasStarted = false;
+                SetPlayingState(false);
+                ResetProgressUI();
+            });
+        };
+    }
+
+    protected override void OnSizeAllocated(double width, double height)
+    {
+        base.OnSizeAllocated(width, height);
+
+        // Measure the actual width of the progress background track
+        // The track is inside the Border which has Margin="20,0,20,0" so subtract padding
+        var trackWidth = width - 40; // 20 left + 20 right padding
+        if (trackWidth > 0)
+            progressBarTotalWidth = trackWidth;
     }
 
     private void BindData()
@@ -70,13 +103,17 @@ public partial class PoiDetailPage : ContentPage
         UpdateOpenStatus();
     }
 
+    // ================= BACK NAVIGATION =================
+
+    private async void OnBackTapped(object sender, TappedEventArgs e)
+    {
+        await Shell.Current.GoToAsync("..");
+    }
+
     // ================= AUDIO =================
 
     /// <summary>
     /// Unified Play/Pause handler.
-    /// - First press → start fresh audio
-    /// - While playing → pause (resume position kept)
-    /// - While paused → resume from current position
     /// </summary>
     private async void OnPlayClicked(object sender, EventArgs e)
     {
@@ -97,7 +134,7 @@ public partial class PoiDetailPage : ContentPage
         }
         else
         {
-            // Paused → resume from current position (ExoPlayer's Play() continues from where it left off)
+            // Paused → resume
             audio.Resume();
             SetPlayingState(true);
         }
@@ -117,18 +154,9 @@ public partial class PoiDetailPage : ContentPage
         audio.Stop();
         hasStarted = false;
         SetPlayingState(false);
-
-        MainThread.BeginInvokeOnMainThread(() =>
-        {
-            ProgressSlider.Value = 0;
-            CurrentTimeLabel.Text = "00:00";
-        });
+        ResetProgressUI();
     }
 
-    /// <summary>
-    /// Toggles the Play button icon between ▶ and ⏸.
-    /// PauseBtnContainer kept invisible for layout compatibility.
-    /// </summary>
     private void SetPlayingState(bool isPlaying)
     {
         MainThread.BeginInvokeOnMainThread(() =>
@@ -136,13 +164,11 @@ public partial class PoiDetailPage : ContentPage
             PlayBtn.Text = isPlaying ? "⏸" : "▶";
             PlayBtn.FontSize = isPlaying ? 22 : 26;
 
-            // Keep hidden elements in sync for code compatibility
-            PlayBtnContainer.IsVisible = true;   // always visible — unified button
+            PlayBtnContainer.IsVisible = true;
             PauseBtnContainer.IsVisible = false;
             PlayBtn.IsEnabled = true;
             PauseBtn.IsEnabled = isPlaying;
 
-            // Show/hide stop text button
             StopBtn.IsVisible = hasStarted;
         });
     }
@@ -158,6 +184,13 @@ public partial class PoiDetailPage : ContentPage
     {
         isSeeking = false;
         audio.Seek(ProgressSlider.Value);
+        UpdateProgressFill(ProgressSlider.Value);
+
+        // Resume tracking after seek
+        if (audio.IsPlaying && poi != null)
+        {
+            // tracker restart handled inside PoiDetailAudioManager.Seek
+        }
     }
 
     private void OnSeek(object sender, ValueChangedEventArgs e)
@@ -165,22 +198,21 @@ public partial class PoiDetailPage : ContentPage
         if (isSeeking)
         {
             CurrentTimeLabel.Text = Format(e.NewValue);
+            UpdateProgressFill(e.NewValue);
+
+            if (duration > 0)
+                RemainingTimeLabel.Text = Format(Math.Max(0, duration - e.NewValue));
+
             audio.Seek(e.NewValue);
         }
     }
 
     // ================= SKIP =================
 
-    /// <summary>
-    /// Skip back 5 seconds. If result < 0, seek to 0.
-    /// </summary>
     private void OnSkipBack(object sender, EventArgs e)
     {
         var current = ProgressSlider.Value;
-        var target = current - SkipSeconds;
-
-        // Clamp to start
-        if (target < 0) target = 0;
+        var target = Math.Max(0, current - SkipSeconds);
 
         audio.Seek(target);
 
@@ -188,25 +220,23 @@ public partial class PoiDetailPage : ContentPage
         {
             ProgressSlider.Value = target;
             CurrentTimeLabel.Text = Format(target);
+            UpdateProgressFill(target);
         });
     }
 
-    /// <summary>
-    /// Skip forward 5 seconds. If result > duration, wrap back to 0.
-    /// </summary>
     private void OnSkipForward(object sender, EventArgs e)
     {
         var current = ProgressSlider.Value;
         var target = current + SkipSeconds;
 
-        // Wrap to beginning if past duration
         if (duration > 0 && target > duration)
         {
             target = 0;
-            // Stop playback and reset so user can replay
             audio.Stop();
             hasStarted = false;
             SetPlayingState(false);
+            ResetProgressUI();
+            return;
         }
 
         audio.Seek(target);
@@ -215,7 +245,32 @@ public partial class PoiDetailPage : ContentPage
         {
             ProgressSlider.Value = target;
             CurrentTimeLabel.Text = Format(target);
+            UpdateProgressFill(target);
         });
+    }
+
+    // ================= PROGRESS BAR FILL =================
+
+    /// <summary>
+    /// 🔥 Updates the animated gradient fill bar width based on current playback position.
+    /// Must be called on MainThread.
+    /// </summary>
+    private void UpdateProgressFill(double sec)
+    {
+        if (duration <= 0 || progressBarTotalWidth <= 0) return;
+
+        var fraction = Math.Clamp(sec / duration, 0, 1);
+        var fillWidth = fraction * progressBarTotalWidth;
+
+        ProgressFill.WidthRequest = fillWidth;
+    }
+
+    private void ResetProgressUI()
+    {
+        ProgressSlider.Value = 0;
+        CurrentTimeLabel.Text = "00:00";
+        RemainingTimeLabel.Text = duration > 0 ? Format(duration) : "00:00";
+        ProgressFill.WidthRequest = 0;
     }
 
     // ================= TAB UX =================
@@ -226,7 +281,6 @@ public partial class PoiDetailPage : ContentPage
         FoodList.IsVisible = false;
         AudioBar.IsVisible = true;
 
-        // Overview tab: gradient active style
         OverviewTabBorder.Background = new LinearGradientBrush(
             new GradientStopCollection
             {
@@ -238,10 +292,9 @@ public partial class PoiDetailPage : ContentPage
         OverviewTab.TextColor = Colors.White;
         OverviewTab.FontAttributes = FontAttributes.Bold;
 
-        // Menu tab: inactive style
-        MenuTabBorder.Background = new SolidColorBrush(Color.FromArgb("#1A1E2E"));
+        MenuTabBorder.Background = new SolidColorBrush(Color.FromArgb("#F5F6FA"));
         MenuTabBorder.StrokeThickness = 1;
-        MenuTab.TextColor = Color.FromArgb("#888888");
+        MenuTab.TextColor = Color.FromArgb("#9B9BAA");
         MenuTab.FontAttributes = FontAttributes.None;
     }
 
@@ -249,9 +302,8 @@ public partial class PoiDetailPage : ContentPage
     {
         OverviewSection.IsVisible = false;
         FoodList.IsVisible = true;
-        AudioBar.IsVisible = false; // 🔥 UX requirement: audio bar hidden on menu tab
+        AudioBar.IsVisible = false;
 
-        // Menu tab: active
         MenuTabBorder.Background = new LinearGradientBrush(
             new GradientStopCollection
             {
@@ -263,10 +315,9 @@ public partial class PoiDetailPage : ContentPage
         MenuTab.TextColor = Colors.White;
         MenuTab.FontAttributes = FontAttributes.Bold;
 
-        // Overview tab: inactive
-        OverviewTabBorder.Background = new SolidColorBrush(Color.FromArgb("#1A1E2E"));
+        OverviewTabBorder.Background = new SolidColorBrush(Color.FromArgb("#F5F6FA"));
         OverviewTabBorder.StrokeThickness = 1;
-        OverviewTab.TextColor = Color.FromArgb("#888888");
+        OverviewTab.TextColor = Color.FromArgb("#9B9BAA");
         OverviewTab.FontAttributes = FontAttributes.None;
     }
 
@@ -275,7 +326,7 @@ public partial class PoiDetailPage : ContentPage
     private string Format(double sec)
     {
         var t = TimeSpan.FromSeconds(sec);
-        return $"{t.Minutes:D2}:{t.Seconds:D2}";
+        return $"{(int)t.TotalMinutes:D2}:{t.Seconds:D2}";
     }
 
     protected override void OnDisappearing()

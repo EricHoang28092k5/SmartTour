@@ -1,13 +1,13 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SmartTourBackend.Data;
-using SmartTour.Shared.Models; // Bác nhớ check xem namespace chứa class Poi của bác tên gì nhé
+using SmartTour.Shared.Models;
 
 namespace SmartTourBackend.Controllers
 {
     [Route("api/[controller]")]
-    [ApiController] // API nhả ra json
-    public class PoisController : ControllerBase // Dùng controller base cho nhẹ
+    [ApiController]
+    public class PoisController : ControllerBase
     {
         private readonly AppDbContext _context;
 
@@ -16,26 +16,23 @@ namespace SmartTourBackend.Controllers
             _context = context;
         }
 
-        // --- 1. Lấy danh sách toàn bộ địa điểm (Hàm cũ của bác) ---
+        // --- 1. Lấy danh sách toàn bộ địa điểm ---
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Poi>>> GetPois()
         {
             return await _context.Pois
                 .Include(p => p.AudioFiles)
-                   .Include(p => p.PoiImages)
-                   .Include(p => p.Foods) // <-- BƠM THÊM DÒNG NÀY ĐỂ KÉO LUÔN THỰC ĐƠN RA
+                .Include(p => p.PoiImages)
+                .Include(p => p.Foods)
                 .ToListAsync();
-         
         }
 
-        // --- 3. GOM TẤT CẢ KỊCH BẢN (MỌI NGÔN NGỮ) VÀO 1 URL ---
-        // Link gọi: GET /api/pois/{poiId}/tts-all
+        // --- 2. Lấy tất cả kịch bản TTS theo ngôn ngữ ---
         [HttpGet("{poiId}/tts-all")]
         public async Task<IActionResult> GetAllTtsScripts(int poiId)
         {
-            // Tìm tất cả các bản dịch của cái POI này, lấy kèm luôn thông tin Ngôn ngữ
             var translations = await _context.PoiTranslations
-                .Include(t => t.Language) // Join bảng Language để lấy mã code (vi, en, fr...)
+                .Include(t => t.Language)
                 .Where(t => t.PoiId == poiId)
                 .Select(t => new
                 {
@@ -46,7 +43,6 @@ namespace SmartTourBackend.Controllers
                 })
                 .ToListAsync();
 
-            // Nếu rỗng (chưa có bản dịch nào)
             if (!translations.Any())
             {
                 return NotFound(new
@@ -56,14 +52,113 @@ namespace SmartTourBackend.Controllers
                 });
             }
 
-            // Nếu có dữ liệu, trả về nguyên 1 danh sách (Array) cho App tự xử lý
             return Ok(new
             {
                 success = true,
                 poiId = poiId,
-                totalLanguages = translations.Count, // Báo cho App biết có bao nhiêu thứ tiếng
+                totalLanguages = translations.Count,
                 data = translations
             });
         }
+
+        // --- 3. 🔥 Nhận thống kê thời gian nghe audio từ app ---
+        // POST /api/pois/playlog
+        [HttpPost("playlog")]
+        public async Task<IActionResult> PostPlayLog([FromBody] PlayLogDto dto)
+        {
+            if (dto == null || dto.PoiId <= 0)
+                return BadRequest(new { success = false, message = "Dữ liệu không hợp lệ." });
+
+            // Validate POI exists
+            var poiExists = await _context.Pois.AnyAsync(p => p.Id == dto.PoiId);
+            if (!poiExists)
+                return NotFound(new { success = false, message = "Không tìm thấy địa điểm." });
+
+            var log = new PlayLog
+            {
+                PoiId = dto.PoiId,
+                Time = dto.Time == default ? DateTime.UtcNow : DateTime.SpecifyKind(dto.Time, DateTimeKind.Utc),
+                Lat = dto.Lat,
+                Lng = dto.Lng,
+                DurationListened = dto.DurationListened,
+                // Anonymous — no user/device tracking required
+                DeviceId = string.Empty,
+                UserId = string.Empty
+            };
+
+            _context.PlayLog.Add(log);
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                success = true,
+                logId = log.Id,
+                poiId = log.PoiId,
+                durationListened = log.DurationListened
+            });
+        }
+
+        // --- 4. 🔥 Thống kê tổng thời gian nghe theo POI (dashboard) ---
+        // GET /api/pois/stats
+        [HttpGet("stats")]
+        public async Task<IActionResult> GetListenStats()
+        {
+            var stats = await _context.PlayLog
+                .GroupBy(l => l.PoiId)
+                .Select(g => new
+                {
+                    poiId = g.Key,
+                    totalPlays = g.Count(),
+                    totalSecondsListened = g.Sum(l => l.DurationListened),
+                    avgSecondsPerPlay = g.Average(l => l.DurationListened),
+                    lastPlayedAt = g.Max(l => l.Time)
+                })
+                .OrderByDescending(x => x.totalSecondsListened)
+                .ToListAsync();
+
+            return Ok(new { success = true, data = stats });
+        }
+
+        // --- 5. 🔥 Thống kê cho 1 POI cụ thể ---
+        // GET /api/pois/{poiId}/stats
+        [HttpGet("{poiId}/stats")]
+        public async Task<IActionResult> GetPoiStats(int poiId)
+        {
+            var logs = await _context.PlayLog
+                .Where(l => l.PoiId == poiId)
+                .OrderByDescending(l => l.Time)
+                .Take(100)
+                .ToListAsync();
+
+            if (!logs.Any())
+                return Ok(new { success = true, poiId, totalPlays = 0, totalSeconds = 0, data = Array.Empty<object>() });
+
+            return Ok(new
+            {
+                success = true,
+                poiId,
+                totalPlays = logs.Count,
+                totalSeconds = logs.Sum(l => l.DurationListened),
+                avgSeconds = logs.Average(l => l.DurationListened),
+                data = logs.Select(l => new
+                {
+                    l.Id,
+                    l.Time,
+                    l.DurationListened,
+                    l.Lat,
+                    l.Lng
+                })
+            });
+        }
+    }
+
+    // DTO nhận từ app — không yêu cầu UserId / DeviceId
+    public class PlayLogDto
+    {
+        public int PoiId { get; set; }
+        public DateTime Time { get; set; }
+        public double Lat { get; set; }
+        public double Lng { get; set; }
+        public int DurationListened { get; set; }
     }
 }

@@ -2,7 +2,7 @@
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     x:Class="SmartTourApp.Pages.PoiDetailPage"
-    BackgroundColor="#0D0F14"
+    BackgroundColor="White"
     Shell.NavBarIsVisible="False">
 
     <Grid RowDefinitions="*, Auto">
@@ -12,26 +12,51 @@
             <VerticalStackLayout Spacing="0">
 
                 <!-- ========== IMAGE HEADER ========== -->
-                <Grid HeightRequest="360">
+                <Grid HeightRequest="320">
                     <Image x:Name="PoiImage"
                            Aspect="AspectFill"/>
 
-                    <!-- Gradient overlay: transparent top → dark bottom -->
+                    <!-- Gradient overlay -->
                     <BoxView>
                         <BoxView.Background>
                             <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
                                 <GradientStop Color="#00000000" Offset="0.0"/>
-                                <GradientStop Color="#55000000" Offset="0.5"/>
-                                <GradientStop Color="#EE0D0F14" Offset="1.0"/>
+                                <GradientStop Color="#33000000" Offset="0.5"/>
+                                <GradientStop Color="#CCffffff" Offset="1.0"/>
                             </LinearGradientBrush>
                         </BoxView.Background>
                     </BoxView>
 
+                    <!-- 🔥 BACK BUTTON top-left -->
+                    <Border
+                        WidthRequest="40"
+                        HeightRequest="40"
+                        BackgroundColor="White"
+                        StrokeThickness="0"
+                        StrokeShape="RoundRectangle 20"
+                        HorizontalOptions="Start"
+                        VerticalOptions="Start"
+                        Margin="16,52,0,0">
+                        <Border.Shadow>
+                            <Shadow Brush="#000000" Offset="0,2" Radius="8" Opacity="0.12"/>
+                        </Border.Shadow>
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnBackTapped"/>
+                        </Border.GestureRecognizers>
+                        <Label Text="‹"
+                               FontSize="24"
+                               FontAttributes="Bold"
+                               TextColor="#1A1A2E"
+                               HorizontalOptions="Center"
+                               VerticalOptions="Center"
+                               Margin="0,0,0,2"/>
+                    </Border>
+
                     <!-- POI Name + Status pinned to bottom-left -->
                     <VerticalStackLayout VerticalOptions="End"
                                          HorizontalOptions="Start"
-                                         Margin="20,0,20,24"
-                                         Spacing="8">
+                                         Margin="20,0,20,20"
+                                         Spacing="6">
 
                         <HorizontalStackLayout Spacing="8">
                             <Border x:Name="OpenStatusBadge"
@@ -49,27 +74,27 @@
 
                             <Label x:Name="OpenDetail"
                                    FontSize="12"
-                                   TextColor="#AAAAAA"
+                                   TextColor="#666666"
                                    VerticalOptions="Center"/>
                         </HorizontalStackLayout>
 
                         <Label x:Name="PoiName"
-                               FontSize="28"
+                               FontSize="26"
                                FontAttributes="Bold"
-                               TextColor="White"
+                               TextColor="#1A1A2E"
                                LineHeight="1.2"
                                CharacterSpacing="-0.3"/>
                     </VerticalStackLayout>
                 </Grid>
 
                 <!-- ========== TABS ========== -->
-                <Grid Margin="16,20,16,0"
+                <Grid Margin="16,16,16,0"
                       ColumnDefinitions="*,*"
                       ColumnSpacing="10">
 
                     <Border x:Name="OverviewTabBorder"
                             StrokeThickness="0"
-                            StrokeShape="RoundRectangle 16">
+                            StrokeShape="RoundRectangle 14">
                         <Border.Background>
                             <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
                                 <GradientStop Color="#1976D2" Offset="0"/>
@@ -83,29 +108,29 @@
                                 TextColor="White"
                                 FontSize="14"
                                 FontAttributes="Bold"
-                                HeightRequest="46"/>
+                                HeightRequest="44"/>
                     </Border>
 
                     <Border x:Name="MenuTabBorder"
                             Grid.Column="1"
-                            BackgroundColor="#1A1E2E"
+                            BackgroundColor="#F5F6FA"
                             StrokeThickness="1"
-                            Stroke="#2E3350"
-                            StrokeShape="RoundRectangle 16">
+                            Stroke="#E8ECF0"
+                            StrokeShape="RoundRectangle 14">
                         <Button x:Name="MenuTab"
                                 Text="Thực đơn"
                                 Clicked="ShowMenu"
                                 BackgroundColor="Transparent"
-                                TextColor="#888"
+                                TextColor="#9B9BAA"
                                 FontSize="14"
-                                HeightRequest="46"/>
+                                HeightRequest="44"/>
                     </Border>
                 </Grid>
 
                 <!-- ========== OVERVIEW SECTION ========== -->
                 <VerticalStackLayout x:Name="OverviewSection"
-                                     Margin="16,20,16,40"
-                                     Spacing="12">
+                                     Margin="16,16,16,40"
+                                     Spacing="10">
 
                     <Label Text="GIỚI THIỆU"
                            FontSize="11"
@@ -115,21 +140,24 @@
 
                     <Label x:Name="PoiDescription"
                            FontSize="14.5"
-                           TextColor="#CCCCCC"
+                           TextColor="#444455"
                            LineHeight="1.65"/>
                 </VerticalStackLayout>
 
                 <!-- ========== MENU SECTION ========== -->
                 <CollectionView x:Name="FoodList"
-                                Margin="16,20,16,40"
+                                Margin="16,16,16,40"
                                 IsVisible="False">
                     <CollectionView.ItemTemplate>
                         <DataTemplate>
-                            <Border StrokeShape="RoundRectangle 20"
-                                    BackgroundColor="#181C2A"
+                            <Border StrokeShape="RoundRectangle 16"
+                                    BackgroundColor="White"
                                     StrokeThickness="1"
-                                    Stroke="#252940"
-                                    Margin="0,0,0,14">
+                                    Stroke="#EEEEF5"
+                                    Margin="0,0,0,12">
+                                <Border.Shadow>
+                                    <Shadow Brush="#000000" Offset="0,2" Radius="8" Opacity="0.06"/>
+                                </Border.Shadow>
                                 <Grid ColumnDefinitions="110,*">
                                     <Image Source="{Binding ImageUrl}"
                                            HeightRequest="100"
@@ -145,10 +173,10 @@
                                         <Label Text="{Binding Name}"
                                                FontAttributes="Bold"
                                                FontSize="14"
-                                               TextColor="White"/>
+                                               TextColor="#1A1A2E"/>
                                         <Label Text="{Binding Description}"
                                                FontSize="12"
-                                               TextColor="#666"
+                                               TextColor="#888"
                                                LineHeight="1.4"/>
                                         <Label Text="{Binding Price, StringFormat='{}{0:N0} đ'}"
                                                TextColor="#5B8CFF"
@@ -166,7 +194,7 @@
         </ScrollView>
 
         <!-- =============================================================== -->
-        <!--              AUDIO CONTROL BAR — Clean White Card Design        -->
+        <!--              AUDIO CONTROL BAR — Clean White Card               -->
         <!-- =============================================================== -->
         <Border x:Name="AudioBar"
                 Grid.Row="1"
@@ -175,23 +203,23 @@
                 StrokeShape="RoundRectangle 28,28,0,0">
 
             <Border.Shadow>
-                <Shadow Brush="#000000" Offset="0,-4" Radius="24" Opacity="0.14"/>
+                <Shadow Brush="#000000" Offset="0,-4" Radius="24" Opacity="0.08"/>
             </Border.Shadow>
 
-            <VerticalStackLayout Spacing="0" Padding="20,18,20,32">
+            <VerticalStackLayout Spacing="0" Padding="20,16,20,32">
 
                 <!-- ── Top pill handle ── -->
                 <BoxView WidthRequest="36"
                          HeightRequest="4"
                          CornerRadius="2"
-                         BackgroundColor="#E0E0E0"
+                         BackgroundColor="#E8E8F0"
                          HorizontalOptions="Center"
-                         Margin="0,0,0,16"/>
+                         Margin="0,0,0,14"/>
 
                 <!-- ── Track Info Row ── -->
-                <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,14" ColumnSpacing="12">
+                <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,12" ColumnSpacing="12">
 
-                    <!-- Album art / waveform icon -->
+                    <!-- Waveform icon -->
                     <Border Grid.Column="0"
                             WidthRequest="44"
                             HeightRequest="44"
@@ -203,7 +231,6 @@
                                 <GradientStop Color="#5B8CFF" Offset="1"/>
                             </LinearGradientBrush>
                         </Border.Background>
-                        <!-- Waveform dots -->
                         <HorizontalStackLayout Spacing="2"
                                                VerticalOptions="Center"
                                                HorizontalOptions="Center">
@@ -215,7 +242,7 @@
                         </HorizontalStackLayout>
                     </Border>
 
-                    <!-- Track title / subtitle -->
+                    <!-- Track title -->
                     <VerticalStackLayout Grid.Column="1"
                                           VerticalOptions="Center"
                                           Spacing="2">
@@ -228,7 +255,7 @@
                                TextColor="#9B9BAA"/>
                     </VerticalStackLayout>
 
-                    <!-- Time remaining badge -->
+                    <!-- Duration badge -->
                     <Border Grid.Column="2"
                             BackgroundColor="#F0F4FF"
                             StrokeThickness="0"
@@ -243,9 +270,36 @@
                     </Border>
                 </Grid>
 
-                <!-- ── Progress Slider with inline time ── -->
-                <Grid RowDefinitions="Auto,Auto" Margin="0,0,0,6">
+                <!-- ── Progress bar (custom animated fill) ── -->
+                <Grid RowDefinitions="Auto,Auto" Margin="0,0,0,4">
 
+                    <!-- Background track -->
+                    <Border Grid.Row="0"
+                            HeightRequest="6"
+                            BackgroundColor="#EEF0FF"
+                            StrokeThickness="0"
+                            StrokeShape="RoundRectangle 3"
+                            Margin="0,0,0,0">
+
+                        <!-- 🔥 Animated fill bar — width driven by code-behind -->
+                        <Grid HorizontalOptions="Start" x:Name="ProgressFillContainer">
+                            <Border x:Name="ProgressFill"
+                                    HeightRequest="6"
+                                    WidthRequest="0"
+                                    StrokeThickness="0"
+                                    StrokeShape="RoundRectangle 3"
+                                    HorizontalOptions="Start">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                        <GradientStop Color="#4A90E2" Offset="0"/>
+                                        <GradientStop Color="#5B8CFF" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                            </Border>
+                        </Grid>
+                    </Border>
+
+                    <!-- Hidden Slider for seek interaction (transparent over the bar) -->
                     <Slider x:Name="ProgressSlider"
                             Grid.Row="0"
                             Minimum="0"
@@ -253,22 +307,24 @@
                             DragStarted="OnSeekStarted"
                             DragCompleted="OnSeekCompleted"
                             ValueChanged="OnSeek"
-                            ThumbColor="#5B8CFF"
-                            MinimumTrackColor="#5B8CFF"
-                            MaximumTrackColor="#E8ECFF"
-                            HeightRequest="28"/>
+                            ThumbColor="Transparent"
+                            MinimumTrackColor="Transparent"
+                            MaximumTrackColor="Transparent"
+                            HeightRequest="28"
+                            Margin="0,-11,0,0"/>
 
-                    <!-- Time labels below slider -->
+                    <!-- Time labels -->
                     <Grid Grid.Row="1"
                           ColumnDefinitions="Auto,*,Auto"
-                          Margin="4,-4,4,0">
+                          Margin="2,6,2,0">
                         <Label x:Name="CurrentTimeLabel"
                                Text="00:00"
                                FontSize="11"
                                FontAttributes="Bold"
                                TextColor="#5B8CFF"/>
                         <Label Grid.Column="2"
-                               Text="Còn lại"
+                               x:Name="RemainingTimeLabel"
+                               Text="00:00"
                                FontSize="11"
                                TextColor="#BBBBCC"/>
                     </Grid>
@@ -278,7 +334,7 @@
                 <Grid ColumnDefinitions="*,Auto,Auto,Auto,*"
                       ColumnSpacing="16"
                       HorizontalOptions="Center"
-                      Margin="0,10,0,0">
+                      Margin="0,12,0,0">
 
                     <!-- Skip Back 5s -->
                     <Border Grid.Column="1"
@@ -297,7 +353,7 @@
                                 TextColor="#4A5568"/>
                     </Border>
 
-                    <!-- PLAY / PAUSE toggle button (single button, icon toggled in code-behind) -->
+                    <!-- PLAY / PAUSE -->
                     <Border x:Name="PlayBtnContainer"
                             Grid.Column="2"
                             WidthRequest="68"
@@ -311,9 +367,8 @@
                             </LinearGradientBrush>
                         </Border.Background>
                         <Border.Shadow>
-                            <Shadow Brush="#5B8CFF" Offset="0,4" Radius="16" Opacity="0.45"/>
+                            <Shadow Brush="#5B8CFF" Offset="0,4" Radius="16" Opacity="0.35"/>
                         </Border.Shadow>
-                        <!-- Unified Play/Pause button — icon toggled via code-behind -->
                         <Button x:Name="PlayBtn"
                                 Text="▶"
                                 FontSize="26"
@@ -342,7 +397,7 @@
                     </Border>
                 </Grid>
 
-                <!-- ── Stop button — subtle, below controls ── -->
+                <!-- ── Stop button ── -->
                 <Button x:Name="StopBtn"
                         Text="■  Dừng phát"
                         FontSize="13"
@@ -351,15 +406,15 @@
                         HorizontalOptions="Center"
                         Margin="0,10,0,0"
                         Padding="20,8"
+                        IsVisible="False"
                         Clicked="OnStopClicked"/>
 
-                <!-- Hidden Pause button kept for code-behind compatibility — not visible in UI -->
+                <!-- Hidden compat elements -->
                 <Button x:Name="PauseBtn"
                         IsVisible="False"
                         IsEnabled="False"
                         Clicked="OnPauseClicked"/>
 
-                <!-- Hidden container kept for ShowMenu/ShowOverview compatibility -->
                 <Border x:Name="PauseBtnContainer"
                         IsVisible="False"
                         WidthRequest="0"

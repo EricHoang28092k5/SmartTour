@@ -25,10 +25,33 @@ public class ApiService
             throw;
         }
     }
+
     public async Task<List<TtsDto>> GetTtsScripts(int poiId)
     {
         var res = await http.GetFromJsonAsync<TtsResponse>($"api/pois/{poiId}/tts-all");
         return res?.Data ?? new List<TtsDto>();
+    }
+
+    /// <summary>
+    /// Post a play log (listening duration) to the backend.
+    /// Fire-and-forget friendly — caller should catch exceptions.
+    /// </summary>
+    public async Task PostPlayLog(PlayLog log)
+    {
+        await http.PostAsJsonAsync("api/pois/playlog", log);
+    }
+    public async Task<TourResponse?> GetTours()
+    {
+        try
+        {
+            var res = await http.GetFromJsonAsync<TourResponse>("api/tours");
+            return res;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine("API TOUR ERROR: " + ex.Message);
+            throw;
+        }
     }
 
     public class TtsResponse
@@ -44,19 +67,5 @@ public class ApiService
         public string LanguageName { get; set; } = "";
         public string Title { get; set; } = "";
         public string TtsScript { get; set; } = "";
-    }
-
-    public async Task<TourResponse?> GetTours()
-    {
-        try
-        {
-            var res = await http.GetFromJsonAsync<TourResponse>("api/tours");
-            return res;
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine("API TOUR ERROR: " + ex.Message);
-            throw;
-        }
     }
 }

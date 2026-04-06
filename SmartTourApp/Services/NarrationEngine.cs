@@ -11,6 +11,7 @@ public class NarrationEngine
     private readonly Database db;
     private readonly ApiService api;
     private readonly LanguageService lang;
+    private readonly AudioListenTracker tracker;
 
     private readonly Dictionary<int, List<TtsDto>> ttsCache = new();
     private readonly Dictionary<int, DateTime> history = new();
@@ -27,13 +28,15 @@ public class NarrationEngine
         AudioService audio,
         Database db,
         ApiService api,
-        LanguageService lang)
+        LanguageService lang,
+        AudioListenTracker tracker)
     {
         this.tts = tts;
         this.audio = audio;
         this.db = db;
         this.api = api;
         this.lang = lang;
+        this.tracker = tracker;
     }
 
     // 🔥 FIX: thêm force
@@ -67,6 +70,9 @@ public class NarrationEngine
 
             bool played = false;
 
+            // 🔥 Start tracking
+            tracker.StartSession(poi.Id, location.Latitude, location.Longitude);
+
             if (!string.IsNullOrWhiteSpace(poi.AudioUrl))
             {
                 try
@@ -82,8 +88,12 @@ public class NarrationEngine
                 await tts.Speak(selected.TtsScript, selected.LanguageCode, token);
             }
 
+            // 🔥 Stop tracking — audio completed naturally
+            tracker.StopSession();
+
             history[poi.Id] = DateTime.Now;
 
+            // Legacy log (no duration — tracker handles the full log)
             db.AddLog(new PlayLog
             {
                 PoiId = poi.Id,
@@ -92,7 +102,11 @@ public class NarrationEngine
                 Lng = location.Longitude
             });
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+            // 🔥 Cancelled — flush whatever was accumulated
+            tracker.StopSession();
+        }
     }
 
     public async Task PlayManual(Poi poi, Location location)
@@ -113,6 +127,9 @@ public class NarrationEngine
 
             bool played = false;
 
+            // 🔥 Start tracking
+            tracker.StartSession(poi.Id, location.Latitude, location.Longitude);
+
             if (!string.IsNullOrWhiteSpace(poi.AudioUrl))
             {
                 try
@@ -128,14 +145,21 @@ public class NarrationEngine
                 await tts.Speak(selected.TtsScript, selected.LanguageCode, token);
             }
 
+            // 🔥 Completed naturally
+            tracker.StopSession();
+
             history[poi.Id] = DateTime.Now;
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+            tracker.StopSession();
+        }
     }
 
     public void Stop()
     {
         cts?.Cancel();
+        tracker.StopSession();
         audio.Stop();
         tts.Stop();
     }
@@ -147,6 +171,8 @@ public class NarrationEngine
         currentPoi = null;
 
         cts?.Cancel();
+
+        tracker.StopSession();
 
         // 🔥 FIX
         audio.Stop();
