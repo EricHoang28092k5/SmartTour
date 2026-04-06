@@ -1,4 +1,5 @@
 ﻿using Mapsui;
+using Mapsui.Extensions;
 using Mapsui.Layers;
 using Mapsui.Projections;
 using Mapsui.Tiling;
@@ -28,13 +29,16 @@ public partial class MapPage : ContentPage
     private bool trackingStarted = false;
     private bool firstZoom = true;
 
-    private DateTime lastCenterTime = DateTime.MinValue;
-
     public string? TargetPoiId { get; set; }
     private bool openedFromRoute = false;
 
     private Location? currentLocation;
     private Poi? currentNearest;
+
+    // State that persists across page visits
+    // null = show nearest, non-null = user tapped this poi
+    private Poi? selectedPoi;
+    private bool cardManuallyClosed = false;
 
     public MapPage(
         TrackingService tracking,
@@ -84,47 +88,54 @@ public partial class MapPage : ContentPage
         if (TourMap?.Map?.Navigator == null || loc == null)
             return;
 
-        // 🔥 CASE: đi từ Home → focus POI
+        // Case: opened from route/home with targetPoi
         if (!string.IsNullOrEmpty(TargetPoiId))
         {
             if (pois.Count == 0)
             {
-                await Task.Delay(300); // chờ load
+                await Task.Delay(300);
                 return;
             }
-            var poi = pois.FirstOrDefault(p => p.Id.ToString() == TargetPoiId);
 
+            var poi = pois.FirstOrDefault(p => p.Id.ToString() == TargetPoiId);
             if (poi != null)
             {
                 openedFromRoute = true;
                 followUser = false;
+                cardManuallyClosed = false;
 
-                var mercator = SphericalMercator.FromLonLat(
-                    poi.Lng,
-                    poi.Lat);
-
+                var mercator = SphericalMercator.FromLonLat(poi.Lng, poi.Lat);
                 var pos = new MPoint(mercator.x, mercator.y);
-
                 TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 0.5, 600, Mapsui.Animations.Easing.CubicOut);
 
-                vm.HighlightPoi(TourMap.Map, poi.Lat, poi.Lng);
+                SelectPoi(poi);
             }
 
-            TargetPoiId = null; // 🔥 reset
+            TargetPoiId = null;
         }
         else
         {
+            // Restore state: if a POI was selected and not closed, keep it
+            if (selectedPoi != null && !cardManuallyClosed)
+            {
+                ShowCardForPoi(selectedPoi);
+            }
+            else if (!cardManuallyClosed && currentNearest != null)
+            {
+                // Show nearest if card not manually closed
+                ShowCardForPoi(currentNearest);
+            }
+            else if (cardManuallyClosed)
+            {
+                PoiCard.IsVisible = false;
+            }
+
             followUser = true;
             openedFromRoute = false;
 
-            var mercator = SphericalMercator.FromLonLat(
-                loc.Longitude,
-                loc.Latitude);
-
+            var mercator = SphericalMercator.FromLonLat(loc.Longitude, loc.Latitude);
             var pos = new MPoint(mercator.x, mercator.y);
-
             TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 0.5, 600, Mapsui.Animations.Easing.CubicOut);
-
             vm.UpdateUser(TourMap.Map, loc, false);
         }
     }
@@ -134,7 +145,6 @@ public partial class MapPage : ContentPage
         base.OnDisappearing();
         tracking.OnLocationChanged -= UpdateLocation;
     }
-    private bool layersAdded = false;
 
     private async Task InitMap()
     {
@@ -148,17 +158,16 @@ public partial class MapPage : ContentPage
                 var logs = db.GetLocations();
                 vm.LoadHeatMap(TourMap.Map, logs);
             }
+
             if (TourMap.Map == null)
             {
                 var map = new Mapsui.Map();
-
                 map.BackColor = Mapsui.Styles.Color.White;
-
                 Mapsui.Logging.Logger.LogDelegate = null;
-
                 TourMap.Map = map;
                 TourMap.Map.Widgets.Clear();
             }
+            TourMap.Map.Info += OnMapInfo;
 
             if (!TourMap.Map.Layers.OfType<TileLayer>().Any())
             {
@@ -166,23 +175,19 @@ public partial class MapPage : ContentPage
             }
 
             pois = await repo.GetPois();
+
             if (!string.IsNullOrEmpty(TargetPoiId))
-            {
                 HandleRouteAfterLoad();
-            }
 
             vm.LoadPois(TourMap.Map, pois);
 
-            if (!layersAdded)
-            {
+            if (!TourMap.Map.Layers.Contains(vm.PoiLayer))
                 TourMap.Map.Layers.Add(vm.PoiLayer);
+
+            if (!TourMap.Map.Layers.Contains(vm.UserLayer))
                 TourMap.Map.Layers.Add(vm.UserLayer);
-                TourMap.Map.Layers.Add(vm.RouteLayer);
-                layersAdded = true;
-            }
 
             TourMap?.Refresh();
-
             MainThread.BeginInvokeOnMainThread(RemoveLoggingWidget);
         }
         catch (Exception ex)
@@ -191,32 +196,108 @@ public partial class MapPage : ContentPage
         }
     }
 
-    private void UpdateLocation(Location loc)
+    // ─────────────────────────────────────────────
+    // MAP TAP → find nearest POI to tap point
+    // ─────────────────────────────────────────────
+    // Sử dụng MapInfoEventArgs thay cho MapClickedEventArgs
+    private void OnMapInfo(object? sender, MapInfoEventArgs e)
     {
-        if (currentLocation != null)
-        {
-            var moved = Location.CalculateDistance(
-                currentLocation,
-                loc,
-                DistanceUnits.Kilometers);
+        // 1. Kiểm tra điều kiện
+        if (pois.Count == 0 || e.WorldPosition == null) return;
 
-            if (moved < 0.01) // 10m
-                return;
+        // 2. Chuyển đổi tọa độ chạm sang Lat/Lon
+        var lonLat = SphericalMercator.ToLonLat(e.WorldPosition.X, e.WorldPosition.Y);
+
+        // 3. Tìm POI gần điểm chạm nhất (trong bán kính 300m)
+        const double tapThresholdMeters = 300;
+        Poi? tapped = null;
+        double minDist = double.MaxValue;
+
+        foreach (var poi in pois)
+        {
+            var dist = Location.CalculateDistance(
+                new Location(lonLat.lat, lonLat.lon),
+                new Location(poi.Lat, poi.Lng),
+                DistanceUnits.Kilometers) * 1000;
+
+            if (dist < tapThresholdMeters && dist < minDist)
+            {
+                minDist = dist;
+                tapped = poi;
+            }
         }
 
-        if (loc == null || TourMap?.Map == null)
-            return;
-
-        _ = Task.Run(() =>
+        // 4. Nếu tìm thấy POI, cập nhật giao diện
+        if (tapped != null)
         {
-            var nearbyPois = pois.Where(p =>
-    Math.Abs(p.Lat - loc.Latitude) < 0.02 &&
-    Math.Abs(p.Lng - loc.Longitude) < 0.02);
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                SelectPoi(tapped);
+                cardManuallyClosed = false;
+                vm.ClearRoute();
+            });
+        }
+    }
+
+    private void SelectPoi(Poi poi)
+    {
+        selectedPoi = poi;
+        currentNearest = poi;
+        cardManuallyClosed = false;
+        ShowCardForPoi(poi);
+        vm.HighlightPoi(TourMap.Map, poi.Lat, poi.Lng);
+    }
+
+    private void ShowCardForPoi(Poi poi)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            NearestPoiLabel.Text = poi.Name;
+
+            // Compute distance if we have user location
+            if (currentLocation != null)
+            {
+                var dist = Location.CalculateDistance(
+                    currentLocation,
+                    new Location(poi.Lat, poi.Lng),
+                    DistanceUnits.Kilometers);
+
+                PoiDistanceLabel.Text = dist < 1
+                    ? $"📍 {(int)(dist * 1000)} m"
+                    : $"📍 {dist:F1} km";
+            }
+            else
+            {
+                PoiDistanceLabel.Text = "";
+            }
+
+            RouteLoadingRow.IsVisible = false;
+            PoiCard.IsVisible = true;
+        });
+    }
+
+    private void UpdateLocation(Location loc)
+    {
+        if (loc == null || TourMap?.Map == null) return;
+
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            vm.UpdateUser(TourMap.Map, loc);
+
+            if (TourMap?.Map?.Navigator != null && followUser && !openedFromRoute)
+            {
+                var mercator = SphericalMercator.FromLonLat(loc.Longitude, loc.Latitude);
+                var pos = new MPoint(mercator.x, mercator.y);
+                TourMap.Map.Navigator.CenterOn(pos);
+                firstZoom = false;
+            }
+
+            if (pois.Count == 0) return;
 
             Poi? nearest = null;
             double minDist = double.MaxValue;
 
-            foreach (var p in nearbyPois)
+            foreach (var p in pois)
             {
                 var dist = Location.CalculateDistance(
                     loc,
@@ -230,67 +311,40 @@ public partial class MapPage : ContentPage
                 }
             }
 
-            return nearest;
-        })
-.ContinueWith(t =>
-{
-    if (t.IsFaulted)
-        return;
+            currentLocation = loc;
 
-    var nearest = t.Result;
-
-    MainThread.BeginInvokeOnMainThread(() =>
-    {
-        vm.UpdateUser(TourMap.Map, loc);
-        if (TourMap?.Map?.Navigator != null && followUser && !openedFromRoute)
-        {
-            var mercator = SphericalMercator.FromLonLat(
-                loc.Longitude,
-                loc.Latitude);
-
-            var pos = new MPoint(mercator.x, mercator.y);
-
-            if (firstZoom)
+            // Only update card with nearest if no POI was manually selected
+            if (nearest != null && selectedPoi == null && !cardManuallyClosed)
             {
-                TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 0.5);
-                firstZoom = false;
-            }
-            else
-            {
-                if ((DateTime.Now - lastCenterTime).TotalMilliseconds > 500)
-                {
-                    TourMap.Map.Navigator.CenterOn(pos);
-                    lastCenterTime = DateTime.Now;
-                }
-            }
-        }
-
-        if (currentNearest?.Id != nearest?.Id)
-        {
-            vm.ClearRoute();
-            if (nearest != null)
-            {
-                NearestPoiLabel.Text = nearest.Name;
-                PoiCard.IsVisible = true;
-
+                currentNearest = nearest;
+                ShowCardForPoi(nearest);
                 vm.HighlightPoi(TourMap.Map, nearest.Lat, nearest.Lng);
             }
-            else
+            else if (nearest == null && selectedPoi == null)
             {
-                PoiCard.IsVisible = false;
+                currentNearest = null;
+                if (!cardManuallyClosed)
+                    PoiCard.IsVisible = false;
             }
-        }
 
-        currentLocation = loc;
-        currentNearest = nearest;
-    });
-}, TaskScheduler.Default);
+            // Update distance label even when selectedPoi is shown
+            if (selectedPoi != null && currentLocation != null && !cardManuallyClosed)
+            {
+                var dist = Location.CalculateDistance(
+                    currentLocation,
+                    new Location(selectedPoi.Lat, selectedPoi.Lng),
+                    DistanceUnits.Kilometers);
+
+                PoiDistanceLabel.Text = dist < 1
+                    ? $"📍 {(int)(dist * 1000)} m"
+                    : $"📍 {dist:F1} km";
+            }
+        });
     }
 
     private void RemoveLoggingWidget()
     {
-        if (TourMap.Map == null)
-            return;
+        if (TourMap.Map == null) return;
 
         var widgets = TourMap.Map.Widgets
             .Where(w =>
@@ -305,14 +359,10 @@ public partial class MapPage : ContentPage
     }
 
     private void ZoomIn_Clicked(object sender, EventArgs e)
-    {
-        TourMap?.Map?.Navigator?.ZoomIn();
-    }
+        => TourMap?.Map?.Navigator?.ZoomIn();
 
     private void ZoomOut_Clicked(object sender, EventArgs e)
-    {
-        TourMap?.Map?.Navigator?.ZoomOut();
-    }
+        => TourMap?.Map?.Navigator?.ZoomOut();
 
     private async void LocateUser_Clicked(object sender, EventArgs e)
     {
@@ -320,18 +370,13 @@ public partial class MapPage : ContentPage
         openedFromRoute = false;
 
         var loc = await Geolocation.GetLastKnownLocationAsync();
+        if (loc == null || TourMap?.Map?.Navigator == null) return;
 
-        if (loc == null || TourMap?.Map?.Navigator == null)
-            return;
-
-        var mercator = SphericalMercator.FromLonLat(
-            loc.Longitude,
-            loc.Latitude);
-
+        var mercator = SphericalMercator.FromLonLat(loc.Longitude, loc.Latitude);
         var pos = new MPoint(mercator.x, mercator.y);
-
-        TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 0.5);
+        TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 0.5, 400, Mapsui.Animations.Easing.CubicOut);
     }
+
     private void HandleRouteAfterLoad()
     {
         var poi = pois.FirstOrDefault(p => p.Id.ToString() == TargetPoiId);
@@ -342,18 +387,59 @@ public partial class MapPage : ContentPage
 
         var mercator = SphericalMercator.FromLonLat(poi.Lng, poi.Lat);
         var pos = new MPoint(mercator.x, mercator.y);
-
         TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 0.5, 600);
-        vm.HighlightPoi(TourMap.Map, poi.Lat, poi.Lng);
+        SelectPoi(poi);
 
         TargetPoiId = null;
     }
 
+    // ─────────────────────────────────────────────
+    // CLOSE CARD
+    // ─────────────────────────────────────────────
+    private async void CloseCard_Clicked(object sender, EventArgs e)
+    {
+        cardManuallyClosed = true;
+        selectedPoi = null;
+        vm.ClearRoute();
+
+        // Animate out
+        await PoiCard.TranslateTo(0, 60, 200, Easing.CubicIn);
+        PoiCard.IsVisible = false;
+        await PoiCard.TranslateTo(0, 0, 0);
+    }
+
+    // ─────────────────────────────────────────────
+    // ROUTE — smooth UX with loading indicator
+    // ─────────────────────────────────────────────
     private async void Route_Clicked(object sender, EventArgs e)
     {
-        if (currentLocation == null || currentNearest == null)
-            return;
+        var target = selectedPoi ?? currentNearest;
+        if (currentLocation == null || target == null) return;
 
-        await vm.DrawRoute(TourMap.Map, currentLocation, currentNearest);
+        try
+        {
+            RouteLoadingRow.IsVisible = true;
+            vm.ClearRoute();
+
+            await vm.DrawRoute(TourMap.Map, currentLocation, target);
+
+            // Smooth zoom to fit route
+            await Task.Delay(300);
+        }
+        catch (Exception ex)
+        {
+            await DisplayAlertAsync("Lỗi", "Không thể tính đường đi: " + ex.Message, "OK");
+        }
+        finally
+        {
+            RouteLoadingRow.IsVisible = false;
+        }
     }
+
+    // ─────────────────────────────────────────────
+    // STUB HANDLERS (kept for XAML binding compat)
+    // ─────────────────────────────────────────────
+    private void Save_Clicked(object sender, TappedEventArgs e) { }
+
+    private void Share_Clicked(object sender, TappedEventArgs e) { }
 }

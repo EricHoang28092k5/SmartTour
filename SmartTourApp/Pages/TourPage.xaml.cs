@@ -58,32 +58,39 @@ public partial class TourPage : ContentPage
 
     private void OpenTour(object sender, EventArgs e)
     {
-        if (sender is Button btn &&
-            btn.CommandParameter is TourViewModel tour)
-        {
+        TourViewModel? tour = null;
+
+        if (sender is Button btn && btn.CommandParameter is TourViewModel t1)
+            tour = t1;
+        else if (sender is Label lbl && lbl.BindingContext is TourViewModel t2)
+            tour = t2;
+
+        if (tour != null)
             tour.IsExpanded = !tour.IsExpanded;
-        }
     }
 
     private async void StartTour(object sender, EventArgs e)
     {
-        if (sender is Button btn &&
-            btn.CommandParameter is TourViewModel tour)
+        TourViewModel? tour = null;
+
+        if (sender is Button btn && btn.CommandParameter is TourViewModel t)
+            tour = t;
+
+        if (tour == null) return;
+
+        foreach (var p in tour.Pois)
         {
-            foreach (var p in tour.Pois)
+            var fakeLocation = new Location(p.Lat, p.Lng);
+
+            await narration.PlayManual(new Poi
             {
-                var fakeLocation = new Location(p.Lat, p.Lng);
+                Id = p.PoiId,
+                Name = p.Name,
+                Lat = p.Lat,
+                Lng = p.Lng
+            }, fakeLocation);
 
-                await narration.PlayManual(new Poi
-                {
-                    Id = p.PoiId,
-                    Name = p.Name,
-                    Lat = p.Lat,
-                    Lng = p.Lng
-                }, fakeLocation);
-
-                await Task.Delay(1000);
-            }
+            await Task.Delay(1000);
         }
     }
 }

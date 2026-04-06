@@ -22,8 +22,6 @@ public class MapViewModel
     public MemoryLayer UserLayer = new();
     public MemoryLayer PoiLayer = new();
     public MemoryLayer HeatLayer = new();
-
-    // 🔥 NEW
     public MemoryLayer RouteLayer = new();
 
     private PointFeature? userFeature;
@@ -36,10 +34,6 @@ public class MapViewModel
 
     private double pulseScale = 1.0;
     private bool pulseGrowing = true;
-    private DateTime lastUserRefresh = DateTime.MinValue;
-    private DateTime lastPoiRefresh = DateTime.MinValue;
-    private List<MPoint>? cachedRoute;
-    private string? lastRouteKey;
 
     private static readonly ImageStyle poiIconStyle = new ImageStyle
     {
@@ -71,10 +65,7 @@ public class MapViewModel
 
         lastLocation = loc;
 
-        var spherical = SphericalMercator.FromLonLat(
-            loc.Longitude,
-            loc.Latitude);
-
+        var spherical = SphericalMercator.FromLonLat(loc.Longitude, loc.Latitude);
         var newPoint = new MPoint(spherical.x, spherical.y);
 
         if (userFeature == null)
@@ -85,7 +76,7 @@ public class MapViewModel
                     new SymbolStyle
                     {
                         SymbolScale = 2.0,
-                        Fill = new Brush(new Color(66, 133, 244, 40))
+                        Fill = new Brush(new Color(30, 136, 229, 35))
                     }
                 }
             };
@@ -96,7 +87,7 @@ public class MapViewModel
                     new SymbolStyle
                     {
                         SymbolScale = 1.2,
-                        Fill = new Brush(new Color(66, 133, 244, 80))
+                        Fill = new Brush(new Color(30, 136, 229, 70))
                     }
                 }
             };
@@ -107,7 +98,7 @@ public class MapViewModel
                     new SymbolStyle
                     {
                         SymbolScale = 0.35,
-                        Fill = new Brush(new Color(66, 133, 244)),
+                        Fill = new Brush(new Color(30, 136, 229)),
                         Outline = new Pen(Color.White, 4)
                     }
                 }
@@ -124,12 +115,7 @@ public class MapViewModel
             pulseFeature!.Point.Y = newPoint.Y;
             userFeature!.Point.X = newPoint.X;
             userFeature!.Point.Y = newPoint.Y;
-
-            if ((DateTime.Now - lastUserRefresh).TotalMilliseconds > 100)
-            {
-                UserLayer.DataHasChanged();
-                lastUserRefresh = DateTime.Now;
-            }
+            UserLayer.DataHasChanged();
         }
 
         if (centerMap && map?.Navigator != null)
@@ -139,24 +125,11 @@ public class MapViewModel
     }
 
     // =============================
-    // 🔥 ROUTE DRAW
+    // ROUTE DRAW — blue line
     // =============================
     public async Task DrawRoute(Map map, Location from, Poi to)
     {
-        var key = $"{Math.Round(from.Latitude, 4)},{Math.Round(from.Longitude, 4)}-{to.Id}";
-
-        List<MPoint> points;
-
-        if (key == lastRouteKey && cachedRoute != null)
-        {
-            points = cachedRoute;
-        }
-        else
-        {
-            points = await GetRoutePoints(from, to);
-            cachedRoute = points;
-            lastRouteKey = key;
-        }
+        var points = await GetRoutePoints(from, to);
 
         if (points.Count < 2)
             return;
@@ -165,71 +138,61 @@ public class MapViewModel
             points.Select(p => new NtsGeometry.Coordinate(p.X, p.Y)).ToArray()
         );
 
-        var feature = new GeometryFeature
-        {
-            Geometry = line
-        };
+        var feature = new GeometryFeature { Geometry = line };
 
+        // White outline for contrast
         feature.Styles.Add(new VectorStyle
         {
-            Line = new Pen(Color.White, 8)
+            Line = new Pen(Color.White, 10)
         });
 
+        // Blue route line
         feature.Styles.Add(new VectorStyle
         {
-            Line = new Pen(new Color(33, 150, 243), 5)
+            Line = new Pen(new Color(30, 136, 229), 6)
         });
-        RouteLayer.Features = new List<IFeature> { feature };
+
+        RouteLayer.Features = new[] { feature };
         RouteLayer.DataHasChanged();
 
         if (!map.Layers.Contains(RouteLayer))
             map.Layers.Add(RouteLayer);
 
         var bbox = feature.Extent;
-        if (bbox != null && map.Navigator.Viewport != null)
+        if (bbox != null)
         {
-            map.Navigator.ZoomToBox(bbox, MBoxFit.Fit, 500);
+            // Add padding to bbox
+            var padded = bbox.Grow(bbox.Width * 0.15, bbox.Height * 0.15);
+            map.Navigator.ZoomToBox(padded, MBoxFit.Fit, 600);
         }
     }
 
     public void ClearRoute()
     {
-        if (RouteLayer.Features != null)
-        {
-            RouteLayer.Features = new List<IFeature>();
-            RouteLayer.DataHasChanged();
-        }
+        RouteLayer.Features = Array.Empty<IFeature>();
+        RouteLayer.DataHasChanged();
     }
 
     // =============================
-    // POI + HEAT + HIGHLIGHT (GIỮ NGUYÊN)
+    // POI
     // =============================
     public void LoadPois(Map map, List<Poi> pois)
     {
-        if (poiFeatures.Count == pois.Count && poiFeatures.Count > 0)
-            return;
-
         poiFeatures.Clear();
         PoiLayer.Style = null;
 
         foreach (var poi in pois)
         {
             var spherical = SphericalMercator.FromLonLat(poi.Lng, poi.Lat);
-
             var feature = new PointFeature(new MPoint(spherical.x, spherical.y))
             {
                 Styles = { poiIconStyle }
             };
-
             poiFeatures.Add(feature);
         }
 
         PoiLayer.Features = poiFeatures;
-        if ((DateTime.Now - lastPoiRefresh).TotalMilliseconds > 200)
-        {
-            PoiLayer.DataHasChanged();
-            lastPoiRefresh = DateTime.Now;
-        }
+        PoiLayer.DataHasChanged();
     }
 
     public void HighlightPoi(Map map, double lat, double lng)
@@ -245,13 +208,11 @@ public class MapViewModel
                     new SymbolStyle
                     {
                         SymbolScale = 1.3,
-                        Fill = new Brush(Color.Green)
+                        Fill = new Brush(new Color(30, 136, 229))
                     }
                 }
             };
-
-            if (!poiFeatures.Any(f => f == highlightFeature))
-                poiFeatures.Add(highlightFeature);
+            poiFeatures.Add(highlightFeature);
         }
         else
         {
@@ -259,18 +220,14 @@ public class MapViewModel
             highlightFeature.Point.Y = newPoint.Y;
         }
 
-        if ((DateTime.Now - lastPoiRefresh).TotalMilliseconds > 200)
-        {
-            PoiLayer.DataHasChanged();
-            lastPoiRefresh = DateTime.Now;
-        }
+        PoiLayer.DataHasChanged();
     }
 
     public void LoadHeatMap(Map map, List<UserLocationLog> logs)
     {
         var features = new List<PointFeature>();
 
-        foreach (var l in logs.Where((x, i) => i % 10 == 0).Take(300))
+        foreach (var l in logs)
         {
             var spherical = SphericalMercator.FromLonLat(
                 (double)l.Longitude,
@@ -278,16 +235,14 @@ public class MapViewModel
 
             var f = new PointFeature(new MPoint(spherical.x, spherical.y))
             {
-                Styles =
-            {
-                new SymbolStyle
-                {
-                    SymbolScale = 0.6,
-                    Fill = new Brush(new Color(255, 0, 0, 80))
+                Styles = {
+                    new SymbolStyle
+                    {
+                        SymbolScale = 0.6,
+                        Fill = new Brush(new Color(255, 80, 80, 60))
+                    }
                 }
-            }
             };
-
             features.Add(f);
         }
 
@@ -301,41 +256,29 @@ public class MapViewModel
     private void StartPulseAnimation()
     {
         var dispatcher = Application.Current?.Dispatcher;
-        if (dispatcher == null)
-            return;
+        if (dispatcher == null) return;
 
         dispatcher.StartTimer(TimeSpan.FromMilliseconds(60), () =>
         {
-            if (pulseFeature == null)
-                return true;
+            if (pulseFeature == null) return true;
 
             var style = pulseFeature.Styles.FirstOrDefault() as SymbolStyle;
-            if (style == null)
-                return true;
+            if (style == null) return true;
 
             pulseScale = pulseGrowing ? pulseScale + 0.04 : pulseScale - 0.04;
-
             if (pulseScale > 1.6) pulseGrowing = false;
             if (pulseScale < 1.0) pulseGrowing = true;
 
-            if (Math.Abs(style.SymbolScale - pulseScale) > 0.05)
+            if (Math.Abs(style.SymbolScale - pulseScale) > 0.01)
             {
                 style.SymbolScale = pulseScale;
-                if ((DateTime.Now - lastUserRefresh).TotalMilliseconds > 100)
-                {
-                    UserLayer.DataHasChanged();
-                    lastUserRefresh = DateTime.Now;
-                }
+                UserLayer.DataHasChanged();
             }
 
             return true;
         });
     }
-    private static readonly HttpClient http = new HttpClient();
-    static MapViewModel()
-    {
-        http.Timeout = TimeSpan.FromSeconds(10);
-    }
+
     public async Task<List<MPoint>> GetRoutePoints(Location from, Poi to)
     {
         var url =
@@ -346,6 +289,7 @@ public class MapViewModel
             $"{to.Lat.ToString(CultureInfo.InvariantCulture)}" +
             $"?overview=full&geometries=geojson";
 
+        using var http = new HttpClient();
         var response = await http.GetAsync(url);
 
         if (!response.IsSuccessStatusCode)
@@ -355,7 +299,6 @@ public class MapViewModel
         }
 
         var json = await response.Content.ReadAsStringAsync();
-
         var doc = System.Text.Json.JsonDocument.Parse(json);
 
         var coords = doc.RootElement
@@ -369,7 +312,6 @@ public class MapViewModel
         {
             var lon = c[0].GetDouble();
             var lat = c[1].GetDouble();
-
             var mercator = SphericalMercator.FromLonLat(lon, lat);
             points.Add(new MPoint(mercator.x, mercator.y));
         }

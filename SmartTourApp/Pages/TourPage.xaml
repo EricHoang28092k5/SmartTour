@@ -1,186 +1,315 @@
+<?xml version="1.0" encoding="utf-8" ?>
 <ContentPage
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     x:Class="SmartTourApp.Pages.TourPage"
-    BackgroundColor="#F2F4F8">
+    BackgroundColor="#FFFFFF"
+    Shell.NavBarIsVisible="False">
 
     <Grid RowDefinitions="Auto,*">
 
-        <!-- HEADER -->
-        <Grid Padding="20,40,20,20">
-            <Grid.Background>
-                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                    <GradientStop Color="#1E88E5" Offset="0"/>
-                    <GradientStop Color="#42A5F5" Offset="1"/>
-                </LinearGradientBrush>
-            </Grid.Background>
+        <!-- ══════════════════════════════════════ -->
+        <!--  HEADER                                -->
+        <!-- ══════════════════════════════════════ -->
+        <Grid Grid.Row="0" BackgroundColor="White" Padding="20,54,20,20">
 
-            <VerticalStackLayout Spacing="6">
-                <Label Text="🧭 Tours"
-                       FontSize="28"
-                       FontAttributes="Bold"
-                       TextColor="White"/>
+            <!-- Subtle bottom separator -->
+            <BoxView VerticalOptions="End"
+                     HorizontalOptions="Fill"
+                     HeightRequest="1"
+                     BackgroundColor="#F0F0F5"/>
 
-                <Label Text="Khám phá theo hành trình được thiết kế sẵn"
-                       FontSize="14"
-                       TextColor="#E3F2FD"/>
-            </VerticalStackLayout>
+            <Grid ColumnDefinitions="*,Auto">
+
+                <VerticalStackLayout Grid.Column="0" Spacing="3">
+                    <Label Text="HÀNH TRÌNH"
+                           FontSize="11"
+                           FontAttributes="Bold"
+                           TextColor="#1E88E5"
+                           CharacterSpacing="2.5"/>
+                    <Label Text="Tours"
+                           FontSize="28"
+                           FontAttributes="Bold"
+                           TextColor="#0D0D0D"
+                           CharacterSpacing="-0.5"/>
+                </VerticalStackLayout>
+
+                <!-- Filter / sort badge -->
+                <Border Grid.Column="1"
+                        BackgroundColor="#F0F5FF"
+                        StrokeThickness="0"
+                        StrokeShape="RoundRectangle 20"
+                        Padding="14,8"
+                        VerticalOptions="Center">
+                    <HorizontalStackLayout Spacing="6">
+                        <Label Text="⊞" FontSize="14" TextColor="#1E88E5" VerticalOptions="Center"/>
+                        <Label Text="Lọc" FontSize="13" FontAttributes="Bold" TextColor="#1E88E5" VerticalOptions="Center"/>
+                    </HorizontalStackLayout>
+                </Border>
+            </Grid>
         </Grid>
 
-        <!-- LIST -->
+        <!-- ══════════════════════════════════════ -->
+        <!--  TOUR LIST                             -->
+        <!-- ══════════════════════════════════════ -->
         <CollectionView x:Name="TourList"
                         Grid.Row="1"
-                        Margin="16,10"
-                        SelectionMode="None">
+                        Margin="0"
+                        SelectionMode="None"
+                        BackgroundColor="#F8F9FD">
+
+            <CollectionView.Header>
+                <BoxView HeightRequest="12" BackgroundColor="#F8F9FD"/>
+            </CollectionView.Header>
 
             <CollectionView.ItemTemplate>
                 <DataTemplate>
 
-                    <!-- CARD -->
-                    <Border StrokeShape="RoundRectangle 24"
+                    <!-- ─── TOUR CARD ─── -->
+                    <Border Margin="16,0,16,16"
                             BackgroundColor="White"
-                            Padding="18"
-                            Margin="0,0,0,18">
+                            StrokeThickness="0"
+                            StrokeShape="RoundRectangle 24">
 
                         <Border.Shadow>
-                            <Shadow Brush="#00000020"
-                                    Offset="0,6"
-                                    Radius="12"/>
+                            <Shadow Brush="#000000" Offset="0,4" Radius="24" Opacity="0.07"/>
                         </Border.Shadow>
 
-                        <VerticalStackLayout Spacing="14">
+                        <VerticalStackLayout Spacing="0">
 
-                            <!-- TITLE -->
-                            <Label Text="{Binding Name}"
-                                   FontSize="20"
-                                   FontAttributes="Bold"
-                                   TextColor="#111"/>
+                            <!-- ── TOP ACCENT BAR ── -->
+                            <BoxView HeightRequest="3"
+                                     CornerRadius="24,24,0,0"
+                                     BackgroundColor="#1E88E5"/>
 
-                            <!-- DESCRIPTION -->
-                            <Label Text="{Binding Description}"
-                                   FontSize="13"
-                                   TextColor="#666"/>
+                            <!-- ── CARD BODY ── -->
+                            <VerticalStackLayout Spacing="0" Padding="20,18,20,18">
 
-                            <!-- META -->
-                            <Grid ColumnDefinitions="Auto,*"
-                                  ColumnSpacing="10">
+                                <!-- ROW 1: index badge + title -->
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" Margin="0,0,0,12">
 
-                                <Border BackgroundColor="#E3F2FD"
-                                        StrokeShape="RoundRectangle 12"
-                                        Padding="8,4">
+                                    <!-- Number badge -->
+                                    <Border Grid.Column="0"
+                                            WidthRequest="40" HeightRequest="40"
+                                            StrokeThickness="0"
+                                            StrokeShape="RoundRectangle 12">
+                                        <Border.Background>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                <GradientStop Color="#1565C0" Offset="0"/>
+                                                <GradientStop Color="#42A5F5" Offset="1"/>
+                                            </LinearGradientBrush>
+                                        </Border.Background>
+                                        <Label Text="🗺️"
+                                               FontSize="18"
+                                               HorizontalOptions="Center"
+                                               VerticalOptions="Center"/>
+                                    </Border>
 
-                                    <Label Text="{Binding Pois.Count, StringFormat='{}{0} điểm'}"
-                                           FontSize="12"
-                                           TextColor="#1E88E5"/>
-                                </Border>
+                                    <!-- Name + stops -->
+                                    <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                                        <Label Text="{Binding Name}"
+                                               FontSize="18"
+                                               FontAttributes="Bold"
+                                               TextColor="#0D0D0D"
+                                               LineBreakMode="TailTruncation"
+                                               MaxLines="1"/>
+                                        <HorizontalStackLayout Spacing="6">
+                                            <Border BackgroundColor="#EEF4FF"
+                                                    StrokeThickness="0"
+                                                    StrokeShape="RoundRectangle 8"
+                                                    Padding="7,2">
+                                                <Label Text="{Binding Pois.Count, StringFormat='{}{0} điểm dừng'}"
+                                                       FontSize="10"
+                                                       FontAttributes="Bold"
+                                                       TextColor="#1E88E5"/>
+                                            </Border>
+                                        </HorizontalStackLayout>
+                                    </VerticalStackLayout>
 
-                                <Label Grid.Column="1"
-                                       Text="Tap để xem hành trình"
-                                       FontSize="12"
-                                       TextColor="#999"
-                                       VerticalOptions="Center"/>
-                            </Grid>
+                                    <!-- Expand toggle -->
+                                    <Border Grid.Column="2"
+                                            WidthRequest="36" HeightRequest="36"
+                                            BackgroundColor="#F5F5FA"
+                                            StrokeThickness="0"
+                                            StrokeShape="RoundRectangle 18"
+                                            VerticalOptions="Center">
+                                        <Label Text="↓"
+                                               FontSize="16"
+                                               FontAttributes="Bold"
+                                               TextColor="#555"
+                                               HorizontalOptions="Center"
+                                               VerticalOptions="Center">
+                                            <Label.GestureRecognizers>
+                                                <TapGestureRecognizer
+                                                    Tapped="OpenTour"
+                                                    CommandParameter="{Binding .}"/>
+                                            </Label.GestureRecognizers>
+                                        </Label>
+                                    </Border>
+                                </Grid>
 
-                            <!-- ACTION -->
-                            <Grid ColumnDefinitions="*,Auto">
+                                <!-- Description -->
+                                <Label Text="{Binding Description}"
+                                       FontSize="13"
+                                       TextColor="#777777"
+                                       LineHeight="1.5"
+                                       Margin="0,0,0,16"
+                                       LineBreakMode="WordWrap"/>
 
-                                <Button Text="Chi tiết"
-                                        Clicked="OpenTour"
-                                        CommandParameter="{Binding .}"
-                                        BackgroundColor="#1E88E5"
-                                        TextColor="White"
-                                        CornerRadius="18"
-                                        HeightRequest="40"/>
+                                <!-- ── ACTION BUTTONS ── -->
+                                <Grid ColumnDefinitions="*,52" ColumnSpacing="10">
 
-                                <Button Grid.Column="1"
-                                        Text="▶"
-                                        Clicked="StartTour"
-                                        CommandParameter="{Binding .}"
-                                        BackgroundColor="#4CAF50"
-                                        TextColor="White"
-                                        WidthRequest="44"
-                                        HeightRequest="40"
-                                        CornerRadius="18"/>
-                            </Grid>
+                                    <!-- Detail button -->
+                                    <Border Grid.Column="0"
+                                            StrokeThickness="1.5"
+                                            Stroke="#1E88E5"
+                                            StrokeShape="RoundRectangle 22"
+                                            BackgroundColor="White">
+                                        <Button Text="Xem chi tiết"
+                                                Clicked="OpenTour"
+                                                CommandParameter="{Binding .}"
+                                                BackgroundColor="Transparent"
+                                                TextColor="#1E88E5"
+                                                FontSize="14"
+                                                FontAttributes="Bold"
+                                                HeightRequest="46"
+                                                Padding="0"/>
+                                    </Border>
 
-                            <!-- EXPAND -->
-                            <VerticalStackLayout
-                                IsVisible="{Binding IsExpanded}"
-                                Spacing="14">
+                                    <!-- Start button -->
+                                    <Border Grid.Column="1"
+                                            StrokeThickness="0"
+                                            StrokeShape="RoundRectangle 22">
+                                        <Border.Background>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                <GradientStop Color="#1565C0" Offset="0"/>
+                                                <GradientStop Color="#42A5F5" Offset="1"/>
+                                            </LinearGradientBrush>
+                                        </Border.Background>
+                                        <Button Text="▶"
+                                                Clicked="StartTour"
+                                                CommandParameter="{Binding .}"
+                                                BackgroundColor="Transparent"
+                                                TextColor="White"
+                                                FontSize="18"
+                                                HeightRequest="46"
+                                                WidthRequest="52"
+                                                Padding="0"/>
+                                    </Border>
+                                </Grid>
 
-                                <BoxView HeightRequest="1"
-                                         Color="#EEE"/>
+                                <!-- ── EXPANDED TIMELINE ── -->
+                                <VerticalStackLayout
+                                    IsVisible="{Binding IsExpanded}"
+                                    Spacing="0"
+                                    Margin="0,20,0,0">
 
-                                <!-- TIMELINE -->
-                                <CollectionView ItemsSource="{Binding Pois}"
-                                                SelectionMode="None">
+                                    <!-- Divider with label -->
+                                    <Grid ColumnDefinitions="*,Auto,*" ColumnSpacing="10" Margin="0,0,0,16">
+                                        <BoxView Grid.Column="0" HeightRequest="1" BackgroundColor="#EEEEEE" VerticalOptions="Center"/>
+                                        <Label Grid.Column="1"
+                                               Text="LỊCH TRÌNH"
+                                               FontSize="10"
+                                               FontAttributes="Bold"
+                                               TextColor="#BBBBBB"
+                                               CharacterSpacing="2"
+                                               VerticalOptions="Center"/>
+                                        <BoxView Grid.Column="2" HeightRequest="1" BackgroundColor="#EEEEEE" VerticalOptions="Center"/>
+                                    </Grid>
 
-                                    <CollectionView.ItemTemplate>
-                                        <DataTemplate>
+                                    <!-- Timeline items -->
+                                    <CollectionView ItemsSource="{Binding Pois}" SelectionMode="None">
+                                        <CollectionView.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid ColumnDefinitions="32,*" Margin="0,0,0,4">
 
-                                            <Grid ColumnDefinitions="40,*">
+                                                    <!-- Timeline indicator -->
+                                                    <Grid Grid.Column="0" RowDefinitions="Auto,*">
+                                                        <Border Grid.Row="0"
+                                                                WidthRequest="12" HeightRequest="12"
+                                                                BackgroundColor="#1E88E5"
+                                                                StrokeThickness="2.5"
+                                                                Stroke="White"
+                                                                StrokeShape="RoundRectangle 6"
+                                                                HorizontalOptions="Center"
+                                                                Margin="0,10,0,0">
+                                                        </Border>
+                                                        <BoxView Grid.Row="1"
+                                                                 WidthRequest="2"
+                                                                 BackgroundColor="#DDDDDD"
+                                                                 HorizontalOptions="Center"
+                                                                 VerticalOptions="Fill"
+                                                                 Margin="0,2,0,0"/>
+                                                    </Grid>
 
-                                                <!-- TIMELINE -->
-                                                <Grid RowDefinitions="Auto,*">
-
-                                                    <BoxView HeightRequest="10"
-                                                             WidthRequest="10"
-                                                             CornerRadius="5"
-                                                             Color="#1E88E5"
-                                                             HorizontalOptions="Center"/>
-
-                                                    <BoxView Grid.Row="1"
-                                                             WidthRequest="2"
-                                                             Color="#E0E0E0"
-                                                             VerticalOptions="Fill"
-                                                             HorizontalOptions="Center"/>
+                                                    <!-- Stop content -->
+                                                    <Border Grid.Column="1"
+                                                            BackgroundColor="#F8F9FD"
+                                                            StrokeThickness="0"
+                                                            StrokeShape="RoundRectangle 14"
+                                                            Padding="12,10"
+                                                            Margin="0,4,0,6">
+                                                        <Grid ColumnDefinitions="*,Auto">
+                                                            <VerticalStackLayout Grid.Column="0" Spacing="2">
+                                                                <Label Text="{Binding Name}"
+                                                                       FontSize="13"
+                                                                       FontAttributes="Bold"
+                                                                       TextColor="#222222"/>
+                                                                <Label Text="{Binding OrderIndex, StringFormat='Điểm dừng #{0}'}"
+                                                                       FontSize="11"
+                                                                       TextColor="#AAAAAA"/>
+                                                            </VerticalStackLayout>
+                                                            <Border Grid.Column="1"
+                                                                    BackgroundColor="#EEF4FF"
+                                                                    StrokeThickness="0"
+                                                                    StrokeShape="RoundRectangle 10"
+                                                                    Padding="8,4"
+                                                                    VerticalOptions="Center">
+                                                                <Label Text="→"
+                                                                       FontSize="12"
+                                                                       FontAttributes="Bold"
+                                                                       TextColor="#1E88E5"/>
+                                                            </Border>
+                                                        </Grid>
+                                                    </Border>
                                                 </Grid>
+                                            </DataTemplate>
+                                        </CollectionView.ItemTemplate>
+                                    </CollectionView>
 
-                                                <!-- CONTENT -->
-                                                <Border Grid.Column="1"
-                                                        BackgroundColor="#FAFBFF"
-                                                        StrokeShape="RoundRectangle 16"
-                                                        Padding="12"
-                                                        Margin="0,0,0,10">
-
-                                                    <VerticalStackLayout Spacing="4">
-
-                                                        <Label Text="{Binding Name}"
-                                                               FontSize="14"
-                                                               FontAttributes="Bold"
-                                                               TextColor="#222"/>
-
-                                                        <Label Text="{Binding OrderIndex, StringFormat='Stop #{0}'}"
-                                                               FontSize="11"
-                                                               TextColor="#888"/>
-
-                                                    </VerticalStackLayout>
-                                                </Border>
-
-                                            </Grid>
-
-                                        </DataTemplate>
-                                    </CollectionView.ItemTemplate>
-
-                                </CollectionView>
-
-                                <!-- START BIG BUTTON -->
-                                <Button Text="🚀 Bắt đầu hành trình"
-                                        Clicked="StartTour"
-                                        CommandParameter="{Binding .}"
-                                        BackgroundColor="#111"
-                                        TextColor="White"
-                                        CornerRadius="22"
-                                        HeightRequest="48"/>
+                                    <!-- Big start CTA -->
+                                    <Border Margin="0,12,0,0"
+                                            StrokeThickness="0"
+                                            StrokeShape="RoundRectangle 22">
+                                        <Border.Background>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                <GradientStop Color="#0D47A1" Offset="0"/>
+                                                <GradientStop Color="#1E88E5" Offset="0.6"/>
+                                                <GradientStop Color="#42A5F5" Offset="1"/>
+                                            </LinearGradientBrush>
+                                        </Border.Background>
+                                        <Button Text="🚀  Bắt đầu hành trình"
+                                                Clicked="StartTour"
+                                                CommandParameter="{Binding .}"
+                                                BackgroundColor="Transparent"
+                                                TextColor="White"
+                                                FontSize="15"
+                                                FontAttributes="Bold"
+                                                HeightRequest="52"
+                                                Padding="0"/>
+                                    </Border>
+                                </VerticalStackLayout>
 
                             </VerticalStackLayout>
-
                         </VerticalStackLayout>
-
                     </Border>
 
                 </DataTemplate>
             </CollectionView.ItemTemplate>
+
+            <CollectionView.Footer>
+                <BoxView HeightRequest="32" BackgroundColor="#F8F9FD"/>
+            </CollectionView.Footer>
 
         </CollectionView>
 

@@ -1,118 +1,288 @@
+<?xml version="1.0" encoding="utf-8" ?>
 <ContentPage
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     x:Class="SmartTourApp.Pages.HomePage"
-    BackgroundColor="#F6F7FB">
+    BackgroundColor="#FFFFFF"
+    Shell.NavBarIsVisible="False">
 
     <ScrollView>
-        <VerticalStackLayout Spacing="24">
+        <VerticalStackLayout Spacing="0">
 
-            <!-- HERO -->
-            <Grid HeightRequest="280">
+            <!-- ══════════════════════════════════════ -->
+            <!--  HERO SECTION                          -->
+            <!-- ══════════════════════════════════════ -->
+            <Grid HeightRequest="340">
+
+                <!-- Background image -->
                 <Image x:Name="HeroImage"
                        Aspect="AspectFill"
                        Opacity="0"/>
 
-                <BoxView Background="#80000000"/>
+                <!-- Dark gradient overlay -->
+                <BoxView>
+                    <BoxView.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                            <GradientStop Color="#00000000" Offset="0.0"/>
+                            <GradientStop Color="#66000000" Offset="0.55"/>
+                            <GradientStop Color="#DD000000" Offset="1.0"/>
+                        </LinearGradientBrush>
+                    </BoxView.Background>
+                </BoxView>
 
-                <VerticalStackLayout Padding="20"
+                <!-- Top bar -->
+                <Grid ColumnDefinitions="*,Auto"
+                      Padding="20,54,20,0"
+                      VerticalOptions="Start">
+                    <VerticalStackLayout Grid.Column="0" Spacing="2">
+                        <Label Text="SmartTour"
+                               FontSize="13"
+                               FontAttributes="Bold"
+                               TextColor="#AAFFFFFF"
+                               CharacterSpacing="2"/>
+                        <Label x:Name="GreetingLabel"
+                               Text="Chào buổi sáng 👋"
+                               FontSize="18"
+                               FontAttributes="Bold"
+                               TextColor="White"/>
+                    </VerticalStackLayout>
+
+                    <!-- Notification bell -->
+                    <Border Grid.Column="1"
+                            WidthRequest="42" HeightRequest="42"
+                            BackgroundColor="#33FFFFFF"
+                            StrokeThickness="0"
+                            StrokeShape="RoundRectangle 21"
+                            VerticalOptions="Center">
+                        <Label Text="🔔" FontSize="18"
+                               HorizontalOptions="Center"
+                               VerticalOptions="Center"/>
+                    </Border>
+                </Grid>
+
+                <!-- Hero content pinned to bottom -->
+                <VerticalStackLayout Padding="20,0,20,24"
                                      VerticalOptions="End"
-                                     Spacing="6">
+                                     Spacing="8">
 
-                    <Label Text="📍 Gần bạn nhất"
-                           FontSize="12"
-                           TextColor="White"/>
+                    <!-- Badge -->
+                    <Border BackgroundColor="#1EFFFFFF"
+                            StrokeThickness="1"
+                            Stroke="#44FFFFFF"
+                            StrokeShape="RoundRectangle 20"
+                            Padding="10,4"
+                            HorizontalOptions="Start">
+                        <Label Text="📍 Gần bạn nhất"
+                               FontSize="11"
+                               FontAttributes="Bold"
+                               TextColor="White"
+                               CharacterSpacing="0.5"/>
+                    </Border>
 
                     <Label x:Name="HeroTitle"
-                           FontSize="26"
+                           Text="Đang tải..."
+                           FontSize="28"
                            FontAttributes="Bold"
-                           TextColor="White"/>
+                           TextColor="White"
+                           LineHeight="1.1"
+                           CharacterSpacing="-0.3"/>
 
                     <Label x:Name="HeroDistance"
-                           FontSize="14"
-                           TextColor="White"/>
+                           Text=""
+                           FontSize="13"
+                           TextColor="#CCFFFFFF"/>
 
-                    <Button x:Name="HeroPlayBtn"
-                            Text="🎧 Nghe ngay"
-                            Clicked="PlayNearest"
-                            BackgroundColor="White"
-                            TextColor="#1976D2"
-                            CornerRadius="18"/>
+                    <!-- CTA row -->
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10" Margin="0,4,0,0">
+                        <Button x:Name="HeroPlayBtn"
+                                Text="🎧  Nghe ngay"
+                                Clicked="PlayNearest"
+                                BackgroundColor="White"
+                                TextColor="#1E88E5"
+                                FontAttributes="Bold"
+                                FontSize="14"
+                                CornerRadius="22"
+                                HeightRequest="46"
+                                Padding="0"/>
+
+                        <Border Grid.Column="1"
+                                WidthRequest="46" HeightRequest="46"
+                                BackgroundColor="#1EFFFFFF"
+                                StrokeThickness="1"
+                                Stroke="#44FFFFFF"
+                                StrokeShape="RoundRectangle 23">
+                            <Label Text="🗺️" FontSize="20"
+                                   HorizontalOptions="Center"
+                                   VerticalOptions="Center"/>
+                        </Border>
+                    </Grid>
                 </VerticalStackLayout>
             </Grid>
 
-            <Label Text="✨ Địa điểm gần bạn"
-                   Margin="16,0"
-                   FontSize="20"
-                   FontAttributes="Bold"/>
+            <!-- ══════════════════════════════════════ -->
+            <!--  QUICK STATS BAR                       -->
+            <!-- ══════════════════════════════════════ -->
+            <Grid ColumnDefinitions="*,1,*,1,*"
+                  BackgroundColor="#F8F9FD"
+                  Padding="0,16">
 
-            <!-- LIST -->
-            <CollectionView x:Name="PoiList" Margin="16,0" SelectionMode="None">
+                <VerticalStackLayout Grid.Column="0" HorizontalOptions="Center" Spacing="2">
+                    <Label Text="12" FontSize="22" FontAttributes="Bold" TextColor="#111" HorizontalOptions="Center"/>
+                    <Label Text="Địa điểm" FontSize="11" TextColor="#888" HorizontalOptions="Center"/>
+                </VerticalStackLayout>
+
+                <BoxView Grid.Column="1" BackgroundColor="#E8E8E8" WidthRequest="1" VerticalOptions="Fill"/>
+
+                <VerticalStackLayout Grid.Column="2" HorizontalOptions="Center" Spacing="2">
+                    <Label Text="3" FontSize="22" FontAttributes="Bold" TextColor="#111" HorizontalOptions="Center"/>
+                    <Label Text="Hành trình" FontSize="11" TextColor="#888" HorizontalOptions="Center"/>
+                </VerticalStackLayout>
+
+                <BoxView Grid.Column="3" BackgroundColor="#E8E8E8" WidthRequest="1" VerticalOptions="Fill"/>
+
+                <VerticalStackLayout Grid.Column="4" HorizontalOptions="Center" Spacing="2">
+                    <Label Text="⭐ 4.8" FontSize="22" FontAttributes="Bold" TextColor="#111" HorizontalOptions="Center"/>
+                    <Label Text="Đánh giá" FontSize="11" TextColor="#888" HorizontalOptions="Center"/>
+                </VerticalStackLayout>
+            </Grid>
+
+            <!-- ══════════════════════════════════════ -->
+            <!--  SECTION TITLE                         -->
+            <!-- ══════════════════════════════════════ -->
+            <Grid ColumnDefinitions="*,Auto" Padding="20,24,20,12">
+                <VerticalStackLayout Grid.Column="0" Spacing="2">
+                    <Label Text="Địa điểm gần bạn"
+                           FontSize="20"
+                           FontAttributes="Bold"
+                           TextColor="#111111"/>
+                    <Label Text="Khám phá các điểm tham quan xung quanh"
+                           FontSize="12"
+                           TextColor="#999999"/>
+                </VerticalStackLayout>
+
+                <Border Grid.Column="1"
+                        BackgroundColor="#F0F5FF"
+                        StrokeThickness="0"
+                        StrokeShape="RoundRectangle 14"
+                        Padding="12,6"
+                        VerticalOptions="Center">
+                    <Label Text="Xem tất cả →"
+                           FontSize="12"
+                           FontAttributes="Bold"
+                           TextColor="#1E88E5"/>
+                </Border>
+            </Grid>
+
+            <!-- ══════════════════════════════════════ -->
+            <!--  POI LIST                              -->
+            <!-- ══════════════════════════════════════ -->
+            <CollectionView x:Name="PoiList"
+                            Margin="16,0,16,32"
+                            SelectionMode="None">
                 <CollectionView.ItemTemplate>
                     <DataTemplate>
-                        <Border StrokeShape="RoundRectangle 18" BackgroundColor="White" Margin="0,0,0,16">
+                        <Border StrokeShape="RoundRectangle 20"
+                                BackgroundColor="White"
+                                StrokeThickness="1"
+                                Stroke="#F0F0F5"
+                                Margin="0,0,0,14">
+
+                            <Border.Shadow>
+                                <Shadow Brush="#000000" Offset="0,4" Radius="20" Opacity="0.05"/>
+                            </Border.Shadow>
+
                             <Border.GestureRecognizers>
-                                <TapGestureRecognizer 
+                                <TapGestureRecognizer
                                     Tapped="OpenDetailTap"
-                                    CommandParameter="{Binding .}" />
+                                    CommandParameter="{Binding .}"/>
                             </Border.GestureRecognizers>
 
-                            <Grid ColumnDefinitions="120,*,90" HeightRequest="130">
+                            <Grid ColumnDefinitions="108,*" HeightRequest="120">
 
-                                <!-- IMAGE -->
-                                <Image Source="{Binding ImageUrl}" Aspect="AspectFill"/>
+                                <!-- IMAGE with rounded left corners -->
+                                <Border StrokeShape="RoundRectangle 18,0,0,18"
+                                        StrokeThickness="0"
+                                        Grid.Column="0">        
+                                    <Image Source="{Binding ImageUrl}"
+                                            Aspect="AspectFill" />
+                                </Border>
 
-                                <!-- INFO -->
-                                <VerticalStackLayout Grid.Column="1" Padding="12" Spacing="6">
-                                    <Label Text="{Binding Name}" FontSize="15" FontAttributes="Bold"/>
-                                    <Label Text="{Binding Description}" FontSize="12" TextColor="#777"/>
-                                    <Label Text="⭐ Popular" FontSize="11" TextColor="#999"/>
-                                </VerticalStackLayout>
+                                <!-- INFO + ACTIONS -->
+                                <Grid Grid.Column="1"
+                                      RowDefinitions="*,Auto"
+                                      Padding="14,12,12,12">
 
-                                <!-- ACTION -->
-                                <VerticalStackLayout Grid.Column="2"
-                                                     Spacing="10"
-                                                     VerticalOptions="Center"
-                                                     HorizontalOptions="Center">
+                                    <!-- Name + Description -->
+                                    <VerticalStackLayout Grid.Row="0" Spacing="4">
+                                        <Label Text="{Binding Name}"
+                                               FontSize="15"
+                                               FontAttributes="Bold"
+                                               TextColor="#111111"
+                                               LineBreakMode="TailTruncation"
+                                               MaxLines="1"/>
+                                        <Label Text="{Binding Description}"
+                                               FontSize="12"
+                                               TextColor="#888888"
+                                               LineBreakMode="TailTruncation"
+                                               MaxLines="2"
+                                               LineHeight="1.4"/>
+                                    </VerticalStackLayout>
 
-                                    <!-- PLAY -->
-                                    <Border WidthRequest="44" HeightRequest="44"
-                                            BackgroundColor="#1976D2"
-                                            StrokeShape="RoundRectangle 22">
+                                    <!-- Bottom row: rating + action buttons -->
+                                    <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
 
-                                        <Border.GestureRecognizers>
-                                            <TapGestureRecognizer 
-                                                Tapped="PlayPoiAudio"
-                                                CommandParameter="{Binding .}" />
-                                        </Border.GestureRecognizers>
+                                        <!-- Rating badge -->
+                                        <Border BackgroundColor="#FFF8E8"
+                                                StrokeThickness="0"
+                                                StrokeShape="RoundRectangle 8"
+                                                Padding="7,3"
+                                                VerticalOptions="Center"
+                                                HorizontalOptions="Start">
+                                            <Label Text="⭐ 4.8"
+                                                   FontSize="10"
+                                                   FontAttributes="Bold"
+                                                   TextColor="#E6A817"/>
+                                        </Border>
 
-                                        <Label Text="▶"
-                                               FontSize="18"
-                                               TextColor="White"
-                                               HorizontalOptions="Center"
-                                               VerticalOptions="Center"/>
-                                    </Border>
+                                        <!-- Play Audio -->
+                                        <Border Grid.Column="1"
+                                                WidthRequest="36" HeightRequest="36"
+                                                BackgroundColor="#EEF4FF"
+                                                StrokeThickness="0"
+                                                StrokeShape="RoundRectangle 18"
+                                                VerticalOptions="Center">
+                                            <Border.GestureRecognizers>
+                                                <TapGestureRecognizer
+                                                    Tapped="PlayPoiAudio"
+                                                    CommandParameter="{Binding .}"/>
+                                            </Border.GestureRecognizers>
+                                            <Label Text="▶"
+                                                   FontSize="14"
+                                                   TextColor="#1E88E5"
+                                                   HorizontalOptions="Center"
+                                                   VerticalOptions="Center"/>
+                                        </Border>
 
-                                    <!-- ROUTE -->
-                                    <Border WidthRequest="44" HeightRequest="44"
-                                            BackgroundColor="#00C853"
-                                            StrokeShape="RoundRectangle 22">
+                                        <!-- Route -->
+                                        <Border Grid.Column="2"
+                                                WidthRequest="36" HeightRequest="36"
+                                                BackgroundColor="#EEFAF2"
+                                                StrokeThickness="0"
+                                                StrokeShape="RoundRectangle 18"
+                                                VerticalOptions="Center">
+                                            <Border.GestureRecognizers>
+                                                <TapGestureRecognizer
+                                                    Tapped="GoToMapRoute"
+                                                    CommandParameter="{Binding .}"/>
+                                            </Border.GestureRecognizers>
+                                            <Label Text="🧭"
+                                                   FontSize="14"
+                                                   HorizontalOptions="Center"
+                                                   VerticalOptions="Center"/>
+                                        </Border>
 
-                                        <Border.GestureRecognizers>
-                                            <TapGestureRecognizer 
-                                                Tapped="GoToMapRoute"
-                                                CommandParameter="{Binding .}" />
-                                        </Border.GestureRecognizers>
-
-                                        <Label Text="🧭"
-                                               FontSize="18"
-                                               TextColor="White"
-                                               HorizontalOptions="Center"
-                                               VerticalOptions="Center"/>
-                                    </Border>
-
-                                </VerticalStackLayout>
-
+                                    </Grid>
+                                </Grid>
                             </Grid>
                         </Border>
                     </DataTemplate>

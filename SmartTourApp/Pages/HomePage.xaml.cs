@@ -26,8 +26,21 @@ public partial class HomePage : ContentPage
     {
         base.OnAppearing();
 
+        UpdateGreeting();
+
         if (!isLoaded)
             _ = LoadAsync();
+    }
+
+    private void UpdateGreeting()
+    {
+        var hour = DateTime.Now.Hour;
+        GreetingLabel.Text = hour switch
+        {
+            < 12 => "Chào buổi sáng 👋",
+            < 18 => "Chào buổi chiều 👋",
+            _ => "Chào buổi tối 👋"
+        };
     }
 
     private async Task LoadAsync()
@@ -81,8 +94,8 @@ public partial class HomePage : ContentPage
             DistanceUnits.Kilometers);
 
         HeroDistance.Text = dist < 1
-            ? $"{(int)(dist * 1000)} m"
-            : $"{Math.Round(dist, 1)} km";
+            ? $"Cách bạn {(int)(dist * 1000)} m"
+            : $"Cách bạn {Math.Round(dist, 1)} km";
     }
 
     private void SortPois()
@@ -103,27 +116,25 @@ public partial class HomePage : ContentPage
     {
         if (nearest == null || userLoc == null) return;
 
-        // 🔥 nếu đang phát → stop (toggle)
+        // 🔥 toggle stop
         if (isPlaying)
         {
             narration.Stop();
             isPlaying = false;
-            HeroPlayBtn.Text = "🎧 Nghe ngay";
+            HeroPlayBtn.Text = "🎧  Nghe ngay";
             return;
         }
 
         try
         {
             isPlaying = true;
-            HeroPlayBtn.Text = "🔊 Đang phát...";
-
-            // 🔥 DÙNG MANUAL
+            HeroPlayBtn.Text = "🔊  Đang phát...";
             await narration.PlayManual(nearest, userLoc);
         }
         finally
         {
             isPlaying = false;
-            HeroPlayBtn.Text = "🎧 Nghe ngay";
+            HeroPlayBtn.Text = "🎧  Nghe ngay";
         }
     }
 
@@ -140,10 +151,10 @@ public partial class HomePage : ContentPage
         await Shell.Current.GoToAsync(nameof(PoiDetailPage), true,
             new Dictionary<string, object> { ["poi"] = poi });
     }
+
     private bool isItemPlaying = false;
     private Poi? currentPlayingPoi;
 
-    // 🔥 PLAY AUDIO POI
     private async void PlayPoiAudio(object sender, TappedEventArgs e)
     {
         if (sender is not Element el || el.BindingContext is not Poi poi) return;
@@ -162,8 +173,7 @@ public partial class HomePage : ContentPage
         {
             isItemPlaying = true;
             currentPlayingPoi = poi;
-
-            await narration.PlayManual(poi, userLoc); // 🔥 dùng manual
+            await narration.PlayManual(poi, userLoc);
         }
         finally
         {
@@ -171,6 +181,7 @@ public partial class HomePage : ContentPage
             currentPlayingPoi = null;
         }
     }
+
     private async void GoToMapRoute(object sender, TappedEventArgs e)
     {
         if (sender is not Element el || el.BindingContext is not Poi poi)
