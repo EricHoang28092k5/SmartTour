@@ -3,7 +3,6 @@ using AndroidX.Media3.ExoPlayer;
 using AndroidX.Media3.Common;
 using AndroidX.Media3.ExoPlayer.Source;
 using AndroidX.Media3.DataSource;
-
 namespace SmartTourApp.Platforms.Android;
 
 public class ExoPlayerService
@@ -46,6 +45,21 @@ public class ExoPlayerService
         player.Prepare();
         player.Play();
 
+        StartLoop();
+    }
+
+    /// <summary>
+    /// Resume playback from the current position.
+    /// Unlike Play(), this does NOT reset the media item — ExoPlayer continues from where it paused.
+    /// </summary>
+    public void Resume()
+    {
+        if (player == null) return;
+
+        // ExoPlayer retains position after Pause(), calling Play() resumes from that position
+        player.Play();
+
+        // Restart progress loop if it was stopped
         StartLoop();
     }
 

@@ -53,10 +53,17 @@ public class PoiDetailAudioManager
             exo.Stop();
 
         var file = await GenerateAudio(selected.TtsScript, poi.Id);
-
         exo.Play(file);
 #endif
 
+        IsPlaying = true;
+    }
+
+    public void Resume()
+    {
+#if ANDROID
+        exo.Resume();
+#endif
         IsPlaying = true;
     }
 
@@ -85,7 +92,6 @@ public class PoiDetailAudioManager
 
     private async Task<string> GenerateAudio(string text, int poiId)
     {
-        // 🔥 cache chuẩn production
         var file = Path.Combine(cacheDir, $"poi_{poiId}_{lang.Current}.wav");
 
         if (File.Exists(file)) return file;
@@ -94,7 +100,7 @@ public class PoiDetailAudioManager
         var tcsInit = new TaskCompletionSource<bool>();
         var tcsDone = new TaskCompletionSource<bool>();
 
-        var tts = new AndroidTTS(Android.App.Application.Context,
+        var tts = new AndroidTTS(global::Android.App.Application.Context,
             new InitListener(status =>
             {
                 if (status == OperationResult.Success)
@@ -105,7 +111,6 @@ public class PoiDetailAudioManager
 
         await tcsInit.Task;
 
-        // 🔥 SET NGÔN NGỮ (QUAN TRỌNG)
         tts.SetLanguage(Java.Util.Locale.ForLanguageTag(lang.Current switch
         {
             "vi" => "vi-VN",
@@ -133,7 +138,6 @@ public class PoiDetailAudioManager
 
         await tcsDone.Task;
 
-        // 🔥 FIX leak
         tts.Stop();
         tts.Shutdown();
 #endif
@@ -142,7 +146,6 @@ public class PoiDetailAudioManager
     }
 
 #if ANDROID
-    // Sử dụng AndroidTTS.IOnInitListener
     class InitListener : Java.Lang.Object, AndroidTTS.IOnInitListener
     {
         private readonly Action<OperationResult> _callback;
@@ -157,8 +160,7 @@ public class PoiDetailAudioManager
             _callback(status);
         }
     }
-#endif
-#if ANDROID
+
     class TtsProgressListener : UtteranceProgressListener
     {
         private readonly Action _onDone;
