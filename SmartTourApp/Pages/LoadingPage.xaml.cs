@@ -54,6 +54,7 @@ public partial class LoadingPage : ContentPage
             var narration = services?.GetService<NarrationEngine>();
             var locationService = services?.GetService<LocationService>();
             var geo = services?.GetService<GeofencingEngine>();
+            var heatmap = services?.GetService<HeatmapService>();   // 🔥
 
             narration?.Reset();
             tracking.Stop();
@@ -69,7 +70,7 @@ public partial class LoadingPage : ContentPage
 
             await tracking.Start();
 
-            // 🔥 AUTO PLAY CHUẨN
+            // ─── AUTO PLAY + HEATMAP APP_OPEN (chạy song song) ───
             _ = Task.Run(async () =>
             {
                 try
@@ -83,22 +84,24 @@ public partial class LoadingPage : ContentPage
                     for (int i = 0; i < 5; i++)
                     {
                         loc = await locationService.GetLocation();
-
-                        if (loc != null)
-                            break;
-
+                        if (loc != null) break;
                         await Task.Delay(1500);
                     }
 
                     if (loc == null) return;
 
-                    var poi = geo.FindBestPoi(loc, pois);
+                    // ─── 🔥 HEATMAP APP_OPEN: ghi nhận nếu đang đứng trong radius ───
+                    // Chỉ chạy 1 lần duy nhất khi app mở (HeatmapService tự guard _appOpenChecked)
+                    if (heatmap != null)
+                    {
+                        await heatmap.CheckAppOpenAsync(loc, pois);
+                    }
 
+                    // ─── AUTO PLAY narration ───
+                    var poi = geo.FindBestPoi(loc, pois);
                     if (poi != null)
                     {
                         System.Diagnostics.Debug.WriteLine("🔥 AUTO PLAY: " + poi.Name);
-
-                        // 🔥 đảm bảo phát luôn
                         await narration.PlayManual(poi, loc);
                     }
                     else
@@ -108,7 +111,7 @@ public partial class LoadingPage : ContentPage
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine("Auto play error: " + ex.Message);
+                    System.Diagnostics.Debug.WriteLine("Auto play / heatmap error: " + ex.Message);
                 }
             });
 
