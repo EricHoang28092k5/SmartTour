@@ -34,7 +34,11 @@
                         <label class="form-label fw-bold">Bán kính kích hoạt (m)</label>
                         <input asp-for="Radius" type="number" class="form-control" value="100" />
                     </div>
-
+                    <div class="mb-3">
+                        <label asp-for="Description" class="control-label fw-bold">Mô tả địa điểm (Để trống để AI tự viết)</label>
+                        <textarea asp-for="Description" class="form-control" rows="4" placeholder="Nhập mô tả tại đây hoặc để trống để AI tự chém gió..."></textarea>
+                        <span asp-validation-for="Description" class="text-danger"></span>
+                    </div>
                     <div class="mb-3">
                         <label class="form-label fw-bold">Ảnh bìa chính (1 ảnh)</label>
                         <input type="file" name="imageFile" class="form-control" accept="image/*" />
