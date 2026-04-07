@@ -43,7 +43,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<NarrationEngine>();
         builder.Services.AddHttpClient<ApiService>(client =>
         {
-            client.BaseAddress = new Uri("http://192.168.1.4:5165/");
+            client.BaseAddress = new Uri("http://10.0.2.2:5165/");
         });
         builder.Services.AddSingleton<PoiRepository>();
         builder.Services.AddSingleton<Database>();
@@ -56,7 +56,6 @@ public static class MauiProgram
 
         builder.Services.AddSingleton<PoiDetailAudioManager>();
 
-        builder.Services.AddSingleton<QrScannerPage>();
         builder.Services.AddSingleton<SettingsPage>();
         builder.Services.AddSingleton<HomePage>();
         builder.Services.AddSingleton<MapPage>();
