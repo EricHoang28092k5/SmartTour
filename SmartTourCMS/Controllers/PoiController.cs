@@ -170,7 +170,7 @@ namespace SmartTourCMS.Controllers
         private async Task<string> GenerateScriptWithAI(string poiName)
         {
             // THAY API KEY CỦA MÀY VÀO ĐÂY !!!
-            string apiKey = "AIzaSyD5RGt4RCsZTeBM5wg0lPztxQPq04HeCJQ";
+            string apiKey = Environment.GetEnvironmentVariable("GGKEYAPI"); ;
             string url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={apiKey}";
 
             var payload = new
