@@ -12,6 +12,7 @@ using System.Globalization;
 using Brush = Mapsui.Styles.Brush;
 using Color = Mapsui.Styles.Color;
 using Map = Mapsui.Map;
+using static SmartTour.Services.ApiService;
 
 namespace SmartTourApp.ViewModels;
 
@@ -21,8 +22,9 @@ public class MapViewModel
 
     public MemoryLayer UserLayer = new();
     public MemoryLayer PoiLayer = new();
-    public MemoryLayer HeatLayer = new();
+    public MemoryLayer HeatLayer = new();  // user location heat (lịch sử di chuyển)
     public MemoryLayer RouteLayer = new();
+    public MemoryLayer HeatmapLayer = new();  // 🔥 POI visit-count heatmap bubbles
 
     private PointFeature? userFeature;
     private PointFeature? pulseFeature;
@@ -55,12 +57,9 @@ public class MapViewModel
         if (lastLocation != null)
         {
             var distance = Location.CalculateDistance(
-                lastLocation,
-                loc,
-                DistanceUnits.Kilometers);
+                lastLocation, loc, DistanceUnits.Kilometers);
 
-            if (distance < 0.003)
-                return;
+            if (distance < 0.003) return;
         }
 
         lastLocation = loc;
@@ -98,7 +97,7 @@ public class MapViewModel
                     new SymbolStyle
                     {
                         SymbolScale = 0.35,
-                        Fill = new Brush(new Color(30, 136, 229)),
+                        Fill    = new Brush(new Color(30, 136, 229)),
                         Outline = new Pen(Color.White, 4)
                     }
                 }
@@ -120,7 +119,8 @@ public class MapViewModel
 
         if (centerMap && map?.Navigator != null)
         {
-            map.Navigator.CenterOnAndZoomTo(newPoint, 0.5, 500, Mapsui.Animations.Easing.CubicOut);
+            map.Navigator.CenterOnAndZoomTo(newPoint, 0.5, 500,
+                Mapsui.Animations.Easing.CubicOut);
         }
     }
 
@@ -130,27 +130,15 @@ public class MapViewModel
     public async Task DrawRoute(Map map, Location from, Poi to)
     {
         var points = await GetRoutePoints(from, to);
-
-        if (points.Count < 2)
-            return;
+        if (points.Count < 2) return;
 
         var line = new NtsGeometry.LineString(
-            points.Select(p => new NtsGeometry.Coordinate(p.X, p.Y)).ToArray()
-        );
+            points.Select(p => new NtsGeometry.Coordinate(p.X, p.Y)).ToArray());
 
         var feature = new GeometryFeature { Geometry = line };
 
-        // White outline for contrast
-        feature.Styles.Add(new VectorStyle
-        {
-            Line = new Pen(Color.White, 10)
-        });
-
-        // Blue route line
-        feature.Styles.Add(new VectorStyle
-        {
-            Line = new Pen(new Color(30, 136, 229), 6)
-        });
+        feature.Styles.Add(new VectorStyle { Line = new Pen(Color.White, 10) });
+        feature.Styles.Add(new VectorStyle { Line = new Pen(new Color(30, 136, 229), 6) });
 
         RouteLayer.Features = new[] { feature };
         RouteLayer.DataHasChanged();
@@ -161,7 +149,6 @@ public class MapViewModel
         var bbox = feature.Extent;
         if (bbox != null)
         {
-            // Add padding to bbox
             var padded = bbox.Grow(bbox.Width * 0.15, bbox.Height * 0.15);
             map.Navigator.ZoomToBox(padded, MBoxFit.Fit, 600);
         }
@@ -223,6 +210,9 @@ public class MapViewModel
         PoiLayer.DataHasChanged();
     }
 
+    // =============================
+    // LOCATION HISTORY HEAT MAP
+    // =============================
     public void LoadHeatMap(Map map, List<UserLocationLog> logs)
     {
         var features = new List<PointFeature>();
@@ -230,8 +220,7 @@ public class MapViewModel
         foreach (var l in logs)
         {
             var spherical = SphericalMercator.FromLonLat(
-                (double)l.Longitude,
-                (double)l.Latitude);
+                (double)l.Longitude, (double)l.Latitude);
 
             var f = new PointFeature(new MPoint(spherical.x, spherical.y))
             {
@@ -253,6 +242,85 @@ public class MapViewModel
             map.Layers.Add(HeatLayer);
     }
 
+    // ══════════════════════════════════════════════════════════════════
+    // 🔥 POI VISIT-COUNT HEATMAP BUBBLES
+    // Render hình tròn bán kính/opacity tỉ lệ với số lần user bước vào
+    // ══════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Render heatmap bubbles lên map dựa trên API data.
+    /// Scale: bubble lớn hơn + đậm hơn khi sum cao hơn.
+    /// Dùng SymbolStyle vì Mapsui 5.0.2 không hỗ trợ true circle radius theo meters —
+    /// scale tương đối đủ cho UX heatmap visualization.
+    /// </summary>
+    public void LoadPoiHeatmap(Map map, List<HeatmapPoiData> data)
+    {
+        if (data == null || data.Count == 0) return;
+
+        var maxSum = data.Max(d => d.Sum);
+        var features = new List<PointFeature>();
+
+        foreach (var item in data)
+        {
+            if (item.Lat == 0 && item.Lng == 0) continue;
+
+            var spherical = SphericalMercator.FromLonLat(item.Lng, item.Lat);
+            var pt = new MPoint(spherical.x, spherical.y);
+
+            // Normalize sum → scale [0.4 .. 3.0]
+            double norm = maxSum > 0 ? (double)item.Sum / maxSum : 0.1;
+            double scale = 0.4 + norm * 2.6;
+
+            // Opacity: 40 → 160 (alpha 0..255)
+            int alpha = (int)(40 + norm * 120);
+
+            // Outer glow — lớn, mờ
+            var glowFeature = new PointFeature(new MPoint(pt.X, pt.Y))
+            {
+                Styles = {
+                    new SymbolStyle
+                    {
+                        SymbolScale = scale * 1.8,
+                        Fill        = new Brush(new Color(255, 100, 30, alpha / 3)),
+                        Outline     = new Pen(Color.Transparent, 0)
+                    }
+                }
+            };
+
+            // Core bubble — nhỏ hơn, đậm hơn
+            var coreFeature = new PointFeature(new MPoint(pt.X, pt.Y))
+            {
+                Styles = {
+                    new SymbolStyle
+                    {
+                        SymbolScale = scale,
+                        Fill        = new Brush(new Color(255, 80, 0, alpha)),
+                        Outline     = new Pen(new Color(255, 120, 40, 180), 1.5)
+                    }
+                }
+            };
+
+            features.Add(glowFeature);
+            features.Add(coreFeature);
+        }
+
+        HeatmapLayer.Features = features;
+        HeatmapLayer.DataHasChanged();
+
+        if (!map.Layers.Contains(HeatmapLayer))
+            map.Layers.Insert(0, HeatmapLayer);  // Insert below POI markers
+    }
+
+    /// <summary>Xoá toàn bộ POI heatmap bubbles.</summary>
+    public void ClearPoiHeatmap()
+    {
+        HeatmapLayer.Features = Array.Empty<IFeature>();
+        HeatmapLayer.DataHasChanged();
+    }
+
+    // =============================
+    // PULSE ANIMATION
+    // =============================
     private void StartPulseAnimation()
     {
         var dispatcher = Application.Current?.Dispatcher;
@@ -279,6 +347,9 @@ public class MapViewModel
         });
     }
 
+    // =============================
+    // ROUTE CALCULATION (OSRM)
+    // =============================
     public async Task<List<MPoint>> GetRoutePoints(Location from, Poi to)
     {
         var url =

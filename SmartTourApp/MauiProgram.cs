@@ -1,6 +1,4 @@
 ﻿using Mapsui.Logging;
-using Mapsui.Widgets;
-using Mapsui.Widgets.InfoWidgets;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using SkiaSharp.Views.Maui.Controls.Hosting;
@@ -18,7 +16,6 @@ public static class MauiProgram
     public static MauiApp CreateMauiApp()
     {
         Mapsui.Logging.Logger.LogDelegate = null;
-
 
         var builder = MauiApp.CreateBuilder();
 
@@ -39,17 +36,22 @@ public static class MauiProgram
 
         builder.Services.AddSingleton<AudioListenTracker>();
 
-
         builder.Services.AddSingleton<NarrationEngine>();
+
         builder.Services.AddHttpClient<ApiService>(client =>
         {
             client.BaseAddress = new Uri("http://10.0.2.2:5165/");
         });
+
         builder.Services.AddSingleton<PoiRepository>();
         builder.Services.AddSingleton<Database>();
         builder.Services.AddSingleton<LogService>();
         builder.Services.AddSingleton<TtsService>();
         builder.Services.AddSingleton<LocationLogger>();
+
+        // 🔥 HeatmapService: singleton để giữ state machine (zones, cooldown) suốt vòng đời app
+        builder.Services.AddSingleton<HeatmapService>();
+
         builder.Services.AddSingleton<TrackingService>();
         builder.Services.AddSingleton<OfflineService>();
         builder.Services.AddSingleton<LanguageService>();

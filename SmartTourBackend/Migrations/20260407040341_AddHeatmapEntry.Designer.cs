@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using SmartTourBackend.Data;
@@ -11,9 +12,11 @@ using SmartTourBackend.Data;
 namespace SmartTourBackend.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260407040341_AddHeatmapEntry")]
+    partial class AddHeatmapEntry
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -654,36 +657,6 @@ namespace SmartTourBackend.Migrations
                     b.ToTable("TourPois");
                 });
 
-            modelBuilder.Entity("SmartTour.Shared.Models.TourTranslation", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("LanguageCode")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<int>("TourId")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TourId");
-
-                    b.ToTable("TourTranslations");
-                });
-
             modelBuilder.Entity("SmartTour.Shared.Models.UserLocationLog", b =>
                 {
                     b.Property<long>("Id")
@@ -845,17 +818,6 @@ namespace SmartTourBackend.Migrations
                         .IsRequired();
 
                     b.Navigation("Poi");
-
-                    b.Navigation("Tour");
-                });
-
-            modelBuilder.Entity("SmartTour.Shared.Models.TourTranslation", b =>
-                {
-                    b.HasOne("SmartTour.Shared.Models.Tour", "Tour")
-                        .WithMany()
-                        .HasForeignKey("TourId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
 
                     b.Navigation("Tour");
                 });

@@ -8,6 +8,7 @@ public class TrackingService
     private readonly NarrationEngine narration;
     private readonly PoiRepository repo;
     private readonly LocationLogger logger;
+    private readonly HeatmapService heatmap;
 
     private CancellationTokenSource? cts;
 
@@ -22,13 +23,15 @@ public class TrackingService
         GeofencingEngine geo,
         NarrationEngine narration,
         PoiRepository repo,
-        LocationLogger logger)
+        LocationLogger logger,
+        HeatmapService heatmap)
     {
         this.location = location;
         this.geo = geo;
         this.narration = narration;
         this.repo = repo;
         this.logger = logger;
+        this.heatmap = heatmap;
     }
 
     public async Task Start()
@@ -59,10 +62,15 @@ public class TrackingService
 
                     AdjustInterval(loc);
 
+                    // ─── Narration (geofencing trigger) ───
                     var poi = geo.FindBestPoi(loc, pois);
-
                     if (poi != null)
                         await narration.Play(poi, loc);
+
+                    // ─── 🔥 Heatmap: detect zone_enter edge trigger ───
+                    // OnLocationUpdatedAsync dùng state machine nội bộ để chỉ ghi nhận
+                    // khi bước vào từ bên ngoài, không ghi lại khi đi vòng vòng trong radius.
+                    await heatmap.OnLocationUpdatedAsync(loc, pois);
 
                     await Task.Delay(interval * 1000, token);
                 }

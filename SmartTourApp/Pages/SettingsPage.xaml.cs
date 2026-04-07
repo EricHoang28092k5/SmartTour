@@ -9,13 +9,15 @@ public partial class SettingsPage : ContentPage
     private readonly TrackingService tracking;
     private readonly NarrationEngine narration;
     private readonly GeofencingEngine geo;
+    private readonly HeatmapService heatmap;    // 🔥
 
     public SettingsPage(
         LanguageService lang,
         PoiRepository repo,
         TrackingService tracking,
         NarrationEngine narration,
-        GeofencingEngine geo)
+        GeofencingEngine geo,
+        HeatmapService heatmap)                // 🔥
     {
         InitializeComponent();
         this.lang = lang;
@@ -23,6 +25,7 @@ public partial class SettingsPage : ContentPage
         this.tracking = tracking;
         this.narration = narration;
         this.geo = geo;
+        this.heatmap = heatmap;
     }
 
     protected override void OnAppearing()
@@ -49,7 +52,8 @@ public partial class SettingsPage : ContentPage
         repo.ClearCache();
         tracking.Stop();
         narration.Reset();
-        geo.Reset(); // ⭐ FIX CHÍNH
+        geo.Reset();
+        heatmap.Reset();    // 🔥 reset state machine + cooldown để app_open check lại
 
         Application.Current!.MainPage = new LoadingPage(repo, tracking);
     }

@@ -5,11 +5,13 @@ using Mapsui.Projections;
 using Mapsui.Tiling;
 using Mapsui.Tiling.Layers;
 using Microsoft.Maui.Devices.Sensors;
+using SmartTour.Services;
 using SmartTour.Shared.Models;
 using SmartTourApp.Data;
 using SmartTourApp.Services;
 using SmartTourApp.ViewModels;
 using System.Linq;
+using static SmartTour.Services.ApiService;
 
 namespace SmartTourApp.Pages;
 
@@ -20,6 +22,7 @@ public partial class MapPage : ContentPage
     private readonly TrackingService tracking;
     private readonly PoiRepository repo;
     private readonly GeofencingEngine geo;
+    private readonly ApiService api;   // 🔥 để load heatmap
 
     private readonly MapViewModel vm = new();
 
@@ -28,6 +31,7 @@ public partial class MapPage : ContentPage
     private bool mapInitialized = false;
     private bool trackingStarted = false;
     private bool firstZoom = true;
+    private bool heatmapLoaded = false;   // 🔥 chỉ load 1 lần
 
     public string? TargetPoiId { get; set; }
     private bool openedFromRoute = false;
@@ -36,14 +40,14 @@ public partial class MapPage : ContentPage
     private Poi? currentNearest;
 
     // State that persists across page visits
-    // null = show nearest, non-null = user tapped this poi
-    private Poi? selectedPoi;
+    private Poi? selectedPoi = null;
     private bool cardManuallyClosed = false;
 
     public MapPage(
         TrackingService tracking,
         PoiRepository repo,
-        GeofencingEngine geo)
+        GeofencingEngine geo,
+        ApiService api)        // 🔥
     {
         InitializeComponent();
 
@@ -56,6 +60,7 @@ public partial class MapPage : ContentPage
         this.tracking = tracking;
         this.repo = repo;
         this.geo = geo;
+        this.api = api;
 
         TourMap.Loaded += async (_, _) =>
         {
@@ -80,10 +85,18 @@ public partial class MapPage : ContentPage
             trackingStarted = true;
         }
 
+        // 🔥 Load POI heatmap bubbles lần đầu (background, non-blocking)
+        if (!heatmapLoaded && mapInitialized)
+        {
+            heatmapLoaded = true;
+            _ = Task.Run(LoadPoiHeatmapAsync);
+        }
+
         var loc = await Geolocation.GetLastKnownLocationAsync();
         if (loc == null)
             loc = await Geolocation.GetLocationAsync(
-                new GeolocationRequest(GeolocationAccuracy.Medium, TimeSpan.FromSeconds(5)));
+                new GeolocationRequest(GeolocationAccuracy.Medium,
+                    TimeSpan.FromSeconds(5)));
 
         if (TourMap?.Map?.Navigator == null || loc == null)
             return;
@@ -106,7 +119,8 @@ public partial class MapPage : ContentPage
 
                 var mercator = SphericalMercator.FromLonLat(poi.Lng, poi.Lat);
                 var pos = new MPoint(mercator.x, mercator.y);
-                TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 0.5, 600, Mapsui.Animations.Easing.CubicOut);
+                TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 0.5, 600,
+                    Mapsui.Animations.Easing.CubicOut);
 
                 SelectPoi(poi);
             }
@@ -115,27 +129,20 @@ public partial class MapPage : ContentPage
         }
         else
         {
-            // Restore state: if a POI was selected and not closed, keep it
             if (selectedPoi != null && !cardManuallyClosed)
-            {
                 ShowCardForPoi(selectedPoi);
-            }
             else if (!cardManuallyClosed && currentNearest != null)
-            {
-                // Show nearest if card not manually closed
                 ShowCardForPoi(currentNearest);
-            }
             else if (cardManuallyClosed)
-            {
                 PoiCard.IsVisible = false;
-            }
 
             followUser = true;
             openedFromRoute = false;
 
             var mercator = SphericalMercator.FromLonLat(loc.Longitude, loc.Latitude);
             var pos = new MPoint(mercator.x, mercator.y);
-            TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 0.5, 600, Mapsui.Animations.Easing.CubicOut);
+            TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 0.5, 600,
+                Mapsui.Animations.Easing.CubicOut);
             vm.UpdateUser(TourMap.Map, loc, false);
         }
     }
@@ -144,6 +151,31 @@ public partial class MapPage : ContentPage
     {
         base.OnDisappearing();
         tracking.OnLocationChanged -= UpdateLocation;
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // 🔥 Load POI visit-count heatmap từ backend rồi render bubbles
+    // ══════════════════════════════════════════════════════════════════
+    private async Task LoadPoiHeatmapAsync()
+    {
+        try
+        {
+            var resp = await api.GetHeatmap();
+            if (resp?.Data == null || resp.Data.Count == 0) return;
+
+            await MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                if (TourMap?.Map != null)
+                    vm.LoadPoiHeatmap(TourMap.Map, resp.Data);
+            });
+
+            System.Diagnostics.Debug.WriteLine(
+                $"🔥 HEATMAP loaded: {resp.Data.Count} POIs");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Heatmap load error: {ex.Message}");
+        }
     }
 
     private async Task InitMap()
@@ -167,12 +199,11 @@ public partial class MapPage : ContentPage
                 TourMap.Map = map;
                 TourMap.Map.Widgets.Clear();
             }
+
             TourMap.Map.Info += OnMapInfo;
 
             if (!TourMap.Map.Layers.OfType<TileLayer>().Any())
-            {
                 TourMap.Map.Layers.Add(OpenStreetMap.CreateTileLayer());
-            }
 
             pois = await repo.GetPois();
 
@@ -189,6 +220,10 @@ public partial class MapPage : ContentPage
 
             TourMap?.Refresh();
             MainThread.BeginInvokeOnMainThread(RemoveLoggingWidget);
+
+            // 🔥 Load heatmap ngay sau khi map init xong
+            heatmapLoaded = true;
+            _ = Task.Run(LoadPoiHeatmapAsync);
         }
         catch (Exception ex)
         {
@@ -199,16 +234,12 @@ public partial class MapPage : ContentPage
     // ─────────────────────────────────────────────
     // MAP TAP → find nearest POI to tap point
     // ─────────────────────────────────────────────
-    // Sử dụng MapInfoEventArgs thay cho MapClickedEventArgs
     private void OnMapInfo(object? sender, MapInfoEventArgs e)
     {
-        // 1. Kiểm tra điều kiện
         if (pois.Count == 0 || e.WorldPosition == null) return;
 
-        // 2. Chuyển đổi tọa độ chạm sang Lat/Lon
         var lonLat = SphericalMercator.ToLonLat(e.WorldPosition.X, e.WorldPosition.Y);
 
-        // 3. Tìm POI gần điểm chạm nhất (trong bán kính 300m)
         const double tapThresholdMeters = 300;
         Poi? tapped = null;
         double minDist = double.MaxValue;
@@ -227,7 +258,6 @@ public partial class MapPage : ContentPage
             }
         }
 
-        // 4. Nếu tìm thấy POI, cập nhật giao diện
         if (tapped != null)
         {
             MainThread.BeginInvokeOnMainThread(() =>
@@ -254,7 +284,6 @@ public partial class MapPage : ContentPage
         {
             NearestPoiLabel.Text = poi.Name;
 
-            // Compute distance if we have user location
             if (currentLocation != null)
             {
                 var dist = Location.CalculateDistance(
@@ -313,7 +342,6 @@ public partial class MapPage : ContentPage
 
             currentLocation = loc;
 
-            // Only update card with nearest if no POI was manually selected
             if (nearest != null && selectedPoi == null && !cardManuallyClosed)
             {
                 currentNearest = nearest;
@@ -327,7 +355,6 @@ public partial class MapPage : ContentPage
                     PoiCard.IsVisible = false;
             }
 
-            // Update distance label even when selectedPoi is shown
             if (selectedPoi != null && currentLocation != null && !cardManuallyClosed)
             {
                 var dist = Location.CalculateDistance(
@@ -374,7 +401,8 @@ public partial class MapPage : ContentPage
 
         var mercator = SphericalMercator.FromLonLat(loc.Longitude, loc.Latitude);
         var pos = new MPoint(mercator.x, mercator.y);
-        TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 0.5, 400, Mapsui.Animations.Easing.CubicOut);
+        TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 0.5, 400,
+            Mapsui.Animations.Easing.CubicOut);
     }
 
     private void HandleRouteAfterLoad()
@@ -393,24 +421,17 @@ public partial class MapPage : ContentPage
         TargetPoiId = null;
     }
 
-    // ─────────────────────────────────────────────
-    // CLOSE CARD
-    // ─────────────────────────────────────────────
     private async void CloseCard_Clicked(object sender, EventArgs e)
     {
         cardManuallyClosed = true;
         selectedPoi = null;
         vm.ClearRoute();
 
-        // Animate out
         await PoiCard.TranslateTo(0, 60, 200, Easing.CubicIn);
         PoiCard.IsVisible = false;
         await PoiCard.TranslateTo(0, 0, 0);
     }
 
-    // ─────────────────────────────────────────────
-    // ROUTE — smooth UX with loading indicator
-    // ─────────────────────────────────────────────
     private async void Route_Clicked(object sender, EventArgs e)
     {
         var target = selectedPoi ?? currentNearest;
@@ -423,7 +444,6 @@ public partial class MapPage : ContentPage
 
             await vm.DrawRoute(TourMap.Map, currentLocation, target);
 
-            // Smooth zoom to fit route
             await Task.Delay(300);
         }
         catch (Exception ex)
@@ -436,10 +456,6 @@ public partial class MapPage : ContentPage
         }
     }
 
-    // ─────────────────────────────────────────────
-    // STUB HANDLERS (kept for XAML binding compat)
-    // ─────────────────────────────────────────────
     private void Save_Clicked(object sender, TappedEventArgs e) { }
-
     private void Share_Clicked(object sender, TappedEventArgs e) { }
 }
