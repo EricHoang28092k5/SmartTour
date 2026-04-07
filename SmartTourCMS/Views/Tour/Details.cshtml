@@ -8,6 +8,31 @@
         </div>
         <div class="card-body">
             <div class="row mb-4">
+                <hr />
+                <h3>🌐 Các bản dịch tự động</h3>
+                @if (Model.TourTranslations != null && Model.TourTranslations.Any())
+                {
+                    <div class="row">
+                        @foreach (var trans in Model.TourTranslations)
+                        {
+                            <div class="col-md-4 mb-3">
+                                <div class="card">
+                                    <div class="card-header bg-info text-white">
+                                        <strong>Ngôn ngữ: @trans.LanguageCode.ToUpper()</strong>
+                                    </div>
+                                    <div class="card-body">
+                                        <h5 class="card-title">@trans.Name</h5>
+                                        <p class="card-text">@trans.Description</p>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <p class="text-danger">Tour này chưa có bản dịch nào!</p>
+                }
                 <div class="col-md-8">
                     <h5>Mô tả:</h5>
                     <p class="lead">@Model.Description</p>

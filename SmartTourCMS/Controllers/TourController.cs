@@ -1,4 +1,6 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using System.Net.Http;
+using System.Text.Json;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -12,6 +14,8 @@ namespace SmartTourCMS.Controllers
     {
         private readonly AppDbContext _context;
         private readonly UserManager<IdentityUser> _userManager;
+        // Khai báo thêm cái này để gọi API Google Dịch
+        private static readonly HttpClient _httpClient = new HttpClient();
 
         public TourController(AppDbContext context, UserManager<IdentityUser> userManager)
         {
@@ -43,17 +47,13 @@ namespace SmartTourCMS.Controllers
         [HttpGet]
         public IActionResult Create()
         {
-            // Lôi toàn bộ danh sách POI dưới Database lên
-            // Bác nhớ using Microsoft.EntityFrameworkCore; nếu nó báo đỏ hàm ToList() nhé
             ViewBag.Pois = _context.Pois.ToList();
-
             return View();
         }
 
-        // 3. Logic Tạo mới (POST)
+        // 3. Logic Tạo mới (POST) - ĐÃ NHỒI TÍNH NĂNG DỊCH
         [HttpPost]
         [ValidateAntiForgeryToken]
-        [HttpPost]
         public async Task<IActionResult> Create(Tour tour)
         {
             if (ModelState.IsValid)
@@ -62,10 +62,10 @@ namespace SmartTourCMS.Controllers
                 _context.Tours.Add(tour);
                 await _context.SaveChangesAsync();
 
-                // 2. Lấy đống ID trong cái rổ ráp vào bảng TourPoi của bác
+                // 2. Lấy đống ID trong cái rổ ráp vào bảng TourPoi 
                 if (tour.SelectedPoiIds != null && tour.SelectedPoiIds.Any())
                 {
-                    int stt = 1; // Biến đếm để xài cho cột OrderIndex
+                    int stt = 1;
 
                     foreach (var poiId in tour.SelectedPoiIds)
                     {
@@ -73,29 +73,65 @@ namespace SmartTourCMS.Controllers
                         {
                             TourId = tour.Id,
                             PoiId = poiId,
-                            OrderIndex = stt // Ơn giời, tận dụng luôn cột OrderIndex của bác để sắp xếp!
+                            OrderIndex = stt
                         };
 
                         _context.TourPois.Add(tourPoi);
-                        stt++; // Tăng số thứ tự lên (1, 2, 3...)
+                        stt++;
                     }
-
                     await _context.SaveChangesAsync();
                 }
 
-                TempData["success"] = "Tạo Tour thành công!";
+                // ==========================================
+                // 3. AUTO TRANSLATE TÊN VÀ MÔ TẢ (Anh, Hàn, Nhật)
+                // ==========================================
+                var targetLanguages = await _context.Languages
+                                                         .Select(l => l.Code)
+                                                         .ToListAsync();
+
+                foreach (var lang in targetLanguages)
+                {
+                    // Lọc bỏ tiếng Việt ra đéo dịch (nếu bảng Language của mày có chứa cả tiếng Việt)
+                    if (lang.ToLower() == "vi") continue;
+
+                    // Gọi hàm dịch tự viết ở tít dưới cùng
+                    var translatedName = await AutoTranslateAsync(tour.Name, lang);
+
+                    var translatedDesc = "";
+                    if (!string.IsNullOrEmpty(tour.Description))
+                    {
+                        translatedDesc = await AutoTranslateAsync(tour.Description, lang);
+                    }
+
+                    // Tống xuống bảng dịch
+                    var translation = new TourTranslation
+                    {
+                        TourId = tour.Id,
+                        LanguageCode = lang,
+                        Name = translatedName,
+                        Description = translatedDesc
+                    };
+                    _context.TourTranslations.Add(translation);
+                }
+
+                // Lưu đống bản dịch vào Database
+                await _context.SaveChangesAsync();
+                // ==========================================
+
+                TempData["success"] = "Tạo Tour và tự động dịch thành công!";
                 return RedirectToAction(nameof(Index));
             }
             return View(tour);
         }
 
         // 4. Chi tiết
+        // 4. Chi tiết
         public async Task<IActionResult> Details(int? id)
         {
             if (id == null) return NotFound();
 
             var tour = await _context.Tours
-                // BÙA CHÚ: Ép nó sắp xếp tăng dần theo cột OrderIndex (1, 2, 3...)
+                .Include(t => t.TourTranslations) // BÙA KÉO BẢN DỊCH LÊN: ĐÉO CÓ DÒNG NÀY LÀ MÙ MẮT NHÉ
                 .Include(t => t.TourPois.OrderBy(tp => tp.OrderIndex))
                     .ThenInclude(tp => tp.Poi)
                 .FirstOrDefaultAsync(m => m.Id == id);
@@ -104,7 +140,6 @@ namespace SmartTourCMS.Controllers
 
             return View(tour);
         }
-
         // 5. Sửa (GET)
         public async Task<IActionResult> Edit(int? id)
         {
@@ -113,7 +148,6 @@ namespace SmartTourCMS.Controllers
             var tour = await _context.Tours.Include(t => t.TourPois).FirstOrDefaultAsync(t => t.Id == id);
             if (tour == null) return NotFound();
 
-            // KIỂM TRA QUYỀN: Nếu không phải Admin và cũng không phải chủ Tour thì đuổi ra
             var user = await _userManager.GetUserAsync(User);
             if (!await _userManager.IsInRoleAsync(user, "Admin") && tour.VendorId != user.Id)
             {
@@ -136,12 +170,9 @@ namespace SmartTourCMS.Controllers
             {
                 try
                 {
-                    // Đảm bảo CreatedAt chuẩn UTC để không bị lỗi Database
                     tour.CreatedAt = DateTime.SpecifyKind(tour.CreatedAt, DateTimeKind.Utc);
-
                     _context.Update(tour);
 
-                    // Xóa và cập nhật lại POI trung gian
                     var oldPois = _context.TourPois.Where(tp => tp.TourId == id);
                     _context.TourPois.RemoveRange(oldPois);
 
@@ -173,7 +204,6 @@ namespace SmartTourCMS.Controllers
             var tour = await _context.Tours.FindAsync(id);
             if (tour == null) return NotFound();
 
-            // KIỂM TRA QUYỀN XÓA
             var user = await _userManager.GetUserAsync(User);
             if (!await _userManager.IsInRoleAsync(user, "Admin") && tour.VendorId != user.Id)
             {
@@ -187,6 +217,33 @@ namespace SmartTourCMS.Controllers
             await _context.SaveChangesAsync();
 
             return RedirectToAction(nameof(Index));
+        }
+
+        // ==============================================================
+        // HÀM DỊCH CHÙA GOOGLE TRANSLATE (Giống y hệt bên PoiController)
+        // ==============================================================
+        private async Task<string> AutoTranslateAsync(string text, string targetLanguage)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(text)) return text;
+
+                // Xài thẳng API lậu của Google, truyền tiếng Việt (vi) sang targetLanguage
+                var url = $"https://translate.googleapis.com/translate_a/single?client=gtx&sl=vi&tl={targetLanguage}&dt=t&q={Uri.EscapeDataString(text)}";
+
+                var response = await _httpClient.GetStringAsync(url);
+
+                // Móc lấy chữ trong cái mảng JSON lằng nhằng của Google trả về
+                using var doc = JsonDocument.Parse(response);
+                var translatedText = doc.RootElement[0][0][0].GetString();
+
+                return translatedText ?? text; // Lỗi thì trả về chữ gốc
+            }
+            catch
+            {
+                // Mất mạng hoặc Google ban IP thì nhả lại chữ gốc, đéo cho sập Web
+                return text;
+            }
         }
     }
 }

@@ -1,7 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using SmartTourBackend.Data;
 using SmartTour.Shared.Models;
+using SmartTourBackend.Data;
 
 namespace SmartTourBackend.Controllers
 {
@@ -16,30 +16,28 @@ namespace SmartTourBackend.Controllers
             _context = context;
         }
 
-        // --- 1. LẤY DANH SÁCH TẤT CẢ CÁC TOUR ---
+        // ==============================================================
+        // 1. LẤY DANH SÁCH TOUR (Hiển thị ngoài màn hình chính của App)
+        // ==============================================================
         // Link gọi: GET /api/tours
         [HttpGet]
         public async Task<IActionResult> GetTours()
         {
             var tours = await _context.Tours
-                .Include(t => t.TourPois)
-                    .ThenInclude(tp => tp.Poi)
-                // Dùng bùa Select để nhào nặn lại JSON, chống lỗi vòng lặp
+                .Include(t => t.TourTranslations) // Kéo đống bản dịch lên
                 .Select(t => new
                 {
                     id = t.Id,
-                    name = t.Name,
+                    name = t.Name, // Tên gốc tiếng Việt
                     description = t.Description,
                     createdAt = t.CreatedAt,
                     vendorId = t.VendorId,
-                    // Ép POI ra thành mảng theo đúng thứ tự OrderIndex
-                    pois = t.TourPois.OrderBy(tp => tp.OrderIndex).Select(tp => new
-                    {
-                        poiId = tp.Poi.Id,
-                        name = tp.Poi.Name,
-                        lat = tp.Poi.Lat,
-                        lng = tp.Poi.Lng,
-                        orderIndex = tp.OrderIndex
+
+                    // Gói đống bản dịch vào một mảng cho App nó tự chọn ngôn ngữ
+                    translations = t.TourTranslations.Select(tr => new {
+                        lang = tr.LanguageCode,
+                        name = tr.Name,
+                        description = tr.Description
                     }).ToList()
                 })
                 .ToListAsync();
@@ -47,14 +45,17 @@ namespace SmartTourBackend.Controllers
             return Ok(new { success = true, data = tours });
         }
 
-        // --- 2. LẤY CHI TIẾT 1 TOUR ---
+        // ==============================================================
+        // 2. LẤY CHI TIẾT 1 TOUR (Bấm vào xem chi tiết, hiện cả bản đồ)
+        // ==============================================================
         // Link gọi: GET /api/tours/5
         [HttpGet("{id}")]
         public async Task<IActionResult> GetTour(int id)
         {
             var tour = await _context.Tours
+                .Include(t => t.TourTranslations)
                 .Include(t => t.TourPois)
-                    .ThenInclude(tp => tp.Poi)
+                    .ThenInclude(tp => tp.Poi) // Móc lốp lấy tọa độ POI
                 .Where(t => t.Id == id)
                 .Select(t => new
                 {
@@ -63,10 +64,18 @@ namespace SmartTourBackend.Controllers
                     description = t.Description,
                     createdAt = t.CreatedAt,
                     vendorId = t.VendorId,
+
+                    translations = t.TourTranslations.Select(tr => new {
+                        lang = tr.LanguageCode,
+                        name = tr.Name,
+                        description = tr.Description
+                    }).ToList(),
+
+                    // Ép danh sách POI (điểm đến) ra theo đúng thứ tự 1, 2, 3...
                     pois = t.TourPois.OrderBy(tp => tp.OrderIndex).Select(tp => new
                     {
                         poiId = tp.Poi.Id,
-                        name = tp.Poi.Name,
+                        name = tp.Poi.Name, // Cảnh báo: Nếu mảng POI mày cũng có dịch thì tự nhét thêm translations vào đây nhé!
                         lat = tp.Poi.Lat,
                         lng = tp.Poi.Lng,
                         orderIndex = tp.OrderIndex
@@ -76,40 +85,32 @@ namespace SmartTourBackend.Controllers
 
             if (tour == null)
             {
-                return NotFound(new { success = false, message = "Không tìm thấy Tour này!" });
+                return NotFound(new { success = false, message = "Đéo tìm thấy Tour này!" });
             }
 
             return Ok(new { success = true, data = tour });
         }
 
-        // --- 3. LẤY DANH SÁCH TOUR DO 1 VENDOR TẠO ---
+        // ==============================================================
+        // 3. LẤY DANH SÁCH TOUR CỦA 1 VENDOR (Dành cho App quản lý)
+        // ==============================================================
         // Link gọi: GET /api/tours/vendor/{vendorId}
         [HttpGet("vendor/{vendorId}")]
         public async Task<IActionResult> GetToursByVendor(string vendorId)
         {
             var tours = await _context.Tours
-                .Include(t => t.TourPois)
-                    .ThenInclude(tp => tp.Poi)
+                .Include(t => t.TourTranslations)
                 .Where(t => t.VendorId == vendorId)
                 .Select(t => new
                 {
                     id = t.Id,
                     name = t.Name,
-                    description = t.Description,
-                    createdAt = t.CreatedAt,
-                    pois = t.TourPois.OrderBy(tp => tp.OrderIndex).Select(tp => new
-                    {
-                        poiId = tp.Poi.Id,
-                        name = tp.Poi.Name,
-                        orderIndex = tp.OrderIndex
+                    translations = t.TourTranslations.Select(tr => new {
+                        lang = tr.LanguageCode,
+                        name = tr.Name
                     }).ToList()
                 })
                 .ToListAsync();
-
-            if (!tours.Any())
-            {
-                return Ok(new { success = true, data = new List<object>(), message = "Vendor này chưa tạo Tour nào!" });
-            }
 
             return Ok(new { success = true, data = tours });
         }

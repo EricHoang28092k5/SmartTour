@@ -21,5 +21,6 @@ namespace SmartTour.Shared.Models
         public List<TourPoi>? TourPois { get; set; }
         [NotMapped] // Bùa này bắt Database bỏ qua, KHÔNG tạo cột này dưới DB Neon
         public List<int> SelectedPoiIds { get; set; } = new List<int>();
+        public ICollection<TourTranslation> TourTranslations { get; set; } = new List<TourTranslation>();
     }
 }

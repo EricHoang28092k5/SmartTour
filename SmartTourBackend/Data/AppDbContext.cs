@@ -27,6 +27,7 @@ namespace SmartTourBackend.Data // Thêm dòng này vào để định danh "h�
         public DbSet<PoiImage> PoiImages { get; set; }
         public DbSet<Food> Food { get; set; }
         public DbSet<Category> Category { get; set; }
+        public DbSet<TourTranslation> TourTranslations { get; set; }
 
     }
 }
