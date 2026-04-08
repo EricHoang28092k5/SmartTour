@@ -11,7 +11,7 @@
         :root { --sidebar-width: 260px; }
         body { background-color: #f4f7f6; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         
-        /* Sidebar xịn sò */
+        /* Sidebar xịn sò có Flexbox để ép nút Logout xuống đáy */
         .sidebar { 
             width: var(--sidebar-width); 
             height: 100vh; 
@@ -21,12 +21,14 @@
             transition: all 0.3s;
             z-index: 1000;
             box-shadow: 4px 0 10px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
         }
         
         .sidebar-header { padding: 20px; text-align: center; background: #1a252f; color: #f1c40f; font-weight: bold; }
         
         .nav-link { 
-            color: #bdc3c7 !important; 
+            color: #bdc3c7 !important; /* Đã set màu sáng ở đây rồi thì đừng có nhét text-dark vào nữa! */
             padding: 15px 25px !important; 
             border-left: 4px solid transparent;
             transition: 0.3s;
@@ -35,7 +37,6 @@
         .nav-link:hover { background: #34495e; color: #fff !important; border-left: 4px solid #f1c40f; }
         .nav-link.active { background: #34495e; color: #fff !important; border-left: 4px solid #3498db; }
 
-        /* Vùng nội dung bên phải */
         .main-content { 
             margin-left: var(--sidebar-width); 
             padding: 30px; 
@@ -43,6 +44,9 @@
         }
 
         hr { border-top: 1px solid #46545f; margin: 10px 20px; }
+        
+        /* Container đẩy nút logout xuống dưới cùng */
+        .logout-container { margin-top: auto; padding-bottom: 20px; }
     </style>
 </head>
 <body>
@@ -51,82 +55,72 @@
         <div class="sidebar-header">
             <h3>🚏 SMART TOUR</h3>
         </div>
-<ul class="nav flex-column mt-3">
-    <li class="nav-item">
-        <a class="nav-link @(ViewContext.RouteData.Values["Controller"]?.ToString() == "Home" ? "active" : "")" asp-controller="Home" asp-action="Index">
-            <i class="fa-solid fa-chart-line me-2"></i> Bảng điều khiển
-        </a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link @(ViewContext.RouteData.Values["Controller"]?.ToString() == "Poi" ? "active" : "")" asp-controller="Poi" asp-action="Index">
-            <i class="fa-solid fa-location-dot me-2"></i> Quản lý địa điểm
-        </a>
-    </li>
-    @if (User.IsInRole("Admin"))
-{
-    <li class="nav-item">
-        <a class="nav-link text-dark" asp-area="" asp-controller="Category" asp-action="Index">
-            <i class="fa-solid fa-layer-group text-primary"></i> Quản lý Phân loại
-        </a>
-    </li>
-}
-    <li class="nav-item">
-        <a class="nav-link @(ViewContext.RouteData.Values["Controller"]?.ToString() == "Tour" ? "active" : "")" asp-controller="Tour" asp-action="Index">
-            <i class="fa-solid fa-route me-2"></i> Quản lý Tour
-        </a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link @(ViewContext.RouteData.Values["Controller"]?.ToString() == "Audio" ? "active" : "")" asp-controller="Audio" asp-action="Upload">
-            <i class="fa-solid fa-microphone-lines me-2"></i> Thêm Audio
-        </a>
-    </li>
-    <hr>
-    <li class="nav-item">
-        <a class="nav-link @(ViewContext.RouteData.Values["Action"]?.ToString() == "Locations" ? "active" : "")" asp-controller="Log" asp-action="Locations">
-            <i class="fa-solid fa-shoe-prints me-2"></i> Lịch sử di chuyển
-        </a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link @(ViewContext.RouteData.Values["Action"]?.ToString() == "Plays" ? "active" : "")" asp-controller="Log" asp-action="Plays">
-            <i class="fa-solid fa-play me-2"></i> Lịch sử nghe
-        </a>
+        
+        <ul class="nav flex-column mt-3 w-100">
+            <li class="nav-item">
+                <a class="nav-link @(ViewContext.RouteData.Values["Controller"]?.ToString() == "Home" ? "active" : "")" asp-controller="Home" asp-action="Index">
+                    <i class="fa-solid fa-chart-line me-2"></i> Bảng điều khiển
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link @(ViewContext.RouteData.Values["Controller"]?.ToString() == "Poi" ? "active" : "")" asp-controller="Poi" asp-action="Index">
+                    <i class="fa-solid fa-location-dot me-2"></i> Quản lý địa điểm
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link @(ViewContext.RouteData.Values["Controller"]?.ToString() == "Tour" ? "active" : "")" asp-controller="Tour" asp-action="Index">
+                    <i class="fa-solid fa-route me-2"></i> Quản lý Tour
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link @(ViewContext.RouteData.Values["Controller"]?.ToString() == "Food" ? "active" : "")" asp-controller="Food" asp-action="Index">
+                    <i class="fa-solid fa-utensils me-2"></i> Quản lý Thực đơn
+                </a>
+            </li>
+
+            <hr>
+
+            <li class="nav-item">
+                <a class="nav-link @(ViewContext.RouteData.Values["Action"]?.ToString() == "Locations" ? "active" : "")" asp-controller="Log" asp-action="Locations">
+                    <i class="fa-solid fa-shoe-prints me-2"></i> Lịch sử di chuyển
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link @(ViewContext.RouteData.Values["Action"]?.ToString() == "Plays" ? "active" : "")" asp-controller="Log" asp-action="Plays">
+                    <i class="fa-solid fa-play me-2"></i> Lịch sử nghe
+                </a>
+            </li>
+
+            @if (User.IsInRole("Admin"))
+            {
+                <hr>
+                <li class="nav-item">
+                    <a class="nav-link @(ViewContext.RouteData.Values["Controller"]?.ToString() == "Category" ? "active" : "")" asp-controller="Category" asp-action="Index">
+                        <i class="fa-solid fa-layer-group me-2"></i> Quản lý Phân loại
+                    </a>
                 </li>
-    <li class="nav-item">
-    <a class="nav-link text-dark" asp-area="" asp-controller="Food" asp-action="Index">
-        <i class="fa-solid fa-utensils text-success"></i> Quản lý Thực đơn
+                <li class="nav-item">
+                    <a class="nav-link @(ViewContext.RouteData.Values["Controller"]?.ToString() == "User" ? "active" : "")" asp-controller="User" asp-action="Index">
+                        <i class="fa-solid fa-users-gear me-2"></i> Quản lý tài khoản
+                    </a>
+                </li>
+                <li class="nav-item">
+    <a class="nav-link @(ViewContext.RouteData.Values["Controller"]?.ToString() == "Heatmap" ? "active" : "")" asp-controller="Heatmap" asp-action="Index">
+        <i class="fa-solid fa-fire me-2" style="color: #e74c3c;"></i> Bản đồ nhiệt (Heatmap)
     </a>
 </li>
-@if (User.IsInRole("Admin"))
-{
+            }
+        </ul>
 
-
-        <li class="nav-item">
-
-        <a class="nav-link text-white" asp-controller="User" asp-action="Index">
-
-            <i class="fa-solid fa-users-gear me-2"></i>
-
-            <span>Quản lý tài khoản</span>
-
-        </a>
-
-    </li>
-}
-
-<li class="nav-item">
-    <a class="nav-link" asp-controller="Tour" asp-action="Index">Quản lý Tour</a>
-</li>
-    <li class="nav-item mt-auto">
-    <a class="nav-link text-danger fw-bold" asp-controller="Account" asp-action="Logout">
-        <i class="fa-solid fa-right-from-bracket me-2"></i> Đăng xuất
-    </a>
-
-</li>
-@if (User.IsInRole("Admin"))
-{
-
-}
-</ul>
+        <div class="logout-container w-100">
+            <ul class="nav flex-column">
+                <li class="nav-item">
+                    <a class="nav-link text-danger fw-bold" style="color: #e74c3c !important;" asp-controller="Account" asp-action="Logout">
+                        <i class="fa-solid fa-right-from-bracket me-2"></i> Đăng xuất
+                    </a>
+                </li>
+            </ul>
+        </div>
     </div>
 
     <div class="main-content">

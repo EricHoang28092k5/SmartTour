@@ -4,8 +4,8 @@ using Microsoft.EntityFrameworkCore;
 using SmartTourBackend.Data;
 // Thêm dòng này lên đầu
 // Load biến môi trường từ file .env vào hệ thống
-var builder = WebApplication.CreateBuilder(args);
 
+var builder = WebApplication.CreateBuilder(args);
 // 1. Cấu hình CORS (Mở cửa cho App Mobile)
 builder.Services.AddCors(options => {
     options.AddPolicy("AllowAll", b => b.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
