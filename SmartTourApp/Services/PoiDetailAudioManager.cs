@@ -14,6 +14,7 @@ public class PoiDetailAudioManager
     private readonly ApiService api;
     private readonly LanguageService lang;
     private readonly AudioListenTracker tracker;
+    private readonly RouteTrackingService routeTracking;
 
 #if ANDROID
     private readonly ExoPlayerService exo = new();
@@ -35,11 +36,19 @@ public class PoiDetailAudioManager
     private double currentDuration;
     private double lastProgressSec;
 
-    public PoiDetailAudioManager(ApiService api, LanguageService lang, AudioListenTracker tracker)
+    // Vị trí user lúc bấm Play (dùng để RouteTracking kiểm tra radius)
+    private Location? _playStartLocation;
+
+    public PoiDetailAudioManager(
+        ApiService api,
+        LanguageService lang,
+        AudioListenTracker tracker,
+        RouteTrackingService routeTracking)
     {
         this.api = api;
         this.lang = lang;
         this.tracker = tracker;
+        this.routeTracking = routeTracking;
 
         if (!Directory.Exists(cacheDir))
             Directory.CreateDirectory(cacheDir);
@@ -65,11 +74,20 @@ public class PoiDetailAudioManager
 #endif
     }
 
-    public async Task Play(Poi poi)
+    /// <summary>
+    /// Play audio thủ công cho POI.
+    /// </summary>
+    /// <param name="poi">POI đang xem.</param>
+    /// <param name="userLocation">
+    /// Vị trí hiện tại của user — bắt buộc để RouteTracking kiểm tra có trong radius không.
+    /// Truyền null nếu không lấy được GPS (sẽ bỏ qua route trigger).
+    /// </param>
+    public async Task Play(Poi poi, Location? userLocation = null)
     {
         currentPoi = poi;
         currentDuration = 0;
         lastProgressSec = 0;
+        _playStartLocation = userLocation;
 
         var scripts = await api.GetTtsScripts(poi.Id);
 
@@ -91,6 +109,24 @@ public class PoiDetailAudioManager
 
         // 🔥 Start listen tracking
         tracker.StartSession(poi.Id, 0, 0);
+
+        // ── 🔥 Route Tracking: ghi nhận manual audio trigger ──
+        // Chỉ trigger nếu có vị trí hợp lệ (không phải auto-play)
+        if (userLocation != null)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await routeTracking.OnManualAudioPlayedAsync(poi, userLocation);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[RouteTracking] OnManualAudioPlayed error: {ex.Message}");
+                }
+            });
+        }
     }
 
     public void Resume()
@@ -103,6 +139,8 @@ public class PoiDetailAudioManager
         // 🔥 Resume tracking
         if (currentPoi != null)
             tracker.StartSession(currentPoi.Id, 0, 0);
+
+        // Route tracking: resume không trigger lại (đã ghi nhận lúc Play ban đầu)
     }
 
     public void Pause()
@@ -142,6 +180,7 @@ public class PoiDetailAudioManager
         currentPoi = null;
         currentDuration = 0;
         lastProgressSec = 0;
+        _playStartLocation = null;
     }
 
     /// <summary>
@@ -169,6 +208,7 @@ public class PoiDetailAudioManager
 
         currentDuration = 0;
         lastProgressSec = 0;
+        _playStartLocation = null;
     }
 
     private async Task<string> GenerateAudio(string text, int poiId)

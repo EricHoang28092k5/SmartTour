@@ -40,7 +40,7 @@ public static class MauiProgram
 
         builder.Services.AddHttpClient<ApiService>(client =>
         {
-            client.BaseAddress = new Uri("http://192.168.1.4:5165/");
+            client.BaseAddress = new Uri("http://10.0.2.2:5165/");
         });
 
         builder.Services.AddSingleton<PoiRepository>();
@@ -51,6 +51,9 @@ public static class MauiProgram
 
         // 🔥 HeatmapService: singleton để giữ state machine (zones, cooldown) suốt vòng đời app
         builder.Services.AddSingleton<HeatmapService>();
+
+        // 🔥 RouteTrackingService: singleton để giữ state machine tuyến đi suốt vòng đời app
+        builder.Services.AddSingleton<RouteTrackingService>();
 
         builder.Services.AddSingleton<TrackingService>();
         builder.Services.AddSingleton<OfflineService>();

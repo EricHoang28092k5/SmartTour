@@ -8,6 +8,7 @@ public partial class PoiDetailPage : ContentPage
 {
     private Poi poi;
     private readonly PoiDetailAudioManager audio;
+    private readonly LocationService locationService;
 
     private bool isSeeking = false;
     private double duration = 0;
@@ -26,6 +27,9 @@ public partial class PoiDetailPage : ContentPage
     // ── Width của progress track để tính fill ──
     private double _progressTrackWidth = 0;
 
+    // ── Cached user location (lấy 1 lần khi Play, dùng cho RouteTracking) ──
+    private Location? _cachedUserLocation;
+
     public Poi Poi
     {
         get => poi;
@@ -36,13 +40,13 @@ public partial class PoiDetailPage : ContentPage
         }
     }
 
-    public PoiDetailPage(PoiDetailAudioManager audio)
+    public PoiDetailPage(PoiDetailAudioManager audio, LocationService locationService)
     {
         InitializeComponent();
         this.audio = audio;
+        this.locationService = locationService;
 
         // ── Nhận callback OnProgress từ audio engine ──
-        // Cập nhật slider + time label từ background thread → marshal về MainThread
         audio.OnProgress += sec =>
         {
             if (isSeeking) return;
@@ -113,6 +117,12 @@ public partial class PoiDetailPage : ContentPage
 
         // Lấy width thực của progress track sau khi layout xong
         ProgressFillContainer.SizeChanged += OnProgressContainerSizeChanged;
+
+        // 🔥 Prefetch GPS để sẵn sàng cho RouteTracking khi user bấm Play
+        _ = Task.Run(async () =>
+        {
+            _cachedUserLocation = await locationService.GetLocation();
+        });
     }
 
     private void OnProgressContainerSizeChanged(object? sender, EventArgs e)
@@ -149,7 +159,7 @@ public partial class PoiDetailPage : ContentPage
 
     /// <summary>
     /// Unified Play/Pause handler.
-    /// - First press → start fresh audio
+    /// - First press → start fresh audio (với location để RouteTracking check radius)
     /// - While playing → pause (resume position kept)
     /// - While paused → resume from current position
     /// </summary>
@@ -159,8 +169,12 @@ public partial class PoiDetailPage : ContentPage
 
         if (!hasStarted)
         {
-            // First time: start fresh
-            await audio.Play(poi);
+            // 🔥 Lấy GPS mới nhất ngay lúc bấm Play để kiểm tra radius chính xác nhất
+            // Dùng cached nếu không lấy được trong 2s (fallback)
+            var loc = await GetFreshLocationAsync();
+
+            // First time: start fresh — truyền location cho RouteTracking
+            await audio.Play(poi, loc);
             hasStarted = true;
             SetPlayingState(true);
             StartSliderLoop();
@@ -174,11 +188,31 @@ public partial class PoiDetailPage : ContentPage
         }
         else
         {
-            // Paused → resume from current position
+            // Paused → resume from current position (không trigger RouteTracking lại)
             audio.Resume();
             SetPlayingState(true);
             StartSliderLoop();
         }
+    }
+
+    /// <summary>
+    /// Lấy GPS mới nhất với timeout 2s, fallback sang cached.
+    /// </summary>
+    private async Task<Location?> GetFreshLocationAsync()
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            var fresh = await locationService.GetLocation();
+            if (fresh != null)
+            {
+                _cachedUserLocation = fresh;
+                return fresh;
+            }
+        }
+        catch { }
+
+        return _cachedUserLocation;
     }
 
     /// <summary>
@@ -227,14 +261,8 @@ public partial class PoiDetailPage : ContentPage
     // SLIDER LOOP — Real-time sync
     // ═══════════════════════════════════════════
 
-    /// <summary>
-    /// Bắt đầu vòng lặp cập nhật Slider theo thời gian thực (mỗi 150ms).
-    /// Chạy trên Task pool, cập nhật UI qua MainThread.
-    /// Tự dừng khi CancellationToken bị cancel.
-    /// </summary>
     private void StartSliderLoop()
     {
-        // Hủy vòng lặp cũ nếu đang chạy
         StopSliderLoop();
 
         _sliderCts = new CancellationTokenSource();
@@ -244,12 +272,8 @@ public partial class PoiDetailPage : ContentPage
         {
             while (!token.IsCancellationRequested)
             {
-                // Khi đang seek → bỏ qua chu kỳ này để không xung đột
                 if (!isSeeking && audio.IsPlaying)
                 {
-                    // OnProgress callback từ audio engine đã xử lý phần lớn việc cập nhật.
-                    // Vòng lặp này là safety net đồng bộ thêm ProgressFill width
-                    // vì không phải platform nào cũng fire callback đều.
                     var currentSec = ProgressSlider.Value;
 
                     MainThread.BeginInvokeOnMainThread(() =>
@@ -270,9 +294,6 @@ public partial class PoiDetailPage : ContentPage
         }, token);
     }
 
-    /// <summary>
-    /// Dừng vòng lặp cập nhật Slider — dọn dẹp khi thoát trang / audio kết thúc.
-    /// </summary>
     private void StopSliderLoop()
     {
         _sliderCts?.Cancel();
@@ -284,30 +305,20 @@ public partial class PoiDetailPage : ContentPage
     // SEEK HANDLING
     // ═══════════════════════════════════════════
 
-    /// <summary>
-    /// Khi người dùng bắt đầu kéo Slider: tạm dừng auto-update để không nhảy ngược.
-    /// </summary>
     private void OnSeekStarted(object sender, EventArgs e)
     {
         isSeeking = true;
     }
 
-    /// <summary>
-    /// Khi thả tay: gọi audio.Seek đến vị trí đã chọn, tiếp tục vòng lặp.
-    /// </summary>
     private void OnSeekCompleted(object sender, EventArgs e)
     {
         isSeeking = false;
         audio.Seek(ProgressSlider.Value);
 
-        // Nếu audio đang phát thì resume vòng lặp (seek không dừng playback)
         if (audio.IsPlaying)
             StartSliderLoop();
     }
 
-    /// <summary>
-    /// Trong khi kéo: cập nhật CurrentTimeLabel liên tục để user biết đang ở giây nào.
-    /// </summary>
     private void OnSeek(object sender, ValueChangedEventArgs e)
     {
         if (isSeeking)
@@ -365,9 +376,6 @@ public partial class PoiDetailPage : ContentPage
     // UI HELPERS
     // ═══════════════════════════════════════════
 
-    /// <summary>
-    /// Cập nhật Slider.Value, CurrentTimeLabel, RemainingTimeLabel và ProgressFill width.
-    /// </summary>
     private void UpdateSliderUI(double sec)
     {
         if (ProgressSlider.Maximum > 0)
@@ -381,18 +389,13 @@ public partial class PoiDetailPage : ContentPage
         SyncProgressFill(sec);
     }
 
-    /// <summary>
-    /// Đồng bộ ProgressFill width theo tỉ lệ giây hiện tại / tổng thời lượng.
-    /// </summary>
     private void SyncProgressFill(double sec)
     {
         if (duration <= 0) return;
 
-        // Lấy width thực của container cha (track background)
         double trackWidth = _progressTrackWidth;
         if (trackWidth <= 0)
         {
-            // Fallback: dùng ProgressFill parent width
             var parent = ProgressFill.Parent as View;
             trackWidth = parent?.Width ?? 0;
         }
@@ -463,7 +466,6 @@ public partial class PoiDetailPage : ContentPage
     {
         base.OnDisappearing();
 
-        // Dọn dẹp: dừng vòng lặp slider khi thoát trang
         StopSliderLoop();
 
         ProgressFillContainer.SizeChanged -= OnProgressContainerSizeChanged;
@@ -490,7 +492,7 @@ public partial class PoiDetailPage : ContentPage
         }
     }
 
-    private async void CloseImageViewer(object sender, EventArgs e)
+    private async void CloseImageViewer(object sender, TappedEventArgs e)
     {
         await Task.WhenAll(
             ImageViewer.FadeTo(0, 150),

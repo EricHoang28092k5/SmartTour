@@ -10,6 +10,7 @@ public class TrackingService
     private readonly PoiRepository repo;
     private readonly LocationLogger logger;
     private readonly HeatmapService heatmap;
+    private readonly RouteTrackingService routeTracking;
 
     private CancellationTokenSource? cts;
 
@@ -25,7 +26,8 @@ public class TrackingService
         NarrationEngine narration,
         PoiRepository repo,
         LocationLogger logger,
-        HeatmapService heatmap)
+        HeatmapService heatmap,
+        RouteTrackingService routeTracking)
     {
         this.location = location;
         this.geo = geo;
@@ -33,6 +35,7 @@ public class TrackingService
         this.repo = repo;
         this.logger = logger;
         this.heatmap = heatmap;
+        this.routeTracking = routeTracking;
     }
 
     public async Task Start()
@@ -90,11 +93,14 @@ public class TrackingService
                     // ─────────────────────────────────────────────────────────
                     // Yêu cầu 2: Heatmap luôn được ghi nhận
                     // KHÔNG phụ thuộc vào auto-play để đảm bảo thống kê chính xác
-                    // OnLocationUpdatedAsync dùng state machine nội bộ để chỉ ghi nhận
-                    // khi bước vào từ bên ngoài (edge trigger), không ghi lại khi
-                    // đi vòng vòng trong radius.
                     // ─────────────────────────────────────────────────────────
                     await heatmap.OnLocationUpdatedAsync(loc, pois);
+
+                    // ─────────────────────────────────────────────────────────
+                    // Route Tracking: cập nhật dwell timer và kiểm tra timeout
+                    // Chạy độc lập, không phụ thuộc auto-play hay heatmap
+                    // ─────────────────────────────────────────────────────────
+                    await routeTracking.OnLocationUpdatedAsync(loc, pois);
 
                     await Task.Delay(interval * 1000, token);
                 }

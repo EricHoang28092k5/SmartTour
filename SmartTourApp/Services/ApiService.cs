@@ -64,7 +64,6 @@ public class ApiService
     /// <summary>
     /// Gửi 1 heatmap entry lên server.
     /// triggerType: "app_open" | "zone_enter"
-    /// Server có thêm 1 lớp delay 5 phút nữa để chống spam từ nhiều thiết bị.
     /// </summary>
     public async Task PostHeatmapEntry(HeatmapEntryDto dto)
     {
@@ -92,6 +91,37 @@ public class ApiService
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine("HEATMAP GET ERROR: " + ex.Message);
+            return null;
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // 🔥 ROUTE TRACKING — ghi nhận tuyến đi của user
+    // POST /api/routes/session
+    // ══════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Gửi một route session hoàn chỉnh lên server.
+    /// Chỉ được gọi khi session có ít nhất 2 POI (đã kiểm tra phía client).
+    /// </summary>
+    public async Task PostRouteSession(RouteSessionDto dto)
+    {
+        await http.PostAsJsonAsync("api/routes/session", dto);
+    }
+
+    /// <summary>
+    /// Lấy danh sách các tuyến đi phổ biến (dùng cho analytics/admin).
+    /// GET /api/routes/popular
+    /// </summary>
+    public async Task<RouteAnalyticsResponse?> GetPopularRoutes()
+    {
+        try
+        {
+            return await http.GetFromJsonAsync<RouteAnalyticsResponse>("api/routes/popular");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine("ROUTE API ERROR: " + ex.Message);
             return null;
         }
     }
@@ -133,5 +163,19 @@ public class ApiService
         public int AppOpenCount { get; set; }
         public int ZoneEnterCount { get; set; }
         public DateTime LastRecordedAt { get; set; }
+    }
+
+    public class RouteAnalyticsResponse
+    {
+        public bool Success { get; set; }
+        public int Total { get; set; }
+        public List<PopularRouteData> Data { get; set; } = new();
+    }
+
+    public class PopularRouteData
+    {
+        public string PoiSequence { get; set; } = "";
+        public int Count { get; set; }
+        public double AvgDurationMinutes { get; set; }
     }
 }

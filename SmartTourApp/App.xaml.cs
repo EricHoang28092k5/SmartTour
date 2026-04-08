@@ -28,13 +28,33 @@ public partial class App : Application
 
         return new Window(loadingPage);
     }
+
     protected override void OnSleep()
     {
         base.OnSleep();
 
-        var narration = Current?.Handler?.MauiContext?.Services
-            .GetService<NarrationEngine>();
+        var services = Current?.Handler?.MauiContext?.Services;
 
-        narration?.Stop();
+        services?.GetService<NarrationEngine>()?.Stop();
+
+        // 🔥 Flush route session khi app đi vào background / bị kill
+        // Session sẽ được persist vào Preferences để recovery khi mở lại
+        var routeTracking = services?.GetService<RouteTrackingService>();
+        if (routeTracking != null)
+        {
+            // Fire-and-forget (OnSleep không await được)
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await routeTracking.FlushOnAppClosingAsync();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[RouteTracking] OnSleep flush error: {ex.Message}");
+                }
+            });
+        }
     }
 }

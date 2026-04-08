@@ -10,6 +10,7 @@ public partial class SettingsPage : ContentPage
     private readonly NarrationEngine narration;
     private readonly GeofencingEngine geo;
     private readonly HeatmapService heatmap;
+    private readonly RouteTrackingService routeTracking;
 
     // Yêu cầu 2: Key lưu trạng thái auto-play trong Preferences
     public const string AutoPlayKey = "auto_play_enabled";
@@ -20,7 +21,8 @@ public partial class SettingsPage : ContentPage
         TrackingService tracking,
         NarrationEngine narration,
         GeofencingEngine geo,
-        HeatmapService heatmap)
+        HeatmapService heatmap,
+        RouteTrackingService routeTracking)
     {
         InitializeComponent();
         this.lang = lang;
@@ -29,6 +31,7 @@ public partial class SettingsPage : ContentPage
         this.narration = narration;
         this.geo = geo;
         this.heatmap = heatmap;
+        this.routeTracking = routeTracking;
     }
 
     protected override void OnAppearing()
@@ -44,15 +47,10 @@ public partial class SettingsPage : ContentPage
 
     // ─────────────────────────────────────────────────────────────────
     // Yêu cầu 2: Gạt Switch → lưu ngay vào Preferences
-    // TrackingService sẽ đọc lại giá trị này trong mỗi chu kỳ tracking
-    // → không cần restart app, cập nhật ngay lập tức
     // ─────────────────────────────────────────────────────────────────
     private void OnAutoPlayToggled(object sender, ToggledEventArgs e)
     {
-        // Lưu ngay vào Preferences — TrackingService đọc realtime
         Preferences.Default.Set(AutoPlayKey, e.Value);
-
-        // Cập nhật UI mô tả trạng thái
         UpdateAutoPlayInfo(e.Value);
     }
 
@@ -99,6 +97,10 @@ public partial class SettingsPage : ContentPage
         narration.Reset();
         geo.Reset();
         heatmap.Reset();
+
+        // 🔥 Flush route session trước khi reset (nếu đang có session dang dở)
+        await routeTracking.FlushOnAppClosingAsync();
+        routeTracking.Reset();
 
         Application.Current!.MainPage = new LoadingPage(repo, tracking);
     }

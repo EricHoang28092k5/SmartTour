@@ -56,9 +56,16 @@ public partial class LoadingPage : ContentPage
             var locationService = services?.GetService<LocationService>();
             var geo = services?.GetService<GeofencingEngine>();
             var heatmap = services?.GetService<HeatmapService>();
+            var routeTracking = services?.GetService<RouteTrackingService>();
 
             narration?.Reset();
             tracking.Stop();
+
+            // ── 🔥 Route session crash recovery — kiểm tra session cũ trước khi khởi động ──
+            if (routeTracking != null)
+            {
+                await routeTracking.RecoverSessionOnStartupAsync();
+            }
 
             await UpdateStatusAsync("Đang tải POI...", 0.25);
 
@@ -91,8 +98,7 @@ public partial class LoadingPage : ContentPage
 
                     if (loc == null) return;
 
-                    // ─── 🔥 HEATMAP APP_OPEN: ghi nhận nếu đang đứng trong radius ───
-                    // Heatmap luôn chạy bất kể auto-play bật hay tắt
+                    // ─── 🔥 HEATMAP APP_OPEN ───
                     if (heatmap != null)
                     {
                         await heatmap.CheckAppOpenAsync(loc, pois);
@@ -114,6 +120,7 @@ public partial class LoadingPage : ContentPage
                     if (poi != null)
                     {
                         System.Diagnostics.Debug.WriteLine("🔥 AUTO PLAY: " + poi.Name);
+                        // 🔥 Auto-play KHÔNG trigger RouteTracking (truyền null location vào PlayManual)
                         await narration.PlayManual(poi, loc);
                     }
                     else
