@@ -147,30 +147,28 @@ public class RouteSessionController : ControllerBase
     public async Task<IActionResult> GetStats()
     {
         var totalSessions = await _db.RouteSessions.CountAsync();
-        var completedSessions = await _db.RouteSessions
-            .CountAsync(r => r.Status == "completed");
+        var completedSessions = await _db.RouteSessions.CountAsync(r => r.Status == "completed");
 
-        double avgStops = 0;
-        double avgDuration = 0;
+        double avgStops = totalSessions > 0 ? await _db.RouteSessions.AverageAsync(r => (double)r.StopCount) : 0;
+        double avgDuration = totalSessions > 0 ? await _db.RouteSessions.AverageAsync(r => (double)r.DurationMinutes) : 0;
 
-        if (totalSessions > 0)
-        {
-            avgStops = await _db.RouteSessions.AverageAsync(r => (double)r.StopCount);
-            avgDuration = await _db.RouteSessions.AverageAsync(r => (double)r.DurationMinutes);
-        }
-
-        // Top POIs xuất hiện nhiều nhất trong các tuyến
+        // Top POIs xuất hiện trong tuyến (Inner Join với bảng Pois)
         var topPois = await _db.RouteSessionPois
-            .GroupBy(p => p.PoiId)
+            .Join(_db.Pois,
+                rsp => rsp.PoiId,
+                p => p.Id,
+                (rsp, p) => new { rsp, p }) // <--- INNER JOIN
+            .GroupBy(x => new { x.p.Id, x.p.Name })
             .Select(g => new
             {
-                PoiId = g.Key,
-                Count = g.Count(),
-                AudioManualCount = g.Count(p => p.TriggerType == "audio_manual"),
-                DwellCount = g.Count(p => p.TriggerType == "dwell"),
-                AvgDwellSeconds = g.Average(p => (double)p.DwellSeconds)
+                poiId = g.Key.Id,
+                poiName = g.Key.Name,
+                count = g.Count(),
+                audioManualCount = g.Count(x => x.rsp.TriggerType == "audio_manual"),
+                dwellCount = g.Count(x => x.rsp.TriggerType == "dwell"),
+                avgDwellSeconds = g.Average(x => (double)x.rsp.DwellSeconds)
             })
-            .OrderByDescending(x => x.Count)
+            .OrderByDescending(x => x.count)
             .Take(10)
             .ToListAsync();
 

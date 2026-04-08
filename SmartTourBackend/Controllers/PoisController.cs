@@ -104,14 +104,19 @@ namespace SmartTourBackend.Controllers
         public async Task<IActionResult> GetListenStats()
         {
             var stats = await _context.PlayLog
-                .GroupBy(l => l.PoiId)
+                .Join(_context.Pois,
+                    l => l.PoiId,
+                    p => p.Id,
+                    (l, p) => new { l, p }) // <--- INNER JOIN
+                .GroupBy(x => new { x.p.Id, x.p.Name })
                 .Select(g => new
                 {
-                    poiId = g.Key,
+                    poiId = g.Key.Id,
+                    poiName = g.Key.Name,
                     totalPlays = g.Count(),
-                    totalSecondsListened = g.Sum(l => l.DurationListened),
-                    avgSecondsPerPlay = g.Average(l => l.DurationListened),
-                    lastPlayedAt = g.Max(l => l.Time)
+                    totalSecondsListened = g.Sum(x => x.l.DurationListened),
+                    avgSecondsPerPlay = g.Average(x => x.l.DurationListened),
+                    lastPlayedAt = g.Max(x => x.l.Time)
                 })
                 .OrderByDescending(x => x.totalSecondsListened)
                 .ToListAsync();

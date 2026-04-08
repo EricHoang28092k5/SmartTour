@@ -98,43 +98,27 @@ namespace SmartTourBackend.Controllers
         [HttpGet]
         public async Task<IActionResult> GetHeatmap()
         {
-            var data = await _context.HeatmapEntries
-                .GroupBy(h => h.PoiId)
+            var result = await _context.HeatmapEntries
+                .Join(_context.Pois,
+                    h => h.PoiId,
+                    p => p.Id,
+                    (h, p) => new { h, p }) // <--- INNER JOIN
+                .GroupBy(x => new { x.p.Id, x.p.Name, x.p.Lat, x.p.Lng })
                 .Select(g => new
                 {
-                    poiId = g.Key,
+                    poiId = g.Key.Id,
+                    poiName = g.Key.Name,
+                    lat = g.Key.Lat,
+                    lng = g.Key.Lng,
                     sum = g.Count(),
-                    appOpenCount = g.Count(x => x.TriggerType == "app_open"),
-                    zoneEnterCount = g.Count(x => x.TriggerType == "zone_enter"),
-                    lastRecordedAt = g.Max(x => x.RecordedAt)
+                    appOpenCount = g.Count(x => x.h.TriggerType == "app_open"),
+                    zoneEnterCount = g.Count(x => x.h.TriggerType == "zone_enter"),
+                    lastRecordedAt = g.Max(x => x.h.RecordedAt)
                 })
                 .OrderByDescending(x => x.sum)
                 .ToListAsync();
 
-            // Kèm theo thông tin POI nếu cần (name, lat, lng) để frontend render map
-            var poiIds = data.Select(d => d.poiId).ToList();
-            var poiInfo = await _context.Pois
-                .Where(p => poiIds.Contains(p.Id))
-                .Select(p => new { p.Id, p.Name, p.Lat, p.Lng })
-                .ToListAsync();
-
-            var result = data.Select(d =>
-            {
-                var poi = poiInfo.FirstOrDefault(p => p.Id == d.poiId);
-                return new
-                {
-                    d.poiId,
-                    poiName = poi?.Name ?? "",
-                    lat = poi?.Lat ?? 0.0,
-                    lng = poi?.Lng ?? 0.0,
-                    d.sum,
-                    d.appOpenCount,
-                    d.zoneEnterCount,
-                    d.lastRecordedAt
-                };
-            });
-
-            return Ok(new { success = true, total = data.Count, data = result });
+            return Ok(new { success = true, total = result.Count, data = result });
         }
 
         // ══════════════════════════════════════════════════════════════════
