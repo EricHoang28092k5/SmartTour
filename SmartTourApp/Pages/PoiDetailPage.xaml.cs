@@ -11,12 +11,20 @@ public partial class PoiDetailPage : ContentPage
 
     private bool isSeeking = false;
     private double duration = 0;
-    private double progressBarTotalWidth = 0;
 
     // Track whether audio has been started at least once (for resume vs. fresh play)
     private bool hasStarted = false;
 
     private const double SkipSeconds = 5.0;
+
+    // ── track nguồn mở trang để back đúng chỗ ──
+    private string _openedFrom = "";
+
+    // ── CancellationToken để dừng vòng lặp cập nhật slider ──
+    private CancellationTokenSource? _sliderCts;
+
+    // ── Width của progress track để tính fill ──
+    private double _progressTrackWidth = 0;
 
     public Poi Poi
     {
@@ -33,25 +41,19 @@ public partial class PoiDetailPage : ContentPage
         InitializeComponent();
         this.audio = audio;
 
-        // 🔥 Realtime progress → update fill bar width
+        // ── Nhận callback OnProgress từ audio engine ──
+        // Cập nhật slider + time label từ background thread → marshal về MainThread
         audio.OnProgress += sec =>
         {
             if (isSeeking) return;
 
             MainThread.BeginInvokeOnMainThread(() =>
             {
-                UpdateProgressFill(sec);
-                ProgressSlider.Value = sec;
-                CurrentTimeLabel.Text = Format(sec);
-
-                if (duration > 0)
-                {
-                    var remaining = Math.Max(0, duration - sec);
-                    RemainingTimeLabel.Text = Format(remaining);
-                }
+                UpdateSliderUI(sec);
             });
         };
 
+        // ── Nhận tổng thời lượng ──
         audio.OnDuration += d =>
         {
             duration = d;
@@ -64,27 +66,22 @@ public partial class PoiDetailPage : ContentPage
             });
         };
 
-        // 🔥 Audio completed naturally → reset to start
+        // ── Audio hoàn thành tự nhiên → reset UI ──
         audio.OnCompleted += () =>
         {
             MainThread.BeginInvokeOnMainThread(() =>
             {
                 hasStarted = false;
                 SetPlayingState(false);
-                ResetProgressUI();
+                UpdateSliderUI(0);
             });
         };
     }
 
-    protected override void OnSizeAllocated(double width, double height)
+    // ── Nhận thông tin nguồn mở từ caller ──
+    public void SetOpenedFrom(string source)
     {
-        base.OnSizeAllocated(width, height);
-
-        // Measure the actual width of the progress background track
-        // The track is inside the Border which has Margin="20,0,20,0" so subtract padding
-        var trackWidth = width - 40; // 20 left + 20 right padding
-        if (trackWidth > 0)
-            progressBarTotalWidth = trackWidth;
+        _openedFrom = source;
     }
 
     private void BindData()
@@ -103,17 +100,58 @@ public partial class PoiDetailPage : ContentPage
         UpdateOpenStatus();
     }
 
-    // ================= BACK NAVIGATION =================
-
-    private async void OnBackTapped(object sender, TappedEventArgs e)
+    protected override void OnAppearing()
     {
-        await Shell.Current.GoToAsync("..");
+        base.OnAppearing();
+
+        // Reset slider UI mỗi lần trang xuất hiện (tránh hiển thị trạng thái cũ)
+        if (!hasStarted)
+        {
+            UpdateSliderUI(0);
+            TotalTimeLabel.Text = "00:00";
+        }
+
+        // Lấy width thực của progress track sau khi layout xong
+        ProgressFillContainer.SizeChanged += OnProgressContainerSizeChanged;
     }
 
-    // ================= AUDIO =================
+    private void OnProgressContainerSizeChanged(object? sender, EventArgs e)
+    {
+        var parent = ProgressFill.Parent as View;
+        if (parent != null && parent.Width > 0)
+            _progressTrackWidth = parent.Width;
+    }
+
+    // ── Nút back thông minh ──
+    private async void OnBackTapped(object sender, TappedEventArgs e)
+    {
+        // Dừng audio khi rời trang
+        audio.Stop();
+        hasStarted = false;
+
+        // Điều hướng về đúng trang nguồn
+        if (_openedFrom == "map")
+        {
+            await Shell.Current.GoToAsync("//map");
+        }
+        else
+        {
+            if (Navigation.NavigationStack.Count > 1)
+                await Navigation.PopAsync(animated: true);
+            else
+                await Shell.Current.GoToAsync("//home");
+        }
+    }
+
+    // ═══════════════════════════════════════════
+    // AUDIO CONTROLS
+    // ═══════════════════════════════════════════
 
     /// <summary>
     /// Unified Play/Pause handler.
+    /// - First press → start fresh audio
+    /// - While playing → pause (resume position kept)
+    /// - While paused → resume from current position
     /// </summary>
     private async void OnPlayClicked(object sender, EventArgs e)
     {
@@ -125,18 +163,21 @@ public partial class PoiDetailPage : ContentPage
             await audio.Play(poi);
             hasStarted = true;
             SetPlayingState(true);
+            StartSliderLoop();
         }
         else if (audio.IsPlaying)
         {
             // Currently playing → pause
             audio.Pause();
             SetPlayingState(false);
+            StopSliderLoop();
         }
         else
         {
-            // Paused → resume
+            // Paused → resume from current position
             audio.Resume();
             SetPlayingState(true);
+            StartSliderLoop();
         }
     }
 
@@ -147,6 +188,7 @@ public partial class PoiDetailPage : ContentPage
     {
         audio.Pause();
         SetPlayingState(false);
+        StopSliderLoop();
     }
 
     private void OnStopClicked(object sender, EventArgs e)
@@ -154,15 +196,23 @@ public partial class PoiDetailPage : ContentPage
         audio.Stop();
         hasStarted = false;
         SetPlayingState(false);
-        ResetProgressUI();
+        StopSliderLoop();
+
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            UpdateSliderUI(0);
+        });
     }
 
+    /// <summary>
+    /// Toggles the Play button icon between ▶ and ⏸.
+    /// </summary>
     private void SetPlayingState(bool isPlaying)
     {
         MainThread.BeginInvokeOnMainThread(() =>
         {
             PlayBtn.Text = isPlaying ? "⏸" : "▶";
-            PlayBtn.FontSize = isPlaying ? 22 : 26;
+            PlayBtn.FontSize = isPlaying ? 20 : 24;
 
             PlayBtnContainer.IsVisible = true;
             PauseBtnContainer.IsVisible = false;
@@ -173,41 +223,106 @@ public partial class PoiDetailPage : ContentPage
         });
     }
 
-    // ================= SEEK =================
+    // ═══════════════════════════════════════════
+    // SLIDER LOOP — Real-time sync
+    // ═══════════════════════════════════════════
 
+    /// <summary>
+    /// Bắt đầu vòng lặp cập nhật Slider theo thời gian thực (mỗi 150ms).
+    /// Chạy trên Task pool, cập nhật UI qua MainThread.
+    /// Tự dừng khi CancellationToken bị cancel.
+    /// </summary>
+    private void StartSliderLoop()
+    {
+        // Hủy vòng lặp cũ nếu đang chạy
+        StopSliderLoop();
+
+        _sliderCts = new CancellationTokenSource();
+        var token = _sliderCts.Token;
+
+        _ = Task.Run(async () =>
+        {
+            while (!token.IsCancellationRequested)
+            {
+                // Khi đang seek → bỏ qua chu kỳ này để không xung đột
+                if (!isSeeking && audio.IsPlaying)
+                {
+                    // OnProgress callback từ audio engine đã xử lý phần lớn việc cập nhật.
+                    // Vòng lặp này là safety net đồng bộ thêm ProgressFill width
+                    // vì không phải platform nào cũng fire callback đều.
+                    var currentSec = ProgressSlider.Value;
+
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        SyncProgressFill(currentSec);
+                    });
+                }
+
+                try
+                {
+                    await Task.Delay(150, token);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+            }
+        }, token);
+    }
+
+    /// <summary>
+    /// Dừng vòng lặp cập nhật Slider — dọn dẹp khi thoát trang / audio kết thúc.
+    /// </summary>
+    private void StopSliderLoop()
+    {
+        _sliderCts?.Cancel();
+        _sliderCts?.Dispose();
+        _sliderCts = null;
+    }
+
+    // ═══════════════════════════════════════════
+    // SEEK HANDLING
+    // ═══════════════════════════════════════════
+
+    /// <summary>
+    /// Khi người dùng bắt đầu kéo Slider: tạm dừng auto-update để không nhảy ngược.
+    /// </summary>
     private void OnSeekStarted(object sender, EventArgs e)
     {
         isSeeking = true;
     }
 
+    /// <summary>
+    /// Khi thả tay: gọi audio.Seek đến vị trí đã chọn, tiếp tục vòng lặp.
+    /// </summary>
     private void OnSeekCompleted(object sender, EventArgs e)
     {
         isSeeking = false;
         audio.Seek(ProgressSlider.Value);
-        UpdateProgressFill(ProgressSlider.Value);
 
-        // Resume tracking after seek
-        if (audio.IsPlaying && poi != null)
-        {
-            // tracker restart handled inside PoiDetailAudioManager.Seek
-        }
+        // Nếu audio đang phát thì resume vòng lặp (seek không dừng playback)
+        if (audio.IsPlaying)
+            StartSliderLoop();
     }
 
+    /// <summary>
+    /// Trong khi kéo: cập nhật CurrentTimeLabel liên tục để user biết đang ở giây nào.
+    /// </summary>
     private void OnSeek(object sender, ValueChangedEventArgs e)
     {
         if (isSeeking)
         {
-            CurrentTimeLabel.Text = Format(e.NewValue);
-            UpdateProgressFill(e.NewValue);
-
-            if (duration > 0)
-                RemainingTimeLabel.Text = Format(Math.Max(0, duration - e.NewValue));
-
-            audio.Seek(e.NewValue);
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                CurrentTimeLabel.Text = Format(e.NewValue);
+                SyncProgressFill(e.NewValue);
+            });
         }
     }
 
-    // ================= SKIP =================
+    // ═══════════════════════════════════════════
+    // SKIP
+    // ═══════════════════════════════════════════
 
     private void OnSkipBack(object sender, EventArgs e)
     {
@@ -219,8 +334,7 @@ public partial class PoiDetailPage : ContentPage
         MainThread.BeginInvokeOnMainThread(() =>
         {
             ProgressSlider.Value = target;
-            CurrentTimeLabel.Text = Format(target);
-            UpdateProgressFill(target);
+            UpdateSliderUI(target);
         });
     }
 
@@ -235,8 +349,7 @@ public partial class PoiDetailPage : ContentPage
             audio.Stop();
             hasStarted = false;
             SetPlayingState(false);
-            ResetProgressUI();
-            return;
+            StopSliderLoop();
         }
 
         audio.Seek(target);
@@ -244,36 +357,55 @@ public partial class PoiDetailPage : ContentPage
         MainThread.BeginInvokeOnMainThread(() =>
         {
             ProgressSlider.Value = target;
-            CurrentTimeLabel.Text = Format(target);
-            UpdateProgressFill(target);
+            UpdateSliderUI(target);
         });
     }
 
-    // ================= PROGRESS BAR FILL =================
+    // ═══════════════════════════════════════════
+    // UI HELPERS
+    // ═══════════════════════════════════════════
 
     /// <summary>
-    /// 🔥 Updates the animated gradient fill bar width based on current playback position.
-    /// Must be called on MainThread.
+    /// Cập nhật Slider.Value, CurrentTimeLabel, RemainingTimeLabel và ProgressFill width.
     /// </summary>
-    private void UpdateProgressFill(double sec)
+    private void UpdateSliderUI(double sec)
     {
-        if (duration <= 0 || progressBarTotalWidth <= 0) return;
+        if (ProgressSlider.Maximum > 0)
+            ProgressSlider.Value = sec;
 
-        var fraction = Math.Clamp(sec / duration, 0, 1);
-        var fillWidth = fraction * progressBarTotalWidth;
+        CurrentTimeLabel.Text = Format(sec);
 
-        ProgressFill.WidthRequest = fillWidth;
+        var remaining = duration > 0 ? Math.Max(0, duration - sec) : 0;
+        RemainingTimeLabel.Text = Format(remaining);
+
+        SyncProgressFill(sec);
     }
 
-    private void ResetProgressUI()
+    /// <summary>
+    /// Đồng bộ ProgressFill width theo tỉ lệ giây hiện tại / tổng thời lượng.
+    /// </summary>
+    private void SyncProgressFill(double sec)
     {
-        ProgressSlider.Value = 0;
-        CurrentTimeLabel.Text = "00:00";
-        RemainingTimeLabel.Text = duration > 0 ? Format(duration) : "00:00";
-        ProgressFill.WidthRequest = 0;
+        if (duration <= 0) return;
+
+        // Lấy width thực của container cha (track background)
+        double trackWidth = _progressTrackWidth;
+        if (trackWidth <= 0)
+        {
+            // Fallback: dùng ProgressFill parent width
+            var parent = ProgressFill.Parent as View;
+            trackWidth = parent?.Width ?? 0;
+        }
+
+        if (trackWidth <= 0) return;
+
+        var ratio = Math.Clamp(sec / duration, 0, 1);
+        ProgressFill.WidthRequest = trackWidth * ratio;
     }
 
-    // ================= TAB UX =================
+    // ═══════════════════════════════════════════
+    // TAB UX
+    // ═══════════════════════════════════════════
 
     private void ShowOverview(object sender, EventArgs e)
     {
@@ -293,6 +425,7 @@ public partial class PoiDetailPage : ContentPage
         OverviewTab.FontAttributes = FontAttributes.Bold;
 
         MenuTabBorder.Background = new SolidColorBrush(Color.FromArgb("#F5F6FA"));
+        MenuTabBorder.Stroke = Color.FromArgb("#E8ECF0");
         MenuTabBorder.StrokeThickness = 1;
         MenuTab.TextColor = Color.FromArgb("#9B9BAA");
         MenuTab.FontAttributes = FontAttributes.None;
@@ -316,27 +449,32 @@ public partial class PoiDetailPage : ContentPage
         MenuTab.FontAttributes = FontAttributes.Bold;
 
         OverviewTabBorder.Background = new SolidColorBrush(Color.FromArgb("#F5F6FA"));
+        OverviewTabBorder.Stroke = Color.FromArgb("#E8ECF0");
         OverviewTabBorder.StrokeThickness = 1;
         OverviewTab.TextColor = Color.FromArgb("#9B9BAA");
         OverviewTab.FontAttributes = FontAttributes.None;
     }
 
-    // ================= UTIL =================
-
-    private string Format(double sec)
-    {
-        var t = TimeSpan.FromSeconds(sec);
-        return $"{(int)t.TotalMinutes:D2}:{t.Seconds:D2}";
-    }
+    // ═══════════════════════════════════════════
+    // LIFECYCLE
+    // ═══════════════════════════════════════════
 
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
+
+        // Dọn dẹp: dừng vòng lặp slider khi thoát trang
+        StopSliderLoop();
+
+        ProgressFillContainer.SizeChanged -= OnProgressContainerSizeChanged;
+
         audio.Stop();
         hasStarted = false;
     }
 
-    // ================= IMAGE VIEWER =================
+    // ═══════════════════════════════════════════
+    // IMAGE VIEWER
+    // ═══════════════════════════════════════════
 
     private async void OnFoodImageTapped(object sender, TappedEventArgs e)
     {
@@ -362,7 +500,9 @@ public partial class PoiDetailPage : ContentPage
         ImageViewer.IsVisible = false;
     }
 
-    // ================= OPEN STATUS =================
+    // ═══════════════════════════════════════════
+    // OPEN STATUS
+    // ═══════════════════════════════════════════
 
     private void UpdateOpenStatus()
     {
@@ -398,5 +538,15 @@ public partial class PoiDetailPage : ContentPage
             OpenStatusBadge.Stroke = new SolidColorBrush(Color.FromArgb("#44FF6B6B"));
             OpenDetail.Text = $"Mở lúc {open:hh\\:mm}";
         }
+    }
+
+    // ═══════════════════════════════════════════
+    // UTILS
+    // ═══════════════════════════════════════════
+
+    private string Format(double sec)
+    {
+        var t = TimeSpan.FromSeconds(Math.Max(0, sec));
+        return $"{(int)t.TotalMinutes:D2}:{t.Seconds:D2}";
     }
 }

@@ -1,32 +1,235 @@
-<ContentPage
- xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
- xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
- x:Class="SmartTourApp.Pages.SettingsPage">
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="SmartTourApp.Pages.SettingsPage"
+             BackgroundColor="#F8F9FD"
+             Shell.NavBarIsVisible="False">
 
-    <VerticalStackLayout Padding="20" Spacing="20">
+    <ScrollView>
+        <VerticalStackLayout Spacing="0">
 
-        <Label
-    Text="Ngôn ngữ"
-    FontAttributes="Bold"/>
+            <!-- ══════════════════════════════════ -->
+            <!--  HEADER                            -->
+            <!-- ══════════════════════════════════ -->
+            <Grid BackgroundColor="White" Padding="20,54,20,20">
+                <BoxView VerticalOptions="End"
+                         HorizontalOptions="Fill"
+                         HeightRequest="1"
+                         BackgroundColor="#F0F0F5"/>
+                <VerticalStackLayout Spacing="3">
+                    <Label Text="CÀI ĐẶT"
+                           FontSize="11"
+                           FontAttributes="Bold"
+                           TextColor="#1E88E5"
+                           CharacterSpacing="2.5"/>
+                    <Label Text="Settings"
+                           FontSize="28"
+                           FontAttributes="Bold"
+                           TextColor="#0D0D0D"
+                           CharacterSpacing="-0.5"/>
+                </VerticalStackLayout>
+            </Grid>
 
-        <Picker
-    x:Name="LangPicker"
-    Title="Chọn ngôn ngữ">
+            <!-- ══════════════════════════════════ -->
+            <!--  SECTION: Ngôn ngữ                 -->
+            <!-- ══════════════════════════════════ -->
+            <Label Text="NGÔN NGỮ"
+                   FontSize="11"
+                   FontAttributes="Bold"
+                   TextColor="#999999"
+                   CharacterSpacing="2"
+                   Margin="20,24,20,10"/>
 
-            <Picker.Items>
-                <x:String>vi</x:String>
-                <x:String>en</x:String>
-                <x:String>ja</x:String>
-                <x:String>zh</x:String>
-                <x:String>ko</x:String>
-            </Picker.Items>
+            <Border BackgroundColor="White"
+                    StrokeThickness="0"
+                    StrokeShape="RoundRectangle 16"
+                    Margin="16,0">
+                <Border.Shadow>
+                    <Shadow Brush="#000000" Offset="0,2" Radius="12" Opacity="0.05"/>
+                </Border.Shadow>
 
-        </Picker>
+                <Grid ColumnDefinitions="Auto,*" Padding="18,16" ColumnSpacing="14">
+                    <!-- Icon -->
+                    <Border Grid.Column="0"
+                            WidthRequest="40" HeightRequest="40"
+                            BackgroundColor="#EEF4FF"
+                            StrokeThickness="0"
+                            StrokeShape="RoundRectangle 12">
+                        <Label Text="🌐"
+                               FontSize="20"
+                               HorizontalOptions="Center"
+                               VerticalOptions="Center"/>
+                    </Border>
 
-        <Button
-    Text="Lưu"
-    Clicked="Save"/>
+                    <VerticalStackLayout Grid.Column="1" Spacing="6" VerticalOptions="Center">
+                        <Label Text="Ngôn ngữ thuyết minh"
+                               FontSize="14"
+                               FontAttributes="Bold"
+                               TextColor="#111111"/>
 
-    </VerticalStackLayout>
+                        <Picker x:Name="LangPicker"
+                                Title="Chọn ngôn ngữ"
+                                FontSize="13"
+                                TextColor="#555555"
+                                TitleColor="#AAAAAA">
+                            <Picker.Items>
+                                <x:String>vi</x:String>
+                                <x:String>en</x:String>
+                                <x:String>ja</x:String>
+                                <x:String>zh</x:String>
+                                <x:String>ko</x:String>
+                            </Picker.Items>
+                        </Picker>
+                    </VerticalStackLayout>
+                </Grid>
+            </Border>
 
+            <!-- ══════════════════════════════════ -->
+            <!--  SECTION: Phát tự động             -->
+            <!-- ══════════════════════════════════ -->
+            <Label Text="THUYẾT MINH TỰ ĐỘNG"
+                   FontSize="11"
+                   FontAttributes="Bold"
+                   TextColor="#999999"
+                   CharacterSpacing="2"
+                   Margin="20,28,20,10"/>
+
+            <Border BackgroundColor="White"
+                    StrokeThickness="0"
+                    StrokeShape="RoundRectangle 16"
+                    Margin="16,0">
+                <Border.Shadow>
+                    <Shadow Brush="#000000" Offset="0,2" Radius="12" Opacity="0.05"/>
+                </Border.Shadow>
+
+                <!-- Yêu cầu 2: Hàng chứa nhãn + Switch tự động phát -->
+                <Grid ColumnDefinitions="Auto,*,Auto"
+                      Padding="18,16"
+                      ColumnSpacing="14">
+
+                    <!-- Icon -->
+                    <Border Grid.Column="0"
+                            WidthRequest="40" HeightRequest="40"
+                            BackgroundColor="#FFF3E0"
+                            StrokeThickness="0"
+                            StrokeShape="RoundRectangle 12">
+                        <Label Text="🎧"
+                               FontSize="20"
+                               HorizontalOptions="Center"
+                               VerticalOptions="Center"/>
+                    </Border>
+
+                    <!-- Text info -->
+                    <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                        <Label Text="Tự động phát thuyết minh"
+                               FontSize="14"
+                               FontAttributes="Bold"
+                               TextColor="#111111"/>
+                        <Label Text="Tự động phát khi bước vào vùng điểm tham quan"
+                               FontSize="12"
+                               TextColor="#888888"
+                               LineBreakMode="WordWrap"/>
+                    </VerticalStackLayout>
+
+                    <!-- Switch -->
+                    <Switch x:Name="AutoPlaySwitch"
+                            Grid.Column="2"
+                            OnColor="#1E88E5"
+                            ThumbColor="White"
+                            VerticalOptions="Center"
+                            Toggled="OnAutoPlayToggled"/>
+                </Grid>
+            </Border>
+
+            <!-- Mô tả chi tiết trạng thái -->
+            <Border x:Name="AutoPlayInfoBorder"
+                    Margin="16,10,16,0"
+                    Padding="14,10"
+                    StrokeThickness="1"
+                    Stroke="#E3F2FD"
+                    StrokeShape="RoundRectangle 12"
+                    BackgroundColor="#F0F7FF">
+                <HorizontalStackLayout Spacing="8">
+                    <Label x:Name="AutoPlayInfoIcon" Text="✅" FontSize="14" VerticalOptions="Center"/>
+                    <Label x:Name="AutoPlayInfoLabel"
+                           Text="Thuyết minh sẽ tự động phát khi bạn tiếp cận điểm tham quan."
+                           FontSize="12"
+                           TextColor="#1565C0"
+                           LineBreakMode="WordWrap"
+                           VerticalOptions="Center"/>
+                </HorizontalStackLayout>
+            </Border>
+
+            <!-- ══════════════════════════════════ -->
+            <!--  SECTION: Heatmap                  -->
+            <!-- ══════════════════════════════════ -->
+            <Label Text="THỐNG KÊ &amp; HEATMAP"
+                   FontSize="11"
+                   FontAttributes="Bold"
+                   TextColor="#999999"
+                   CharacterSpacing="2"
+                   Margin="20,28,20,10"/>
+
+            <Border BackgroundColor="White"
+                    StrokeThickness="0"
+                    StrokeShape="RoundRectangle 16"
+                    Margin="16,0">
+                <Border.Shadow>
+                    <Shadow Brush="#000000" Offset="0,2" Radius="12" Opacity="0.05"/>
+                </Border.Shadow>
+
+                <Grid ColumnDefinitions="Auto,*"
+                      Padding="18,16"
+                      ColumnSpacing="14">
+                    <Border Grid.Column="0"
+                            WidthRequest="40" HeightRequest="40"
+                            BackgroundColor="#FFF8F0"
+                            StrokeThickness="0"
+                            StrokeShape="RoundRectangle 12">
+                        <Label Text="🔥"
+                               FontSize="20"
+                               HorizontalOptions="Center"
+                               VerticalOptions="Center"/>
+                    </Border>
+
+                    <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                        <Label Text="Dữ liệu heatmap"
+                               FontSize="14"
+                               FontAttributes="Bold"
+                               TextColor="#111111"/>
+                        <Label Text="Hệ thống luôn ghi nhận lượt vào vùng để thống kê, kể cả khi tắt tự động phát"
+                               FontSize="12"
+                               TextColor="#888888"
+                               LineBreakMode="WordWrap"/>
+                    </VerticalStackLayout>
+                </Grid>
+            </Border>
+
+            <!-- ══════════════════════════════════ -->
+            <!--  NÚT LƯU                           -->
+            <!-- ══════════════════════════════════ -->
+            <Border Margin="16,32,16,0"
+                    StrokeThickness="0"
+                    StrokeShape="RoundRectangle 22">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#1565C0" Offset="0"/>
+                        <GradientStop Color="#42A5F5" Offset="1"/>
+                    </LinearGradientBrush>
+                </Border.Background>
+                <Button Text="💾  Lưu cài đặt"
+                        Clicked="Save"
+                        BackgroundColor="Transparent"
+                        TextColor="White"
+                        FontSize="15"
+                        FontAttributes="Bold"
+                        HeightRequest="52"
+                        Padding="0"/>
+            </Border>
+
+            <!-- Khoảng trống dưới cùng -->
+            <BoxView HeightRequest="40" BackgroundColor="Transparent"/>
+
+        </VerticalStackLayout>
+    </ScrollView>
 </ContentPage>

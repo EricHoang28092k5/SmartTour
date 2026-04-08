@@ -116,7 +116,6 @@ public partial class HomePage : ContentPage
     {
         if (nearest == null || userLoc == null) return;
 
-        // 🔥 toggle stop
         if (isPlaying)
         {
             narration.Stop();
@@ -138,6 +137,11 @@ public partial class HomePage : ContentPage
         }
     }
 
+    // ─────────────────────────────────────────────────────────────────
+    // Yêu cầu 4: Mở PoiDetailPage từ HomePage
+    // → set SetOpenedFrom("home") để nút back trong PoiDetailPage
+    //   biết phải quay về HomePage
+    // ─────────────────────────────────────────────────────────────────
     private async void OpenDetailTap(object sender, TappedEventArgs e)
     {
         if (sender is not VisualElement el) return;
@@ -147,6 +151,11 @@ public partial class HomePage : ContentPage
 
         await el.ScaleToAsync(0.97, 80);
         await el.ScaleToAsync(1, 80);
+
+        // Lấy PoiDetailPage từ DI và set nguồn mở là "home"
+        var services = Application.Current?.Handler?.MauiContext?.Services;
+        var detailPage = services?.GetService<PoiDetailPage>();
+        detailPage?.SetOpenedFrom("home");
 
         await Shell.Current.GoToAsync(nameof(PoiDetailPage), true,
             new Dictionary<string, object> { ["poi"] = poi });
@@ -160,7 +169,6 @@ public partial class HomePage : ContentPage
         if (sender is not Element el || el.BindingContext is not Poi poi) return;
         if (userLoc == null) return;
 
-        // toggle stop
         if (isItemPlaying && currentPlayingPoi?.Id == poi.Id)
         {
             narration.Stop();

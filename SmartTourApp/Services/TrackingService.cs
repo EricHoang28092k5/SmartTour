@@ -1,5 +1,6 @@
 ﻿using SmartTour.Shared.Models;
 using SmartTourApp.Services;
+using SmartTourApp.Pages; // để dùng SettingsPage.AutoPlayKey
 
 public class TrackingService
 {
@@ -62,14 +63,37 @@ public class TrackingService
 
                     AdjustInterval(loc);
 
-                    // ─── Narration (geofencing trigger) ───
-                    var poi = geo.FindBestPoi(loc, pois);
-                    if (poi != null)
-                        await narration.Play(poi, loc);
+                    // ─────────────────────────────────────────────────────────
+                    // Yêu cầu 2: Đọc trạng thái auto-play mỗi chu kỳ
+                    // → cập nhật ngay lập tức khi người dùng gạt switch trong Settings
+                    // Mặc định true nếu chưa được set (người dùng mới)
+                    // ─────────────────────────────────────────────────────────
+                    bool autoPlayEnabled = Preferences.Default.Get(
+                        SettingsPage.AutoPlayKey, true);
 
-                    // ─── 🔥 Heatmap: detect zone_enter edge trigger ───
+                    if (autoPlayEnabled)
+                    {
+                        // ─── AUTO PLAY: chỉ gọi narration khi auto-play BẬT ───
+                        // Narration.Play sẽ ghi Play Log (DurationListened) thông qua AudioListenTracker
+                        var poi = geo.FindBestPoi(loc, pois);
+                        if (poi != null)
+                            await narration.Play(poi, loc);
+                    }
+                    else
+                    {
+                        // ─── AUTO PLAY TẮT: KHÔNG gọi narration, KHÔNG ghi Play Log ───
+                        // Nhưng vẫn phải cập nhật state machine geofencing
+                        // để FindBestPoi hoạt động đúng khi bật lại
+                        geo.FindBestPoi(loc, pois); // chỉ update state, bỏ qua kết quả
+                    }
+
+                    // ─────────────────────────────────────────────────────────
+                    // Yêu cầu 2: Heatmap luôn được ghi nhận
+                    // KHÔNG phụ thuộc vào auto-play để đảm bảo thống kê chính xác
                     // OnLocationUpdatedAsync dùng state machine nội bộ để chỉ ghi nhận
-                    // khi bước vào từ bên ngoài, không ghi lại khi đi vòng vòng trong radius.
+                    // khi bước vào từ bên ngoài (edge trigger), không ghi lại khi
+                    // đi vòng vòng trong radius.
+                    // ─────────────────────────────────────────────────────────
                     await heatmap.OnLocationUpdatedAsync(loc, pois);
 
                     await Task.Delay(interval * 1000, token);

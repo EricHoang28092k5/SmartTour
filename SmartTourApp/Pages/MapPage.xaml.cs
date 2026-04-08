@@ -22,7 +22,7 @@ public partial class MapPage : ContentPage
     private readonly TrackingService tracking;
     private readonly PoiRepository repo;
     private readonly GeofencingEngine geo;
-    private readonly ApiService api;   // 🔥 để load heatmap
+    private readonly ApiService api;
 
     private readonly MapViewModel vm = new();
 
@@ -31,7 +31,7 @@ public partial class MapPage : ContentPage
     private bool mapInitialized = false;
     private bool trackingStarted = false;
     private bool firstZoom = true;
-    private bool heatmapLoaded = false;   // 🔥 chỉ load 1 lần
+    private bool heatmapLoaded = false;
 
     public string? TargetPoiId { get; set; }
     private bool openedFromRoute = false;
@@ -43,11 +43,16 @@ public partial class MapPage : ContentPage
     private Poi? selectedPoi = null;
     private bool cardManuallyClosed = false;
 
+    // ── Yêu cầu 3: Cờ chặn event bubbling từ nút con lên card ──
+    // Khi người dùng bấm nút chức năng bên trong card, set = true
+    // để PoiCard_Tapped bỏ qua lần tap đó
+    private bool _isActionButtonTapped = false;
+
     public MapPage(
         TrackingService tracking,
         PoiRepository repo,
         GeofencingEngine geo,
-        ApiService api)        // 🔥
+        ApiService api)
     {
         InitializeComponent();
 
@@ -85,7 +90,6 @@ public partial class MapPage : ContentPage
             trackingStarted = true;
         }
 
-        // 🔥 Load POI heatmap bubbles lần đầu (background, non-blocking)
         if (!heatmapLoaded && mapInitialized)
         {
             heatmapLoaded = true;
@@ -101,7 +105,6 @@ public partial class MapPage : ContentPage
         if (TourMap?.Map?.Navigator == null || loc == null)
             return;
 
-        // Case: opened from route/home with targetPoi
         if (!string.IsNullOrEmpty(TargetPoiId))
         {
             if (pois.Count == 0)
@@ -154,7 +157,7 @@ public partial class MapPage : ContentPage
     }
 
     // ══════════════════════════════════════════════════════════════════
-    // 🔥 Load POI visit-count heatmap từ backend rồi render bubbles
+    // Load POI visit-count heatmap từ backend rồi render bubbles
     // ══════════════════════════════════════════════════════════════════
     private async Task LoadPoiHeatmapAsync()
     {
@@ -221,19 +224,18 @@ public partial class MapPage : ContentPage
             TourMap?.Refresh();
             MainThread.BeginInvokeOnMainThread(RemoveLoggingWidget);
 
-            // 🔥 Load heatmap ngay sau khi map init xong
             heatmapLoaded = true;
             _ = Task.Run(LoadPoiHeatmapAsync);
         }
         catch (Exception ex)
         {
-            await DisplayAlertAsync("Map Error", ex.Message, "OK");
+            await DisplayAlert("Map Error", ex.Message, "OK");
         }
     }
 
-    // ─────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────
     // MAP TAP → find nearest POI to tap point
-    // ─────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────
     private void OnMapInfo(object? sender, MapInfoEventArgs e)
     {
         if (pois.Count == 0 || e.WorldPosition == null) return;
@@ -292,8 +294,8 @@ public partial class MapPage : ContentPage
                     DistanceUnits.Kilometers);
 
                 PoiDistanceLabel.Text = dist < 1
-                    ? $"📍 {(int)(dist * 1000)} m"
-                    : $"📍 {dist:F1} km";
+                    ? $"{(int)(dist * 1000)} m"
+                    : $"{dist:F1} km";
             }
             else
             {
@@ -363,8 +365,8 @@ public partial class MapPage : ContentPage
                     DistanceUnits.Kilometers);
 
                 PoiDistanceLabel.Text = dist < 1
-                    ? $"📍 {(int)(dist * 1000)} m"
-                    : $"📍 {dist:F1} km";
+                    ? $"{(int)(dist * 1000)} m"
+                    : $"{dist:F1} km";
             }
         });
     }
@@ -421,8 +423,51 @@ public partial class MapPage : ContentPage
         TargetPoiId = null;
     }
 
-    private async void CloseCard_Clicked(object sender, EventArgs e)
+    // ─────────────────────────────────────────────────────────────────
+    // Yêu cầu 3: Tap toàn bộ Card → mở PoiDetailPage
+    // Kiểm tra cờ _isActionButtonTapped để chặn bubbling từ nút con
+    // ─────────────────────────────────────────────────────────────────
+    private async void PoiCard_Tapped(object sender, TappedEventArgs e)
     {
+        // Nếu người dùng vừa bấm nút con (route, close, save, share)
+        // thì bỏ qua sự kiện tap của card
+        if (_isActionButtonTapped)
+        {
+            _isActionButtonTapped = false;
+            return;
+        }
+
+        var target = selectedPoi ?? currentNearest;
+        if (target == null) return;
+
+        // Hiệu ứng nhấn nhẹ
+        await PoiCard.ScaleToAsync(0.97, 60, Easing.CubicIn);
+        await PoiCard.ScaleToAsync(1.0, 60, Easing.CubicOut);
+
+        // Mở PoiDetailPage, truyền nguồn mở là "map" để nút back quay về đúng chỗ
+        var detailPage = Application.Current?.Handler?.MauiContext?.Services
+            .GetService<PoiDetailPage>();
+
+        if (detailPage != null)
+        {
+            // Set nguồn mở để nút back hoạt động đúng (Yêu cầu 4)
+            detailPage.SetOpenedFrom("map");
+
+            await Shell.Current.GoToAsync(nameof(PoiDetailPage), true,
+                new Dictionary<string, object> { ["poi"] = target });
+        }
+        else
+        {
+            await Shell.Current.GoToAsync(nameof(PoiDetailPage), true,
+                new Dictionary<string, object> { ["poi"] = target });
+        }
+    }
+
+    private async void CloseCard_Clicked(object sender, TappedEventArgs e)
+    {
+        // Yêu cầu 3: Đánh dấu nút con được bấm → chặn PoiCard_Tapped
+        _isActionButtonTapped = true;
+
         cardManuallyClosed = true;
         selectedPoi = null;
         vm.ClearRoute();
@@ -432,7 +477,29 @@ public partial class MapPage : ContentPage
         await PoiCard.TranslateTo(0, 0, 0);
     }
 
+    // ─────────────────────────────────────────────────────────────────
+    // Yêu cầu 3: Route_Clicked_Action — wrapper mới cho nút "Đường đi"
+    // trong XAML (đổi tên để tránh conflict với Route_Clicked cũ)
+    // Chặn event bubbling lên PoiCard_Tapped
+    // ─────────────────────────────────────────────────────────────────
+    private async void Route_Clicked_Action(object sender, TappedEventArgs e)
+    {
+        // Đánh dấu nút con được bấm → chặn PoiCard_Tapped
+        _isActionButtonTapped = true;
+
+        // Gọi logic tính đường đi
+        await ExecuteRouteAsync();
+    }
+
+    /// <summary>
+    /// Giữ nguyên hàm Route_Clicked cũ để tương thích nếu có nơi khác gọi
+    /// </summary>
     private async void Route_Clicked(object sender, EventArgs e)
+    {
+        await ExecuteRouteAsync();
+    }
+
+    private async Task ExecuteRouteAsync()
     {
         var target = selectedPoi ?? currentNearest;
         if (currentLocation == null || target == null) return;
@@ -448,7 +515,7 @@ public partial class MapPage : ContentPage
         }
         catch (Exception ex)
         {
-            await DisplayAlertAsync("Lỗi", "Không thể tính đường đi: " + ex.Message, "OK");
+            await DisplayAlert("Lỗi", "Không thể tính đường đi: " + ex.Message, "OK");
         }
         finally
         {
@@ -456,6 +523,17 @@ public partial class MapPage : ContentPage
         }
     }
 
-    private void Save_Clicked(object sender, TappedEventArgs e) { }
-    private void Share_Clicked(object sender, TappedEventArgs e) { }
+    private void Save_Clicked(object sender, TappedEventArgs e)
+    {
+        // Đánh dấu nút con được bấm → chặn PoiCard_Tapped
+        _isActionButtonTapped = true;
+        // TODO: implement save logic
+    }
+
+    private void Share_Clicked(object sender, TappedEventArgs e)
+    {
+        // Đánh dấu nút con được bấm → chặn PoiCard_Tapped
+        _isActionButtonTapped = true;
+        // TODO: implement share logic
+    }
 }

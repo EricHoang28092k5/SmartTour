@@ -1,5 +1,6 @@
 ﻿using Microsoft.Maui.Controls;
 using SmartTourApp.Services;
+using SmartTourApp.Pages; // AutoPlayKey
 
 namespace SmartTourApp.Pages;
 
@@ -54,7 +55,7 @@ public partial class LoadingPage : ContentPage
             var narration = services?.GetService<NarrationEngine>();
             var locationService = services?.GetService<LocationService>();
             var geo = services?.GetService<GeofencingEngine>();
-            var heatmap = services?.GetService<HeatmapService>();   // 🔥
+            var heatmap = services?.GetService<HeatmapService>();
 
             narration?.Reset();
             tracking.Stop();
@@ -91,13 +92,24 @@ public partial class LoadingPage : ContentPage
                     if (loc == null) return;
 
                     // ─── 🔥 HEATMAP APP_OPEN: ghi nhận nếu đang đứng trong radius ───
-                    // Chỉ chạy 1 lần duy nhất khi app mở (HeatmapService tự guard _appOpenChecked)
+                    // Heatmap luôn chạy bất kể auto-play bật hay tắt
                     if (heatmap != null)
                     {
                         await heatmap.CheckAppOpenAsync(loc, pois);
                     }
 
                     // ─── AUTO PLAY narration ───
+                    // Yêu cầu 1: Chỉ auto-play nếu cài đặt auto-play đang BẬT
+                    bool autoPlayEnabled = Preferences.Default.Get(
+                        SettingsPage.AutoPlayKey, true);
+
+                    if (!autoPlayEnabled)
+                    {
+                        System.Diagnostics.Debug.WriteLine(
+                            "⛔ AUTO PLAY DISABLED — bỏ qua auto play khi mở app");
+                        return;
+                    }
+
                     var poi = geo.FindBestPoi(loc, pois);
                     if (poi != null)
                     {
