@@ -1,4 +1,5 @@
-﻿using SmartTour.Shared.Models;
+﻿using SmartTour.Services;
+using SmartTour.Shared.Models;
 using System.Text.Json;
 
 namespace SmartTourApp.Services

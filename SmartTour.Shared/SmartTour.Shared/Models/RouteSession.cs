@@ -37,7 +37,6 @@ namespace SmartTour.Shared.Models
 
         // ─── Navigation (server-side EF only) ───
         [Ignore]
-        [NotMapped]
         public List<RouteSessionPoi>? RouteSessionPois { get; set; }
     }
 
