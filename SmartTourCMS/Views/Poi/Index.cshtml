@@ -100,8 +100,7 @@
 
                             @{
                                 var poiDeepLink = $"smarttour://poi/{item.Id}";
-                                var poiQrEntryUrl = Url.Action("Open", "Qr", new { type = "poi", id = item.Id }, Context.Request.Scheme);
-                                var poiQr = $"https://api.qrserver.com/v1/create-qr-code/?size=180x180&data={Uri.EscapeDataString(poiQrEntryUrl ?? poiDeepLink)}";
+                                var poiQr = $"https://api.qrserver.com/v1/create-qr-code/?size=180x180&data={Uri.EscapeDataString(poiDeepLink)}";
                             }
                             <a class="btn btn-sm btn-outline-secondary me-1" href="@poiQr" target="_blank" title="QR mở POI trên app">
                                 <i class="fa-solid fa-qrcode"></i>

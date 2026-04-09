@@ -1,8 +1,7 @@
 ﻿@model SmartTour.Shared.Models.Tour
 @{
     var deepLink = $"smarttour://tour/{Model.Id}";
-    var qrEntryUrl = Url.Action("Open", "Qr", new { type = "tour", id = Model.Id }, Context.Request.Scheme);
-    var qrUrl = $"https://api.qrserver.com/v1/create-qr-code/?size=220x220&data={Uri.EscapeDataString(qrEntryUrl ?? deepLink)}";
+    var qrUrl = $"https://api.qrserver.com/v1/create-qr-code/?size=220x220&data={Uri.EscapeDataString(deepLink)}";
 }
 
 <div class="container mt-4">
@@ -74,7 +73,7 @@
             <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
                 <div class="text-start">
                     <div class="fw-bold mb-1">QR mở app SmartTour</div>
-                    <div class="small text-muted mb-2">QR URL: @qrEntryUrl</div>
+                    <div class="small text-muted mb-2">@deepLink</div>
                     <img src="@qrUrl" alt="QR Tour @Model.Id" class="border rounded" style="width:120px;height:120px;" />
                 </div>
                 <div>
