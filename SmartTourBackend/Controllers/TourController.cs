@@ -25,6 +25,8 @@ namespace SmartTourBackend.Controllers
         {
             var tours = await _context.Tours
                 .Include(t => t.TourTranslations) // Kéo đống bản dịch lên
+                .Include(t => t.TourPois)
+                    .ThenInclude(tp => tp.Poi)
                 .Select(t => new
                 {
                     id = t.Id,
@@ -38,7 +40,19 @@ namespace SmartTourBackend.Controllers
                         lang = tr.LanguageCode,
                         name = tr.Name,
                         description = tr.Description
-                    }).ToList()
+                    }).ToList(),
+
+                    // Trả luôn danh sách POI để app/web không cần gọi thêm endpoint chi tiết
+                    pois = t.TourPois
+                        .OrderBy(tp => tp.OrderIndex)
+                        .Select(tp => new
+                        {
+                            poiId = tp.PoiId,
+                            name = tp.Poi != null ? tp.Poi.Name : string.Empty,
+                            lat = tp.Poi != null ? tp.Poi.Lat : 0,
+                            lng = tp.Poi != null ? tp.Poi.Lng : 0,
+                            orderIndex = tp.OrderIndex
+                        }).ToList()
                 })
                 .ToListAsync();
 

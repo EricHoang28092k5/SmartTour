@@ -33,11 +33,16 @@ namespace SmartTourCMS.Controllers
 
             if (await _userManager.IsInRoleAsync(user, "Admin"))
             {
-                tours = await _context.Tours.ToListAsync();
+                tours = await _context.Tours
+                    .Include(t => t.TourPois)
+                    .ToListAsync();
             }
             else
             {
-                tours = await _context.Tours.Where(t => t.VendorId == user.Id).ToListAsync();
+                tours = await _context.Tours
+                    .Include(t => t.TourPois)
+                    .Where(t => t.VendorId == user.Id)
+                    .ToListAsync();
             }
 
             return View(tours);
