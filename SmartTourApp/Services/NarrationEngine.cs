@@ -12,6 +12,7 @@ public class NarrationEngine
     private readonly ApiService api;
     private readonly LanguageService lang;
     private readonly AudioListenTracker tracker;
+    private readonly AudioCoordinator coordinator;
 
     private readonly Dictionary<int, List<TtsDto>> ttsCache = new();
     private readonly Dictionary<int, DateTime> history = new();
@@ -29,7 +30,8 @@ public class NarrationEngine
         Database db,
         ApiService api,
         LanguageService lang,
-        AudioListenTracker tracker)
+        AudioListenTracker tracker,
+        AudioCoordinator coordinator)
     {
         this.tts = tts;
         this.audio = audio;
@@ -37,6 +39,7 @@ public class NarrationEngine
         this.api = api;
         this.lang = lang;
         this.tracker = tracker;
+        this.coordinator = coordinator;
     }
 
     // 🔥 FIX: thêm force
@@ -49,6 +52,13 @@ public class NarrationEngine
             (DateTime.Now - history[poi.Id]).TotalMinutes < COOLDOWN_MINUTES)
             return;
 
+        // ── Đăng ký với coordinator; nếu có nguồn khác đang phát, nó sẽ bị stop ──
+        // Auto-play: đăng ký AudioSource.Auto
+        // Callback stop của chính mình để khi bị preempt coordinator gọi được
+        coordinator.RequestPlay(AudioSource.Auto, () => StopInternal());
+
+        CancellationTokenSource localCts;
+
         lock (lockObj)
         {
             if (!force && currentPoi != null && currentPoi.Priority > poi.Priority)
@@ -57,9 +67,10 @@ public class NarrationEngine
             cts?.Cancel();
             cts = new CancellationTokenSource();
             currentPoi = poi;
+            localCts = cts;
         }
 
-        var token = cts.Token;
+        var token = localCts.Token;
 
         try
         {
@@ -67,6 +78,10 @@ public class NarrationEngine
             var selected = SelectLang(scripts);
 
             if (selected == null) return;
+
+            // Kiểm tra lại sau await — có thể bị preempt bởi manual play trong lúc fetch scripts
+            if (token.IsCancellationRequested) return;
+            if (!coordinator.IsActiveSource(AudioSource.Auto)) return;
 
             bool played = false;
 
@@ -85,11 +100,16 @@ public class NarrationEngine
 
             if (!played && !string.IsNullOrWhiteSpace(selected.TtsScript))
             {
-                await tts.Speak(selected.TtsScript, selected.LanguageCode, token);
+                if (!token.IsCancellationRequested &&
+                    coordinator.IsActiveSource(AudioSource.Auto))
+                {
+                    await tts.Speak(selected.TtsScript, selected.LanguageCode, token);
+                }
             }
 
             // 🔥 Stop tracking — audio completed naturally
             tracker.StopSession();
+            coordinator.NotifyStop(AudioSource.Auto);
 
             history[poi.Id] = DateTime.Now;
 
@@ -104,8 +124,9 @@ public class NarrationEngine
         }
         catch (OperationCanceledException)
         {
-            // 🔥 Cancelled — flush whatever was accumulated
+            // 🔥 Cancelled (bị preempt hoặc stop thủ công) — flush accumulated time
             tracker.StopSession();
+            coordinator.NotifyStop(AudioSource.Auto);
         }
     }
 
@@ -113,10 +134,20 @@ public class NarrationEngine
     {
         if (poi == null) return;
 
-        cts?.Cancel();
-        cts = new CancellationTokenSource();
+        // ── Manual từ HomePage luôn thắng auto-play ──
+        coordinator.RequestPlay(AudioSource.HomeManual, () => StopInternal());
 
-        var token = cts.Token;
+        CancellationTokenSource localCts;
+
+        lock (lockObj)
+        {
+            cts?.Cancel();
+            cts = new CancellationTokenSource();
+            currentPoi = poi;
+            localCts = cts;
+        }
+
+        var token = localCts.Token;
 
         try
         {
@@ -124,6 +155,8 @@ public class NarrationEngine
             var selected = SelectLang(scripts);
 
             if (selected == null) return;
+
+            if (token.IsCancellationRequested) return;
 
             bool played = false;
 
@@ -142,21 +175,32 @@ public class NarrationEngine
 
             if (!played && !string.IsNullOrWhiteSpace(selected.TtsScript))
             {
-                await tts.Speak(selected.TtsScript, selected.LanguageCode, token);
+                if (!token.IsCancellationRequested)
+                    await tts.Speak(selected.TtsScript, selected.LanguageCode, token);
             }
 
             // 🔥 Completed naturally
             tracker.StopSession();
+            coordinator.NotifyStop(AudioSource.HomeManual);
 
             history[poi.Id] = DateTime.Now;
         }
         catch (OperationCanceledException)
         {
             tracker.StopSession();
+            coordinator.NotifyStop(AudioSource.HomeManual);
         }
     }
 
     public void Stop()
+    {
+        StopInternal();
+        coordinator.NotifyStop(AudioSource.Auto);
+        coordinator.NotifyStop(AudioSource.HomeManual);
+    }
+
+    // Dùng nội bộ để không double-notify coordinator
+    private void StopInternal()
     {
         cts?.Cancel();
         tracker.StopSession();
@@ -171,12 +215,13 @@ public class NarrationEngine
         currentPoi = null;
 
         cts?.Cancel();
-
         tracker.StopSession();
 
         // 🔥 FIX
         audio.Stop();
         tts.Stop();
+
+        coordinator.Reset();
     }
 
     private async Task<List<TtsDto>> GetScripts(Poi poi)

@@ -18,6 +18,9 @@ public class TrackingService
     private Location? lastLocation;
     private int interval = 3;
 
+    // ── Track trạng thái auto-play của chu kỳ trước để detect bật lại ──
+    private bool _prevAutoPlayEnabled = true;
+
     public event Action<Location>? OnLocationChanged;
 
     public TrackingService(
@@ -47,6 +50,9 @@ public class TrackingService
 
         pois = await repo.GetPois();
 
+        // Đọc trạng thái ban đầu để so sánh chu kỳ đầu tiên
+        _prevAutoPlayEnabled = Preferences.Default.Get(SettingsPage.AutoPlayKey, true);
+
         _ = Task.Run(async () =>
         {
             while (!token.IsCancellationRequested)
@@ -73,6 +79,18 @@ public class TrackingService
                     // ─────────────────────────────────────────────────────────
                     bool autoPlayEnabled = Preferences.Default.Get(
                         SettingsPage.AutoPlayKey, true);
+
+                    // ── Yêu cầu 1: Detect auto-play VỪA được bật lại ──
+                    // Reset GeofencingEngine để lần đầu vào radius trigger ngay,
+                    // không bị block bởi cooldown/activeZones của phiên trước.
+                    if (autoPlayEnabled && !_prevAutoPlayEnabled)
+                    {
+                        System.Diagnostics.Debug.WriteLine(
+                            "🔄 Auto-play re-enabled → Reset GeofencingEngine state");
+                        geo.Reset();
+                    }
+
+                    _prevAutoPlayEnabled = autoPlayEnabled;
 
                     if (autoPlayEnabled)
                     {

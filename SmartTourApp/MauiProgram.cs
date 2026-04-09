@@ -36,6 +36,9 @@ public static class MauiProgram
 
         builder.Services.AddSingleton<AudioListenTracker>();
 
+        // 🔥 AudioCoordinator: singleton điều phối tránh xung đột NarrationEngine vs ExoPlayer
+        builder.Services.AddSingleton<AudioCoordinator>();
+
         builder.Services.AddSingleton<NarrationEngine>();
 
         builder.Services.AddHttpClient<ApiService>(client =>

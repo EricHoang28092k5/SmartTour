@@ -11,6 +11,7 @@ public partial class SettingsPage : ContentPage
     private readonly GeofencingEngine geo;
     private readonly HeatmapService heatmap;
     private readonly RouteTrackingService routeTracking;
+    private readonly AudioCoordinator coordinator;
 
     // Yêu cầu 2: Key lưu trạng thái auto-play trong Preferences
     public const string AutoPlayKey = "auto_play_enabled";
@@ -22,7 +23,8 @@ public partial class SettingsPage : ContentPage
         NarrationEngine narration,
         GeofencingEngine geo,
         HeatmapService heatmap,
-        RouteTrackingService routeTracking)
+        RouteTrackingService routeTracking,
+        AudioCoordinator coordinator)
     {
         InitializeComponent();
         this.lang = lang;
@@ -32,6 +34,7 @@ public partial class SettingsPage : ContentPage
         this.geo = geo;
         this.heatmap = heatmap;
         this.routeTracking = routeTracking;
+        this.coordinator = coordinator;
     }
 
     protected override void OnAppearing()
@@ -47,11 +50,24 @@ public partial class SettingsPage : ContentPage
 
     // ─────────────────────────────────────────────────────────────────
     // Yêu cầu 2: Gạt Switch → lưu ngay vào Preferences
+    // Yêu cầu 1: Khi BẬT lại → reset GeofencingEngine để trigger ngay khi vào radius
     // ─────────────────────────────────────────────────────────────────
     private void OnAutoPlayToggled(object sender, ToggledEventArgs e)
     {
+        var prevValue = Preferences.Default.Get(AutoPlayKey, true);
+
         Preferences.Default.Set(AutoPlayKey, e.Value);
         UpdateAutoPlayInfo(e.Value);
+
+        // ── Yêu cầu 1: Bật lại auto-play → reset geo state ngay lập tức ──
+        // TrackingService cũng detect điều này trong vòng lặp của nó,
+        // nhưng reset ở đây để đảm bảo tức thì (không chờ chu kỳ tiếp theo).
+        if (e.Value && !prevValue)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                "🔄 [Settings] Auto-play turned ON → Reset GeofencingEngine");
+            geo.Reset();
+        }
     }
 
     /// <summary>
@@ -97,6 +113,7 @@ public partial class SettingsPage : ContentPage
         narration.Reset();
         geo.Reset();
         heatmap.Reset();
+        coordinator.Reset();
 
         // 🔥 Flush route session trước khi reset (nếu đang có session dang dở)
         await routeTracking.FlushOnAppClosingAsync();

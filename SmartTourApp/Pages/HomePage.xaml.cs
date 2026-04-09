@@ -7,6 +7,8 @@ public partial class HomePage : ContentPage
 {
     private readonly PoiRepository repo;
     private readonly NarrationEngine narration;
+    private readonly LocationService locationService;
+    private readonly RouteTrackingService routeTracking;
 
     private List<Poi> pois = new();
     private Poi? nearest;
@@ -15,11 +17,21 @@ public partial class HomePage : ContentPage
     private bool isLoaded;
     private bool isPlaying;
 
-    public HomePage(PoiRepository repo, NarrationEngine narration)
+    // ── Track item đang phát trong danh sách ──
+    private bool isItemPlaying = false;
+    private Poi? currentPlayingPoi;
+
+    public HomePage(
+        PoiRepository repo,
+        NarrationEngine narration,
+        LocationService locationService,
+        RouteTrackingService routeTracking)
     {
         InitializeComponent();
         this.repo = repo;
         this.narration = narration;
+        this.locationService = locationService;
+        this.routeTracking = routeTracking;
     }
 
     protected override void OnAppearing()
@@ -112,6 +124,9 @@ public partial class HomePage : ContentPage
         PoiList.ItemsSource = pois;
     }
 
+    // ─────────────────────────────────────────────────────────────────
+    // Yêu cầu 2: PlayNearest — chỉ ghi nhận RouteTracking khi trong radius
+    // ─────────────────────────────────────────────────────────────────
     private async void PlayNearest(object sender, EventArgs e)
     {
         if (nearest == null || userLoc == null) return;
@@ -124,11 +139,20 @@ public partial class HomePage : ContentPage
             return;
         }
 
+        // 🔥 Lấy GPS mới nhất để kiểm tra radius chính xác
+        var freshLoc = await GetFreshLocationAsync();
+        var loc = freshLoc ?? userLoc;
+
         try
         {
             isPlaying = true;
             HeroPlayBtn.Text = "🔊  Đang phát...";
-            await narration.PlayManual(nearest, userLoc);
+
+            // PlayManual sẽ dừng auto-play qua AudioCoordinator
+            await narration.PlayManual(nearest, loc);
+
+            // ── Yêu cầu 2: Ghi nhận RouteTracking nếu user đang trong radius ──
+            await TryRecordRouteAsync(nearest, loc);
         }
         finally
         {
@@ -161,9 +185,9 @@ public partial class HomePage : ContentPage
             new Dictionary<string, object> { ["poi"] = poi });
     }
 
-    private bool isItemPlaying = false;
-    private Poi? currentPlayingPoi;
-
+    // ─────────────────────────────────────────────────────────────────
+    // Yêu cầu 2: PlayPoiAudio — chỉ ghi nhận khi user chủ động bấm
+    // ─────────────────────────────────────────────────────────────────
     private async void PlayPoiAudio(object sender, TappedEventArgs e)
     {
         if (sender is not Element el || el.BindingContext is not Poi poi) return;
@@ -177,11 +201,20 @@ public partial class HomePage : ContentPage
             return;
         }
 
+        // 🔥 Lấy GPS mới nhất để kiểm tra radius
+        var freshLoc = await GetFreshLocationAsync();
+        var loc = freshLoc ?? userLoc;
+
         try
         {
             isItemPlaying = true;
             currentPlayingPoi = poi;
-            await narration.PlayManual(poi, userLoc);
+
+            // PlayManual sẽ dừng auto-play qua AudioCoordinator
+            await narration.PlayManual(poi, loc);
+
+            // ── Yêu cầu 2: Ghi nhận RouteTracking nếu user đang trong radius ──
+            await TryRecordRouteAsync(poi, loc);
         }
         finally
         {
@@ -196,5 +229,47 @@ public partial class HomePage : ContentPage
             return;
 
         await Shell.Current.GoToAsync($"//map?targetPoi={poi.Id}");
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Helpers
+    // ─────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Yêu cầu 2: Chỉ ghi nhận route khi user đang trong radius của poi đó.
+    /// Delegate hẳn cho RouteTrackingService.OnManualAudioPlayedAsync
+    /// (nó đã có guard IsInRadius bên trong).
+    /// </summary>
+    private async Task TryRecordRouteAsync(Poi poi, Location loc)
+    {
+        try
+        {
+            await routeTracking.OnManualAudioPlayedAsync(poi, loc);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[HomePage] RouteTracking error: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Lấy GPS mới nhất với timeout 2s, fallback sang cached.
+    /// </summary>
+    private async Task<Location?> GetFreshLocationAsync()
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            var fresh = await locationService.GetLocation();
+            if (fresh != null)
+            {
+                userLoc = fresh;
+                return fresh;
+            }
+        }
+        catch { }
+
+        return userLoc;
     }
 }

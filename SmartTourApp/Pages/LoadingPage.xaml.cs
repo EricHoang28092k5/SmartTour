@@ -57,6 +57,7 @@ public partial class LoadingPage : ContentPage
             var geo = services?.GetService<GeofencingEngine>();
             var heatmap = services?.GetService<HeatmapService>();
             var routeTracking = services?.GetService<RouteTrackingService>();
+            var coordinator = services?.GetService<AudioCoordinator>();
 
             narration?.Reset();
             tracking.Stop();

@@ -15,6 +15,7 @@ public class PoiDetailAudioManager
     private readonly LanguageService lang;
     private readonly AudioListenTracker tracker;
     private readonly RouteTrackingService routeTracking;
+    private readonly AudioCoordinator coordinator;
 
 #if ANDROID
     private readonly ExoPlayerService exo = new();
@@ -43,12 +44,14 @@ public class PoiDetailAudioManager
         ApiService api,
         LanguageService lang,
         AudioListenTracker tracker,
-        RouteTrackingService routeTracking)
+        RouteTrackingService routeTracking,
+        AudioCoordinator coordinator)
     {
         this.api = api;
         this.lang = lang;
         this.tracker = tracker;
         this.routeTracking = routeTracking;
+        this.coordinator = coordinator;
 
         if (!Directory.Exists(cacheDir))
             Directory.CreateDirectory(cacheDir);
@@ -76,6 +79,7 @@ public class PoiDetailAudioManager
 
     /// <summary>
     /// Play audio thủ công cho POI.
+    /// Tự động stop NarrationEngine (auto/home manual) nếu đang phát.
     /// </summary>
     /// <param name="poi">POI đang xem.</param>
     /// <param name="userLocation">
@@ -89,6 +93,17 @@ public class PoiDetailAudioManager
         lastProgressSec = 0;
         _playStartLocation = userLocation;
 
+        // ── DetailManual luôn thắng Auto và HomeManual ──
+        // Callback stop của chính mình: ExoPlayer stop
+        coordinator.RequestPlay(AudioSource.DetailManual, () =>
+        {
+            IsPlaying = false;
+            tracker.StopSession();
+#if ANDROID
+            exo.Stop();
+#endif
+        });
+
         var scripts = await api.GetTtsScripts(poi.Id);
 
         var selected = scripts.FirstOrDefault(x =>
@@ -97,11 +112,18 @@ public class PoiDetailAudioManager
 
         if (selected == null) return;
 
+        // Kiểm tra lại sau await — có thể bị preempt bởi nguồn khác
+        if (!coordinator.IsActiveSource(AudioSource.DetailManual)) return;
+
 #if ANDROID
         if (exo.IsPlaying)
             exo.Stop();
 
         var file = await GenerateAudio(selected.TtsScript, poi.Id);
+
+        // Kiểm tra lại sau GenerateAudio (có thể mất vài giây)
+        if (!coordinator.IsActiveSource(AudioSource.DetailManual)) return;
+
         exo.Play(file);
 #endif
 
@@ -177,6 +199,8 @@ public class PoiDetailAudioManager
         // 🔥 Flush listen duration
         tracker.StopSession();
 
+        coordinator.NotifyStop(AudioSource.DetailManual);
+
         currentPoi = null;
         currentDuration = 0;
         lastProgressSec = 0;
@@ -193,6 +217,8 @@ public class PoiDetailAudioManager
 
         // 🔥 Flush listen session
         tracker.StopSession();
+
+        coordinator.NotifyStop(AudioSource.DetailManual);
 
 #if ANDROID
         exo.Stop();
