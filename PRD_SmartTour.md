@@ -2,7 +2,7 @@
 
 | Thuộc tính | Giá trị |
 | --- | --- |
-| Phiên bản tài liệu | 4.2 (cập nhật theo code offline mới) |
+| Phiên bản tài liệu | 4.4 (bổ sung đầy đủ Activity + State) |
 | Ngày cập nhật | 2026-04-09 |
 | Trạng thái | Draft - đồng bộ theo mã nguồn hiện tại |
 | Phạm vi | SmartTourApp + SmartTourBackend + SmartTourCMS + SmartTour.Shared |
@@ -40,9 +40,6 @@
 27. WBS và tiến độ triển khai (Gantt)  
 28. Kế hoạch chất lượng, release, rollback  
 29. Lịch sử phiên bản PRD  
-30. Quản lý thay đổi yêu cầu (Change Control)  
-31. Tiêu chí chấp nhận API trọng yếu (chi tiết)  
-32. Danh sách quyết định cần chốt (Open Issues)  
 
 ---
 
@@ -529,6 +526,56 @@ flowchart TB
   - Ưu tiên `TtsScript`, fallback `Description`.
   - Có tùy chọn `onlyMissing=true`.
 
+### 16.4 Use case mở rộng cho Offline và QR
+
+| Actor | Mã UC | Tên Use Case | Tiền điều kiện | Hậu điều kiện |
+| --- | --- | --- | --- | --- |
+| Traveler | UC-10 | Quét QR để vào app | App mở màn QR gate, camera được cấp quyền | Vào giao diện chính thành công |
+| Traveler | UC-11 | Quét QR mở POI/Tour | QR hợp lệ dạng `smarttour://` hoặc URL trung gian | App điều hướng đúng màn POI/Tour |
+| Traveler | UC-12 | Dùng map offline | Đã tải/có tile cache trước đó | Bản đồ vẫn hiển thị khi offline |
+| Traveler | UC-13 | Nghe audio offline | POI đã có audio cache | Audio phát được khi mất mạng |
+| Traveler | UC-14 | Đồng bộ lại khi online | Có dữ liệu phát sinh offline + mạng khôi phục | Dữ liệu được đẩy về backend |
+
+### 16.5 Use case form mẫu (điển hình: UC-10 Quét QR để vào app)
+
+- **Mục tiêu**: bắt buộc người dùng quét QR hợp lệ trước khi sử dụng app.
+- **Actor chính**: Traveler.
+- **Trigger**: mở ứng dụng SmartTour.
+- **Luồng chính**:
+  1. App hiển thị `QrGatePage`.
+  2. Người dùng quét QR.
+  3. App kiểm tra định dạng QR hợp lệ.
+  4. App lưu phiên hợp lệ trong 7 ngày.
+  5. App điều hướng vào `Home`.
+- **Luồng thay thế**:
+  - Không cấp camera: hiển thị yêu cầu cấp quyền.
+  - QR sai định dạng: thông báo quét lại.
+  - Scanner trả URL trung gian: app normalize về deep link.
+- **Business rules**:
+  - Phiên QR có hiệu lực 7 ngày.
+  - Hết hạn hoặc bị xóa session trong settings thì bắt quét lại.
+
+### 16.6 Use case map mở rộng (đủ chức năng App mới)
+
+```mermaid
+flowchart LR
+    U((Traveler))
+    APP[SmartTourApp]
+    CAM[QR Scanner]
+    OFF[Offline Cache]
+    API[Backend API]
+
+    U -->|UC-10 Quét QR gate| CAM
+    CAM --> APP
+    U -->|UC-11 Mở POI/Tour từ QR| APP
+    U -->|UC-12 Dùng map offline| APP
+    U -->|UC-13 Nghe audio offline| APP
+    U -->|UC-14 Đồng bộ khi online| APP
+
+    APP --> OFF
+    APP --> API
+```
+
 ---
 
 ## 17. ERD model
@@ -849,6 +896,113 @@ stateDiagram-v2
     Generating --> Failed : Lỗi TTS/Cloudinary
     Failed --> Generating : Retry thủ công
     Ready --> Generating : Regenerate all
+```
+
+### 18.4 Sequence - QR Gate và vào Home
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant APP as SmartTourApp
+    participant CAM as Camera Scanner
+    participant PREF as Local Preferences
+    participant SHELL as AppShell
+
+    U->>APP: Mở ứng dụng
+    APP->>PREF: Kiểm tra qr_gate_until_utc
+    alt còn hạn 7 ngày
+        APP->>SHELL: Điều hướng vào Home
+    else hết hạn/chưa có
+        APP->>CAM: Hiển thị QrGatePage và bật camera
+        U->>CAM: Quét QR
+        CAM-->>APP: Trả chuỗi QR
+        APP->>APP: Validate + Normalize QR
+        APP->>PREF: Lưu hạn 7 ngày mới
+        APP->>SHELL: Điều hướng Home
+    end
+```
+
+### 18.5 Sequence - Quét QR mở POI/Tour (Deep Link)
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant SCN as QR Scanner
+    participant APP as SmartTourApp
+    participant DL as DeepLinkService
+    participant MAP as MapPage
+    participant TOUR as TourPage
+
+    U->>SCN: Quét mã QR
+    SCN-->>APP: smarttour://poi/{id} hoặc smarttour://tour/{id}
+    APP->>DL: Publish/Parse deep link
+    alt deep link POI
+        DL->>MAP: GoTo //map?targetPoi={id}
+    else deep link TOUR
+        DL->>TOUR: GoTo //tour?targetTour={id}
+    end
+```
+
+### 18.6 Sequence - Offline cache và sync khi online
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant APP as SmartTourApp
+    participant CACHE as Offline Cache
+    participant API as Backend API
+
+    U->>APP: Dùng app khi mất mạng
+    APP->>CACHE: Đọc POI/Map tiles/Audio cache
+    CACHE-->>APP: Trả dữ liệu offline
+    APP-->>U: Hiển thị map + phát audio offline
+
+    U->>APP: Có mạng trở lại
+    APP->>API: Gửi dữ liệu sync (logs/session)
+    API-->>APP: ACK thành công
+    APP->>CACHE: Đánh dấu synced/refresh dữ liệu mới
+```
+
+### 18.7 Activity - QR Gate (bắt buộc quét trước khi vào app)
+
+```mermaid
+flowchart TD
+    A[Start App] --> B[Đọc hạn phiên QR trong Preferences]
+    B --> C{Còn hạn 7 ngày?}
+    C -- Yes --> D[Vào Home/AppShell]
+    C -- No --> E[Hiển thị QrGatePage]
+    E --> F{Đã cấp quyền camera?}
+    F -- No --> G[Hiển thị yêu cầu cấp quyền]
+    F -- Yes --> H[Quét QR]
+    H --> I{QR hợp lệ?}
+    I -- No --> J[Thông báo quét lại]
+    J --> H
+    I -- Yes --> K[Lưu hạn mới +7 ngày]
+    K --> D
+```
+
+### 18.8 State model - QR Session (7 ngày)
+
+```mermaid
+stateDiagram-v2
+    [*] --> Required
+    Required --> Valid7Days : Quét QR hợp lệ
+    Valid7Days --> Required : Hết hạn 7 ngày
+    Valid7Days --> Required : User bấm "Xóa phiên QR" trong Settings
+```
+
+### 18.9 State model - Offline Sync
+
+```mermaid
+stateDiagram-v2
+    [*] --> OnlineIdle
+    OnlineIdle --> Prefetching : Có mạng + trigger tải trước
+    Prefetching --> OnlineIdle : Tải xong
+    OnlineIdle --> OfflineServing : Mất mạng
+    OfflineServing --> SyncPending : Có dữ liệu offline chưa gửi
+    SyncPending --> Syncing : Mạng khôi phục
+    Syncing --> OnlineIdle : Sync thành công
+    Syncing --> SyncPending : Sync lỗi, chờ retry
 ```
 
 ---
@@ -1313,4 +1467,6 @@ gantt
 | 4.0 | 2026-04-09 | Hoàn thiện bản nộp: chuẩn định dạng báo cáo, WBS/Gantt, quality/release/rollback plan; không gồm ma trận phân công thành viên |
 | 4.1 | 2026-04-09 | Dọn mục lục/numbering và bổ sung mẫu request/response JSON + quy ước mã lỗi API |
 | 4.2 | 2026-04-09 | Cập nhật theo commit mới: bổ sung offline map, offline audio, offline sync vào phạm vi, kiến trúc, NFR, test và WBS |
+| 4.3 | 2026-04-09 | Mở rộng mô hình Use Case + Sequence cho QR gate, deep link, offline map/audio và sync online |
+| 4.4 | 2026-04-09 | Bổ sung đầy đủ Activity + State models cho QR gate/session và offline sync lifecycle |
 
