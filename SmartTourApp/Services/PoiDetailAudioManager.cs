@@ -5,10 +5,16 @@ using SmartTourApp.Services;
 #if ANDROID
 using SmartTourApp.Platforms.Android;
 using Android.Speech.Tts;
-// Đặt biệt danh để không bị trùng với Microsoft.Maui.Media.TextToSpeech
 using AndroidTTS = Android.Speech.Tts.TextToSpeech;
 #endif
 
+/// <summary>
+/// PoiDetailAudioManager — Quản lý audio cho màn hình chi tiết POI.
+///
+/// Enhancement (Yêu cầu 2):
+///   - Cloudinary stream → nếu fail nửa chừng → auto-fallback sang TTS
+///   - Offline: đọc script từ OfflineSyncService (SQLite)
+/// </summary>
 public class PoiDetailAudioManager
 {
     private readonly ApiService api;
@@ -16,13 +22,13 @@ public class PoiDetailAudioManager
     private readonly AudioListenTracker tracker;
     private readonly RouteTrackingService routeTracking;
     private readonly AudioCoordinator coordinator;
+    private readonly AudioService audioService;
+    private readonly OfflineSyncService offlineSync;
+    private readonly TtsService ttsService;
 
 #if ANDROID
     private readonly ExoPlayerService exo = new();
 #endif
-
-    // 🔥 AudioService để stream Cloudinary URL (dùng chung với NarrationEngine)
-    private readonly AudioService audioService;
 
     private readonly string cacheDir = Path.Combine(FileSystem.AppDataDirectory, "tts_exo");
 
@@ -40,10 +46,9 @@ public class PoiDetailAudioManager
     private double currentDuration;
     private double lastProgressSec;
 
-    // Vị trí user lúc bấm Play (dùng để RouteTracking kiểm tra radius)
     private Location? _playStartLocation;
 
-    // 🔥 Track nguồn đang phát để Stop/Resume đúng engine
+    // Track nguồn đang phát để Stop/Resume đúng engine
     private bool _isStreamingCloudinary = false;
     private CancellationTokenSource? _streamCts;
 
@@ -53,7 +58,9 @@ public class PoiDetailAudioManager
         AudioListenTracker tracker,
         RouteTrackingService routeTracking,
         AudioCoordinator coordinator,
-        AudioService audioService)
+        AudioService audioService,
+        OfflineSyncService offlineSync,
+        TtsService ttsService)
     {
         this.api = api;
         this.lang = lang;
@@ -61,6 +68,8 @@ public class PoiDetailAudioManager
         this.routeTracking = routeTracking;
         this.coordinator = coordinator;
         this.audioService = audioService;
+        this.offlineSync = offlineSync;
+        this.ttsService = ttsService;
 
         if (!Directory.Exists(cacheDir))
             Directory.CreateDirectory(cacheDir);
@@ -71,7 +80,6 @@ public class PoiDetailAudioManager
             lastProgressSec = p;
             OnProgress?.Invoke(p);
 
-            // 🔥 Detect natural completion (within 0.5s of duration end)
             if (currentDuration > 0 && p >= currentDuration - 0.5)
             {
                 HandleCompleted();
@@ -86,15 +94,17 @@ public class PoiDetailAudioManager
 #endif
     }
 
+    // ══════════════════════════════════════════════════════════════════
+    // PLAY (Yêu cầu 2: Fallback logic)
+    // ══════════════════════════════════════════════════════════════════
+
     /// <summary>
-    /// Play audio thủ công cho POI.
-    /// Logic ưu tiên:
-    ///   1. AudioUrl Cloudinary (nếu có wifi) → stream qua ExoPlayer (Android) hoặc AudioService
-    ///   2. TtsScript → generate TTS local bằng Android TTS → ExoPlayer
-    ///   3. Fallback device TTS speak
+    /// Play audio cho POI.
+    /// Fallback chain:
+    ///   1. Cloudinary URL → ExoPlayer (Android) / AudioService
+    ///   2. Mất mạng nửa chừng → TTS ngay (không ngắt quãng)
+    ///   3. Offline hoàn toàn → SQLite TtsScript → TTS
     /// </summary>
-    /// <param name="poi">POI đang xem.</param>
-    /// <param name="userLocation">Vị trí hiện tại — bắt buộc cho RouteTracking.</param>
     public async Task Play(Poi poi, Location? userLocation = null)
     {
         currentPoi = poi;
@@ -103,7 +113,7 @@ public class PoiDetailAudioManager
         _playStartLocation = userLocation;
         _isStreamingCloudinary = false;
 
-        // ── DetailManual luôn thắng Auto và HomeManual ──
+        // DetailManual luôn thắng Auto và HomeManual
         coordinator.RequestPlay(AudioSource.DetailManual, () =>
         {
             IsPlaying = false;
@@ -115,39 +125,48 @@ public class PoiDetailAudioManager
 #endif
         });
 
-        // 🔥 Lấy track phù hợp ngôn ngữ từ API mới
-        var scripts = await api.GetTtsScripts(poi.Id);
+        // ── Lấy scripts (online → offline fallback) ──
+        var scripts = await GetScriptsWithFallbackAsync(poi);
 
         var selected = scripts.FirstOrDefault(x =>
-            x.LanguageCode.StartsWith(lang.Current))
+            x.LanguageCode.StartsWith(lang.Current,
+                StringComparison.OrdinalIgnoreCase))
             ?? scripts.FirstOrDefault();
 
-        if (selected == null) return;
+        if (selected == null)
+        {
+            // Không có script nào → thử description
+            var fallbackScript = poi.Description;
+            if (!string.IsNullOrWhiteSpace(fallbackScript))
+            {
+                selected = new ApiService.TtsDto
+                {
+                    LanguageCode = lang.Current,
+                    TtsScript = fallbackScript
+                };
+            }
+            else return;
+        }
 
-        // Kiểm tra lại sau await — có thể bị preempt
         if (!coordinator.IsActiveSource(AudioSource.DetailManual)) return;
 
-        // ── 🔥 Ưu tiên 1: AudioUrl Cloudinary ──
+        // ── Ưu tiên 1: Cloudinary Audio ──
         if (!string.IsNullOrWhiteSpace(selected.AudioUrl))
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[DetailAudio] ▶ Cloudinary: {selected.AudioUrl}");
+            bool audioOk = await TryPlayCloudinaryAsync(selected.AudioUrl!, poi);
 
-            await PlayCloudinaryAsync(selected.AudioUrl!, poi);
+            if (!audioOk)
+            {
+                // Mất mạng / stream fail → fallback TTS (Yêu cầu 2)
+                System.Diagnostics.Debug.WriteLine(
+                    "[DetailAudio] Cloudinary failed → TTS fallback");
+                await FallbackToTtsAsync(selected, poi);
+            }
         }
         else
         {
-            // ── Ưu tiên 2: TtsScript → local TTS → ExoPlayer ──
-            var script = string.IsNullOrWhiteSpace(selected.TtsScript)
-                ? poi.Description
-                : selected.TtsScript;
-
-            if (string.IsNullOrWhiteSpace(script)) return;
-
-            System.Diagnostics.Debug.WriteLine(
-                $"[DetailAudio] ▶ TTS local: {selected.LanguageCode}");
-
-            await PlayTtsLocalAsync(script, poi, selected.LanguageCode);
+            // Không có audio URL → TTS ngay
+            await FallbackToTtsAsync(selected, poi);
         }
 
         // ── Route Tracking ──
@@ -162,88 +181,167 @@ public class PoiDetailAudioManager
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine(
-                        $"[RouteTracking] OnManualAudioPlayed error: {ex.Message}");
+                        $"[RouteTracking] error: {ex.Message}");
                 }
             });
         }
     }
 
     // ══════════════════════════════════════════════════════════════════
+    // SCRIPT RESOLUTION (Yêu cầu 4: Offline Translation)
+    // ══════════════════════════════════════════════════════════════════
+
+    private async Task<List<ApiService.TtsDto>> GetScriptsWithFallbackAsync(Poi poi)
+    {
+        bool isOnline = IsOnline();
+
+        // Online: thử API
+        if (isOnline)
+        {
+            try
+            {
+                var result = await api.GetTtsScripts(poi.Id);
+                if (result != null && result.Count > 0)
+                    return result;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DetailAudio] API failed: {ex.Message} → SQLite fallback");
+            }
+        }
+
+        // Offline / API fail: SQLite (Yêu cầu 4)
+        var localScripts = offlineSync.GetAllLocalScripts(poi.Id);
+        if (localScripts.Count > 0)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[DetailAudio] 📦 Using {localScripts.Count} SQLite scripts");
+
+            return localScripts.Select(s => new ApiService.TtsDto
+            {
+                LanguageCode = s.LanguageCode,
+                LanguageName = s.LanguageName,
+                Title = s.Title,
+                TtsScript = s.TtsScript,
+                AudioUrl = s.AudioUrl
+            }).ToList();
+        }
+
+        return new List<ApiService.TtsDto>();
+    }
+
+    // ══════════════════════════════════════════════════════════════════
     // INTERNAL PLAY HELPERS
     // ══════════════════════════════════════════════════════════════════
 
-    /// <summary>
-    /// Stream audio từ Cloudinary URL.
-    /// Android: dùng ExoPlayer để có progress + seek + duration.
-    /// Các nền tảng khác: dùng AudioService (download + play).
-    /// </summary>
-    private async Task PlayCloudinaryAsync(string url, Poi poi)
+    private async Task<bool> TryPlayCloudinaryAsync(string url, Poi poi)
     {
         _isStreamingCloudinary = true;
 
-#if ANDROID
-        // ExoPlayer hỗ trợ HTTP stream trực tiếp — không cần download trước
-        if (exo.IsPlaying) exo.Stop();
-
-        // ExoPlayer play URL (nếu ExoPlayerService hỗ trợ URL, dùng luôn)
-        // Nếu chỉ hỗ trợ file path, download về cache trước
-        var cachedFile = await DownloadToCacheAsync(url, poi.Id, lang.Current);
-
-        if (!coordinator.IsActiveSource(AudioSource.DetailManual)) return;
-
-        exo.Play(cachedFile);
-#else
-        // Non-Android: stream bằng AudioService
-        _streamCts?.Cancel();
-        _streamCts = new CancellationTokenSource();
-
         try
         {
+#if ANDROID
+            var cachedFile = await DownloadToCacheAsync(url, poi.Id, lang.Current);
+
+            if (!coordinator.IsActiveSource(AudioSource.DetailManual))
+            {
+                _isStreamingCloudinary = false;
+                return true; // preempted — not a failure
+            }
+
+            if (exo.IsPlaying) exo.Stop();
+            exo.Play(cachedFile);
+#else
+            _streamCts?.Cancel();
+            _streamCts = new CancellationTokenSource();
+
             await audioService.Play(url, _streamCts.Token);
+#endif
+            IsPlaying = true;
+            tracker.StartSession(poi.Id, 0, 0);
+            return true;
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+            _isStreamingCloudinary = false;
+            return true; // cancelled by user — not a failure
+        }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[DetailAudio] Stream failed: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine(
+                $"[DetailAudio] Cloudinary play failed: {ex.Message}");
             _isStreamingCloudinary = false;
-            return;
+            return false;
         }
-#endif
-
-        IsPlaying = true;
-        tracker.StartSession(poi.Id, 0, 0);
     }
 
     /// <summary>
-    /// Generate audio từ TtsScript rồi phát bằng ExoPlayer (Android)
-    /// hoặc device TTS speak (fallback).
+    /// Fallback: phát bằng TTS khi không có audio file hoặc mạng bị ngắt.
     /// </summary>
-    private async Task PlayTtsLocalAsync(string script, Poi poi, string langCode)
+    private async Task FallbackToTtsAsync(ApiService.TtsDto selected, Poi poi)
     {
-#if ANDROID
-        if (exo.IsPlaying) exo.Stop();
-
-        var file = await GenerateAudio(script, poi.Id);
-
         if (!coordinator.IsActiveSource(AudioSource.DetailManual)) return;
 
-        exo.Play(file);
-        IsPlaying = true;
-        tracker.StartSession(poi.Id, 0, 0);
+        var script = string.IsNullOrWhiteSpace(selected.TtsScript)
+            ? poi.Description
+            : selected.TtsScript;
+
+        if (string.IsNullOrWhiteSpace(script)) return;
+
+#if ANDROID
+        // Android: generate WAV → ExoPlayer (có seek/progress)
+        try
+        {
+            if (exo.IsPlaying) exo.Stop();
+            var file = await GenerateAudio(script, poi.Id);
+
+            if (!coordinator.IsActiveSource(AudioSource.DetailManual)) return;
+
+            exo.Play(file);
+            IsPlaying = true;
+            tracker.StartSession(poi.Id, 0, 0);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[DetailAudio] TTS generate failed: {ex.Message}");
+
+            // Last resort: device TTS speak
+            await DeviceTtsSpeakAsync(script, selected.LanguageCode, poi);
+        }
 #else
-        // Non-Android: device TTS
-        IsPlaying = true;
-        tracker.StartSession(poi.Id, 0, 0);
-        // Không có ExoPlayer — tự báo complete ngay (hoặc dùng TtsService nếu muốn)
-        IsPlaying = false;
-        tracker.StopSession();
-        coordinator.NotifyStop(AudioSource.DetailManual);
-        OnCompleted?.Invoke();
+        await DeviceTtsSpeakAsync(script, selected.LanguageCode, poi);
 #endif
     }
 
+    private async Task DeviceTtsSpeakAsync(string script, string langCode, Poi poi)
+    {
+        IsPlaying = true;
+        tracker.StartSession(poi.Id, 0, 0);
+
+        // Fake duration for UI
+        var estimatedSec = script.Length / 5.0; // ~5 chars/sec average
+        OnDuration?.Invoke(estimatedSec);
+
+        try
+        {
+            _streamCts?.Cancel();
+            _streamCts = new CancellationTokenSource();
+            await ttsService.Speak(script, langCode, _streamCts.Token);
+        }
+        catch (OperationCanceledException) { }
+        finally
+        {
+            IsPlaying = false;
+            tracker.StopSession();
+            coordinator.NotifyStop(AudioSource.DetailManual);
+            OnCompleted?.Invoke();
+        }
+    }
+
     // ══════════════════════════════════════════════════════════════════
-    // PLAYBACK CONTROLS — giữ nguyên tên hàm
+    // PLAYBACK CONTROLS
     // ══════════════════════════════════════════════════════════════════
 
     public void Resume()
@@ -262,7 +360,7 @@ public class PoiDetailAudioManager
 #if ANDROID
         exo.Pause();
 #endif
-        _streamCts?.Cancel();   // nếu đang stream non-Android
+        _streamCts?.Cancel();
         IsPlaying = false;
         tracker.PauseSession();
     }
@@ -301,9 +399,6 @@ public class PoiDetailAudioManager
     // COMPLETION HANDLER
     // ══════════════════════════════════════════════════════════════════
 
-    /// <summary>
-    /// Called when ExoPlayer progress reaches end — audio completed naturally.
-    /// </summary>
     private void HandleCompleted()
     {
         IsPlaying = false;
@@ -331,13 +426,8 @@ public class PoiDetailAudioManager
 
     private static readonly HttpClient _httpClient = new();
 
-    /// <summary>
-    /// Download Cloudinary MP3 về local cache nếu chưa có.
-    /// Cache key = poiId + langCode để invalidate đúng khi đổi ngôn ngữ.
-    /// </summary>
     private async Task<string> DownloadToCacheAsync(string url, int poiId, string langCode)
     {
-        // Dùng extension từ URL (mp3/wav/…)
         var ext = Path.GetExtension(new Uri(url).AbsolutePath);
         if (string.IsNullOrEmpty(ext)) ext = ".mp3";
 
@@ -351,7 +441,6 @@ public class PoiDetailAudioManager
             return filePath;
         }
 
-        // 🔥 Download với retry
         for (int attempt = 1; attempt <= 3; attempt++)
         {
             try
@@ -375,7 +464,7 @@ public class PoiDetailAudioManager
     }
 
     // ══════════════════════════════════════════════════════════════════
-    // TTS LOCAL GENERATOR (Android — fallback khi offline)
+    // TTS LOCAL GENERATOR (Android fallback)
     // ══════════════════════════════════════════════════════════════════
 
     private async Task<string> GenerateAudio(string text, int poiId)
@@ -420,11 +509,9 @@ public class PoiDetailAudioManager
 
         var bundle = new Android.OS.Bundle();
         bundle.PutString(AndroidTTS.Engine.KeyParamUtteranceId, "tts_id");
-
         tts.SynthesizeToFile(text, bundle, javaFile, "tts_id");
 
         await tcsDone.Task;
-
         tts.Stop();
         tts.Shutdown();
 #endif
@@ -432,38 +519,35 @@ public class PoiDetailAudioManager
         return file;
     }
 
+    // ══════════════════════════════════════════════════════════════════
+    // HELPERS
+    // ══════════════════════════════════════════════════════════════════
+
+    private static bool IsOnline()
+    {
+        try
+        {
+            var access = Connectivity.Current.NetworkAccess;
+            return access == NetworkAccess.Internet ||
+                   access == NetworkAccess.ConstrainedInternet;
+        }
+        catch { return false; }
+    }
+
 #if ANDROID
     class InitListener : Java.Lang.Object, AndroidTTS.IOnInitListener
     {
         private readonly Action<OperationResult> _callback;
-
-        public InitListener(Action<OperationResult> callback)
-        {
-            _callback = callback;
-        }
-
-        public void OnInit(OperationResult status)
-        {
-            _callback(status);
-        }
+        public InitListener(Action<OperationResult> callback) => _callback = callback;
+        public void OnInit(OperationResult status) => _callback(status);
     }
 
     class TtsProgressListener : UtteranceProgressListener
     {
         private readonly Action _onDone;
-
-        public TtsProgressListener(Action onDone)
-        {
-            _onDone = onDone;
-        }
-
+        public TtsProgressListener(Action onDone) => _onDone = onDone;
         public override void OnStart(string utteranceId) { }
-
-        public override void OnDone(string utteranceId)
-        {
-            _onDone?.Invoke();
-        }
-
+        public override void OnDone(string utteranceId) => _onDone?.Invoke();
         public override void OnError(string utteranceId) { }
     }
 #endif

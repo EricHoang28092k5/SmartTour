@@ -12,7 +12,6 @@ public partial class App : Application
 
     protected override Window CreateWindow(IActivationState? activationState)
     {
-        // Lấy DI container
         var services = Application.Current?.Handler?.MauiContext?.Services;
 
         if (services == null)
@@ -24,8 +23,11 @@ public partial class App : Application
         if (poiRepo == null || tracking == null)
             throw new Exception("Services not registered");
 
-        var loadingPage = new LoadingPage(poiRepo, tracking);
+        // ── Yêu cầu 5: Khởi động background sync ngay khi app mở ──
+        var offlineSync = services.GetService<OfflineSyncService>();
+        offlineSync?.StartBackgroundSync();
 
+        var loadingPage = new LoadingPage(poiRepo, tracking);
         return new Window(loadingPage);
     }
 
@@ -34,15 +36,11 @@ public partial class App : Application
         base.OnSleep();
 
         var services = Current?.Handler?.MauiContext?.Services;
-
         services?.GetService<NarrationEngine>()?.Stop();
 
-        // 🔥 Flush route session khi app đi vào background / bị kill
-        // Session sẽ được persist vào Preferences để recovery khi mở lại
         var routeTracking = services?.GetService<RouteTrackingService>();
         if (routeTracking != null)
         {
-            // Fire-and-forget (OnSleep không await được)
             _ = Task.Run(async () =>
             {
                 try
@@ -54,6 +52,45 @@ public partial class App : Application
                     System.Diagnostics.Debug.WriteLine(
                         $"[RouteTracking] OnSleep flush error: {ex.Message}");
                 }
+            });
+        }
+
+        // ── Yêu cầu 5: Force sync khi app đi vào background (tận dụng mạng) ──
+        var offlineSync = services?.GetService<OfflineSyncService>();
+        if (offlineSync != null)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await offlineSync.ForceSyncNowAsync();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[OfflineSync] OnSleep sync error: {ex.Message}");
+                }
+            });
+        }
+    }
+
+    protected override void OnResume()
+    {
+        base.OnResume();
+
+        // ── Trigger sync ngay khi app được resume (mạng có thể vừa khôi phục) ──
+        var services = Current?.Handler?.MauiContext?.Services;
+        var offlineSync = services?.GetService<OfflineSyncService>();
+        if (offlineSync != null)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(2000); // đợi mạng ổn định
+                    await offlineSync.ForceSyncNowAsync();
+                }
+                catch { }
             });
         }
     }

@@ -5,13 +5,17 @@ using SmartTour.Services;
 namespace SmartTourApp.Services;
 
 /// <summary>
-/// Tracks real-time audio listening duration for all playback sources.
-/// Sends stats to backend API after each session ends.
+/// AudioListenTracker — Ghi nhận thời gian nghe thực tế cho tất cả nguồn phát.
+///
+/// Enhancement (Yêu cầu 5):
+///   - Khi online: gửi log lên API ngay.
+///   - Khi offline: lưu vào OfflinePlayLog (SQLite) → sync sau.
 /// </summary>
 public class AudioListenTracker
 {
     private readonly Database db;
     private readonly ApiService api;
+    private readonly OfflineSyncService offlineSync;
 
     private int? currentPoiId;
     private double currentLat;
@@ -22,10 +26,14 @@ public class AudioListenTracker
     private double accumulatedSeconds;
     private bool isTracking;
 
-    public AudioListenTracker(Database db, ApiService api)
+    private static readonly string DeviceId =
+        Preferences.Default.Get("heatmap_device_id", "");
+
+    public AudioListenTracker(Database db, ApiService api, OfflineSyncService offlineSync)
     {
         this.db = db;
         this.api = api;
+        this.offlineSync = offlineSync;
     }
 
     /// <summary>
@@ -96,18 +104,55 @@ public class AudioListenTracker
             Lat = currentLat,
             Lng = currentLng,
             DurationListened = (int)Math.Round(accumulatedSeconds),
-            DeviceId = string.Empty,
+            DeviceId = DeviceId,
             UserId = string.Empty
         };
 
-        // Save locally
+        // Save locally to SQLite
         try { db.AddLog(log); } catch { }
 
-        // Fire-and-forget to API
+        // ── Yêu cầu 5: Online → API ngay / Offline → OfflinePlayLog ──
         var logCopy = log;
+        var poiId = currentPoiId.Value;
+        var lat = currentLat;
+        var lng = currentLng;
+        var duration = (int)Math.Round(accumulatedSeconds);
+
         _ = Task.Run(async () =>
         {
-            try { await api.PostPlayLog(logCopy); } catch { }
+            bool isOnline = IsOnline();
+
+            if (isOnline)
+            {
+                // Online: gửi ngay
+                try
+                {
+                    await api.PostPlayLog(logCopy);
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[Tracker] ✅ Online log sent: POI={poiId}, " +
+                        $"duration={duration}s");
+                }
+                catch (Exception ex)
+                {
+                    // API fail → fallback sang offline log
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[Tracker] API fail, saving offline: {ex.Message}");
+                    offlineSync.RecordOfflineLog(
+                        poiId, lat, lng, duration,
+                        DeviceId, string.Empty);
+                }
+            }
+            else
+            {
+                // Offline: lưu vào SQLite chờ sync
+                offlineSync.RecordOfflineLog(
+                    poiId, lat, lng, duration,
+                    DeviceId, string.Empty);
+
+                System.Diagnostics.Debug.WriteLine(
+                    $"[Tracker] 📦 Offline log queued: POI={poiId}, " +
+                    $"duration={duration}s");
+            }
         });
 
         ResetState();
@@ -119,5 +164,16 @@ public class AudioListenTracker
         accumulatedSeconds = 0;
         sessionStart = null;
         isTracking = false;
+    }
+
+    private static bool IsOnline()
+    {
+        try
+        {
+            var access = Connectivity.Current.NetworkAccess;
+            return access == NetworkAccess.Internet ||
+                   access == NetworkAccess.ConstrainedInternet;
+        }
+        catch { return false; }
     }
 }

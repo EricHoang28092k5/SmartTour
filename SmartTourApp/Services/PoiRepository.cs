@@ -12,28 +12,30 @@ namespace SmartTourApp.Services
     {
         private readonly Database db;
         private readonly ApiService api;
+        private readonly AudioService audio;
+        private readonly OfflineSyncService offlineSync;
 
         private List<Poi>? cachedPois;
         private DateTime cacheTime;
         private readonly SemaphoreSlim cacheLock = new(1, 1);
 
         private readonly TimeSpan cacheTTL = TimeSpan.FromMinutes(5);
-        private readonly AudioService audio;
 
-        public PoiRepository(Database db, ApiService api, AudioService audio)
+        public PoiRepository(Database db, ApiService api, AudioService audio,
+            OfflineSyncService offlineSync)
         {
             this.db = db;
             this.api = api;
             this.audio = audio;
+            this.offlineSync = offlineSync;
         }
 
-        // ======================
+        // ══════════════════════════════════════════════════════════════
         // GET POIS
-        // ======================
+        // ══════════════════════════════════════════════════════════════
 
         public async Task<List<Poi>> GetPois()
         {
-            // 🔥 RETURN CACHE nếu còn hạn
             if (cachedPois != null &&
                 DateTime.UtcNow - cacheTime < cacheTTL)
             {
@@ -44,7 +46,6 @@ namespace SmartTourApp.Services
 
             try
             {
-                // double check sau khi lock
                 if (cachedPois != null &&
                     DateTime.UtcNow - cacheTime < cacheTTL)
                 {
@@ -53,9 +54,6 @@ namespace SmartTourApp.Services
 
                 List<Poi>? server = null;
 
-                // ======================
-                // TRY CALL API
-                // ======================
                 try
                 {
                     server = await api.GetPois();
@@ -66,51 +64,58 @@ namespace SmartTourApp.Services
                     server = null;
                 }
 
-                // ======================
-                // IF SERVER OK
-                // ======================
                 if (server != null && server.Count > 0)
                 {
                     cachedPois = server;
                     cacheTime = DateTime.UtcNow;
 
-                    // 🔥 background sync xuống local DB
+                    // ── Yêu cầu 1: Version Check + Selective Pre-fetch ──
                     _ = Task.Run(async () =>
                     {
                         try
                         {
-                            var urls = new List<string>();
+                            // 1. Sync local DB
+                            db.AddPois(cachedPois);
 
-                            foreach (var poi in cachedPois.Take(5)) // 🔥 chỉ preload gần nhất
+                            // 2. Kiểm tra POI nào bị stale (server mới hơn local)
+                            var staleIds = await offlineSync.CheckStalePoiIdsAsync(cachedPois);
+
+                            if (staleIds.Count > 0)
+                            {
+                                System.Diagnostics.Debug.WriteLine(
+                                    $"[PoiRepo] {staleIds.Count} stale POIs → refreshing...");
+                                await offlineSync.RefreshStaleDataAsync(staleIds, cachedPois);
+                            }
+
+                            // 3. Preload audio URLs (top 5 gần nhất)
+                            var urls = new List<string>();
+                            foreach (var poi in cachedPois.Take(5))
                             {
                                 var scripts = await api.GetTtsScripts(poi.Id);
-
                                 foreach (var s in scripts)
                                 {
-                                    if (!string.IsNullOrWhiteSpace(s.TtsScript) &&
-                                        s.TtsScript.StartsWith("http"))
-                                    {
-                                        urls.Add(s.TtsScript);
-                                    }
+                                    if (!string.IsNullOrWhiteSpace(s.AudioUrl))
+                                        urls.Add(s.AudioUrl!);
                                 }
                             }
 
-                            await audio.Preload(urls);
+                            if (urls.Count > 0)
+                                await audio.Preload(urls);
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine(
+                                $"[PoiRepo] BG sync error: {ex.Message}");
+                        }
                     });
 
                     return cachedPois;
                 }
 
-                // ======================
-                // FALLBACK LOCAL
-                // ======================
+                // Fallback local SQLite
                 var local = await Task.Run(() => db.GetPois());
-
                 cachedPois = local;
                 cacheTime = DateTime.UtcNow;
-
                 return cachedPois;
             }
             finally
@@ -119,18 +124,36 @@ namespace SmartTourApp.Services
             }
         }
 
-        // ======================
+        // ══════════════════════════════════════════════════════════════
+        // PRE-FETCH TOUR (Yêu cầu 1 — User bấm "Bắt đầu")
+        // ══════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// Pre-fetch toàn bộ data offline cho danh sách POI.
+        /// Gọi khi User nhấn "Bắt đầu Tour" khi còn có mạng.
+        /// </summary>
+        public async Task PrefetchForOfflineAsync(
+            List<Poi> pois,
+            IProgress<string>? progress = null,
+            CancellationToken token = default)
+        {
+            progress?.Report("Đang chuẩn bị dữ liệu offline...");
+
+            await offlineSync.PrefetchPoiDataAsync(pois, token);
+
+            var cachedCount = offlineSync.GetAllLocalScripts_Count();
+            progress?.Report($"✅ Đã lưu {cachedCount} bản thuyết minh offline");
+        }
+
+        // ══════════════════════════════════════════════════════════════
         // BACKGROUND SYNC
-        // ======================
+        // ══════════════════════════════════════════════════════════════
 
         private async Task SafeBackgroundSync(List<Poi> server)
         {
             try
             {
-                // lưu server -> SQLite
                 db.AddPois(server);
-
-                // xử lý outbox (nếu có)
                 await ProcessOutboxAsync();
             }
             catch (Exception ex)
@@ -139,9 +162,9 @@ namespace SmartTourApp.Services
             }
         }
 
-        // ======================
+        // ══════════════════════════════════════════════════════════════
         // OUTBOX PROCESSOR
-        // ======================
+        // ══════════════════════════════════════════════════════════════
 
         public async Task ProcessOutboxAsync()
         {
@@ -156,10 +179,7 @@ namespace SmartTourApp.Services
                         var poi = System.Text.Json.JsonSerializer.Deserialize<Poi>(item.Payload);
                         if (poi == null) continue;
 
-                        // 🔥 GỌI API thật nếu có endpoint
-                        // await api.UpsertPoi(poi);
-
-                        await Task.Delay(20); // tạm giả lập
+                        await Task.Delay(20);
 
                         db.MarkOutboxSynced(item.Id);
                     }
@@ -171,14 +191,11 @@ namespace SmartTourApp.Services
             }
         }
 
-        // ======================
+        // ══════════════════════════════════════════════════════════════
         // CACHE
-        // ======================
+        // ══════════════════════════════════════════════════════════════
 
-        public List<Poi>? GetCachedPois()
-        {
-            return cachedPois;
-        }
+        public List<Poi>? GetCachedPois() => cachedPois;
 
         public void ClearCache()
         {
