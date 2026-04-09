@@ -24,7 +24,13 @@
             <Grid>
                 <zxing:CameraBarcodeReaderView x:Name="QrReader"
                                                IsDetecting="True"
-                                               BarcodesDetected="OnBarcodesDetected" />
+                                               BarcodesDetected="OnBarcodesDetected">
+                    <zxing:CameraBarcodeReaderView.Options>
+                        <BarcodeReaderOptions Formats="QrCode"
+                                              AutoRotate="True"
+                                              Multiple="False" />
+                    </zxing:CameraBarcodeReaderView.Options>
+                </zxing:CameraBarcodeReaderView>
                 <Border WidthRequest="240"
                         HeightRequest="240"
                         HorizontalOptions="Center"

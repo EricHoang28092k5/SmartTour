@@ -51,7 +51,11 @@ public partial class QrGatePage : ContentPage
         }
 
         // Dừng detect sớm để tránh callback dồn dập trong lúc xử lý navigation
-        await MainThread.InvokeOnMainThreadAsync(() => QrReader.IsDetecting = false);
+        await MainThread.InvokeOnMainThreadAsync(() =>
+        {
+            QrReader.IsDetecting = false;
+            QrReader.IsEnabled = false;
+        });
 
         if (!IsValidGateQr(raw))
         {
@@ -60,7 +64,11 @@ public partial class QrGatePage : ContentPage
                 StatusLabel.Text = "QR không hợp lệ. Vui lòng quét lại mã SmartTour.";
             });
             await Task.Delay(800);
-            await MainThread.InvokeOnMainThreadAsync(() => QrReader.IsDetecting = true);
+            await MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                QrReader.IsEnabled = true;
+                QrReader.IsDetecting = true;
+            });
             Interlocked.Exchange(ref _processing, 0);
             return;
         }
@@ -73,7 +81,11 @@ public partial class QrGatePage : ContentPage
                 StatusLabel.Text = "Không đọc được định dạng QR.";
             });
             await Task.Delay(800);
-            await MainThread.InvokeOnMainThreadAsync(() => QrReader.IsDetecting = true);
+            await MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                QrReader.IsEnabled = true;
+                QrReader.IsDetecting = true;
+            });
             Interlocked.Exchange(ref _processing, 0);
             return;
         }
@@ -82,12 +94,9 @@ public partial class QrGatePage : ContentPage
         Preferences.Default.Set(QrGateUntilKey, DateTime.UtcNow.AddDays(7).ToString("O"));
 
         await MainThread.InvokeOnMainThreadAsync(() => StatusLabel.Text = "Quét thành công, đang vào trang chủ...");
-        await MainThread.InvokeOnMainThreadAsync(async () =>
-        {
-            Application.Current!.MainPage = new AppShell();
-            // Yêu cầu mới: sau khi quét vào Home, không điều hướng deep link ngay.
-            await Shell.Current.GoToAsync("//home");
-        });
+        await MainThread.InvokeOnMainThreadAsync(() => Application.Current!.MainPage = new AppShell());
+        await Task.Delay(120);
+        await MainThread.InvokeOnMainThreadAsync(async () => await Shell.Current.GoToAsync("//home"));
 
         try
         {
