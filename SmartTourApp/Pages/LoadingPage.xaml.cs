@@ -6,6 +6,7 @@ namespace SmartTourApp.Pages;
 
 public partial class LoadingPage : ContentPage
 {
+    private const string QrGateUntilKey = "qr_gate_until_utc";
     private readonly PoiRepository repo;
     private readonly TrackingService tracking;
 
@@ -139,7 +140,11 @@ public partial class LoadingPage : ContentPage
             await UpdateStatusAsync("Hoàn tất!", 1.0);
 
             await this.FadeToAsync(0, 400);
-            Application.Current!.MainPage = new QrGatePage();
+            // Nếu đã quét QR và còn hạn 7 ngày thì vào thẳng app.
+            if (IsQrGateStillValid())
+                Application.Current!.MainPage = new AppShell();
+            else
+                Application.Current!.MainPage = new QrGatePage();
         }
         catch (Exception ex)
         {
@@ -237,5 +242,21 @@ public partial class LoadingPage : ContentPage
 
         // text
         StatusLabel.Text = "Đang khởi động...";
+    }
+
+    private static bool IsQrGateStillValid()
+    {
+        try
+        {
+            var text = Preferences.Default.Get(QrGateUntilKey, string.Empty);
+            if (string.IsNullOrWhiteSpace(text)) return false;
+            if (!DateTime.TryParse(text, null, System.Globalization.DateTimeStyles.RoundtripKind, out var untilUtc))
+                return false;
+            return untilUtc > DateTime.UtcNow;
+        }
+        catch
+        {
+            return false;
+        }
     }
 }

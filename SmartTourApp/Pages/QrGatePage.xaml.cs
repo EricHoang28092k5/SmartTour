@@ -1,11 +1,13 @@
 using SmartTourApp.Services;
 using ZXing.Net.Maui;
+using System.Threading;
 
 namespace SmartTourApp.Pages;
 
 public partial class QrGatePage : ContentPage
 {
-    private bool _unlocked;
+    private const string QrGateUntilKey = "qr_gate_until_utc";
+    private int _processing;
 
     public QrGatePage()
     {
@@ -38,36 +40,121 @@ public partial class QrGatePage : ContentPage
 
     private async void OnBarcodesDetected(object? sender, BarcodeDetectionEventArgs e)
     {
-        if (_unlocked) return;
-        var raw = e.Results?.FirstOrDefault()?.Value?.Trim();
-        if (string.IsNullOrWhiteSpace(raw)) return;
+        // Chống bắn event liên tục gây treo UI
+        if (Interlocked.CompareExchange(ref _processing, 1, 0) != 0) return;
 
-        if (!IsValidGateQr(raw))
+        var raw = e.Results?.FirstOrDefault()?.Value?.Trim();
+        if (string.IsNullOrWhiteSpace(raw))
         {
-            await MainThread.InvokeOnMainThreadAsync(async () =>
-            {
-                StatusLabel.Text = "QR không hợp lệ. Hãy quét QR SmartTour.";
-                await this.DisplayAlert("QR không hợp lệ", "Vui lòng quét mã QR của SmartTour.", "OK");
-            });
+            Interlocked.Exchange(ref _processing, 0);
             return;
         }
 
-        _unlocked = true;
-        QrReader.IsDetecting = false;
+        // Dừng detect sớm để tránh callback dồn dập trong lúc xử lý navigation
+        await MainThread.InvokeOnMainThreadAsync(() => QrReader.IsDetecting = false);
 
+        if (!IsValidGateQr(raw))
+        {
+            await MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                StatusLabel.Text = "QR không hợp lệ. Vui lòng quét lại mã SmartTour.";
+            });
+            await Task.Delay(800);
+            await MainThread.InvokeOnMainThreadAsync(() => QrReader.IsDetecting = true);
+            Interlocked.Exchange(ref _processing, 0);
+            return;
+        }
+
+        var targetUri = NormalizeQr(raw);
+        if (targetUri == null)
+        {
+            await MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                StatusLabel.Text = "Không đọc được định dạng QR.";
+            });
+            await Task.Delay(800);
+            await MainThread.InvokeOnMainThreadAsync(() => QrReader.IsDetecting = true);
+            Interlocked.Exchange(ref _processing, 0);
+            return;
+        }
+
+        // Lưu phiên hợp lệ 7 ngày kể từ lúc quét thành công
+        Preferences.Default.Set(QrGateUntilKey, DateTime.UtcNow.AddDays(7).ToString("O"));
+
+        await MainThread.InvokeOnMainThreadAsync(() => StatusLabel.Text = "Quét thành công, đang vào trang chủ...");
         await MainThread.InvokeOnMainThreadAsync(async () =>
         {
-            StatusLabel.Text = "Quét thành công, đang mở ứng dụng...";
             Application.Current!.MainPage = new AppShell();
-
-            // Nếu QR chứa deep link smarttour://... thì điều hướng luôn.
-            if (Uri.TryCreate(raw, UriKind.Absolute, out var uri) &&
-                string.Equals(uri.Scheme, "smarttour", StringComparison.OrdinalIgnoreCase))
-            {
-                await Task.Delay(250);
-                await DeepLinkService.NavigateAsync(uri);
-            }
+            // Yêu cầu mới: sau khi quét vào Home, không điều hướng deep link ngay.
+            await Shell.Current.GoToAsync("//home");
         });
+
+        try
+        {
+            _ = targetUri; // giữ parse để validate QR, nhưng không dùng điều hướng ngay.
+        }
+        catch
+        {
+            // Không chặn vào app.
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _processing, 0);
+        }
+    }
+
+    private static Uri? NormalizeQr(string raw)
+    {
+        var text = raw.Trim();
+
+        // 1) Deep link chuẩn
+        if (Uri.TryCreate(text, UriKind.Absolute, out var direct) &&
+            string.Equals(direct.Scheme, "smarttour", StringComparison.OrdinalIgnoreCase))
+            return direct;
+
+        // 2) Dạng path rút gọn: poi/52 hoặc tour/4
+        if (text.StartsWith("poi/", StringComparison.OrdinalIgnoreCase))
+            return Uri.TryCreate($"smarttour://{text}", UriKind.Absolute, out var p) ? p : null;
+        if (text.StartsWith("tour/", StringComparison.OrdinalIgnoreCase))
+            return Uri.TryCreate($"smarttour://{text}", UriKind.Absolute, out var t) ? t : null;
+
+        // 3) URL trung gian dạng /Qr/Open?type=poi&id=52
+        if (Uri.TryCreate(text, UriKind.Absolute, out var web))
+        {
+            var path = web.AbsolutePath?.ToLowerInvariant() ?? string.Empty;
+            if (path.Contains("/qr/open"))
+            {
+                var qs = ParseQuery(web.Query);
+                if (qs.TryGetValue("type", out var type) &&
+                    qs.TryGetValue("id", out var id) &&
+                    int.TryParse(id, out var parsedId) &&
+                    parsedId > 0 &&
+                    (string.Equals(type, "poi", StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(type, "tour", StringComparison.OrdinalIgnoreCase)))
+                {
+                    var deep = $"smarttour://{type.ToLowerInvariant()}/{parsedId}";
+                    return Uri.TryCreate(deep, UriKind.Absolute, out var u) ? u : null;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static Dictionary<string, string> ParseQuery(string query)
+    {
+        var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(query)) return dict;
+
+        var q = query.TrimStart('?');
+        foreach (var pair in q.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = pair.Split('=', 2);
+            var key = Uri.UnescapeDataString(parts[0]);
+            var value = parts.Length > 1 ? Uri.UnescapeDataString(parts[1]) : string.Empty;
+            dict[key] = value;
+        }
+        return dict;
     }
 
     private static bool IsValidGateQr(string value)
