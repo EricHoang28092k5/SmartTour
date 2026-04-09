@@ -4,6 +4,7 @@ namespace SmartTourApp.Pages;
 
 public partial class SettingsPage : ContentPage
 {
+    private const string QrGateUntilKey = "qr_gate_until_utc";
     private readonly LanguageService lang;
     private readonly PoiRepository repo;
     private readonly TrackingService tracking;
@@ -99,6 +100,20 @@ public partial class SettingsPage : ContentPage
         offlineMapService.ClearMapCache();
         UpdateMapCacheInfo();
         await DisplayAlert("Thành công", "Đã xóa cache bản đồ.", "OK");
+    }
+
+    private async void OnClearQrSessionTapped(object sender, TappedEventArgs e)
+    {
+        var confirm = await DisplayAlert(
+            "Xóa phiên quét QR",
+            "Sau khi xóa, lần mở app tiếp theo sẽ bắt buộc quét QR lại. Bạn chắc chắn chứ?",
+            "Xóa",
+            "Hủy");
+
+        if (!confirm) return;
+
+        Preferences.Default.Remove(QrGateUntilKey);
+        await DisplayAlert("Thành công", "Đã xóa phiên QR. Mở lại app sẽ yêu cầu quét lại.", "OK");
     }
 
     // ───────────────────────────────────────────────────────────────────

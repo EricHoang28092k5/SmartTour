@@ -195,6 +195,34 @@
                 </HorizontalStackLayout>
             </Border>
 
+            <!-- ══════════════════════════════════════════════════ -->
+            <!-- SECTION: Phiên quét QR -->
+            <!-- ══════════════════════════════════════════════════ -->
+            <Label Text="BẢO MẬT TRUY CẬP" FontSize="11" FontAttributes="Bold"
+                   TextColor="#999999" CharacterSpacing="2" Margin="20,28,20,10"/>
+            <Border Margin="16,0,16,0" StrokeThickness="1"
+                    Stroke="#FFE0B2" StrokeShape="RoundRectangle 16"
+                    BackgroundColor="White">
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnClearQrSessionTapped"/>
+                </Border.GestureRecognizers>
+                <Grid ColumnDefinitions="Auto,*" Padding="18,14" ColumnSpacing="14">
+                    <Border Grid.Column="0" WidthRequest="40" HeightRequest="40"
+                            BackgroundColor="#FFF8E1" StrokeThickness="0"
+                            StrokeShape="RoundRectangle 12">
+                        <Label Text="🔐" FontSize="18"
+                               HorizontalOptions="Center" VerticalOptions="Center"/>
+                    </Border>
+                    <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                        <Label Text="Xóa phiên quét QR (7 ngày)"
+                               FontSize="14" FontAttributes="Bold"
+                               TextColor="#E65100"/>
+                        <Label Text="Buộc ứng dụng quét lại QR ở lần mở tiếp theo"
+                               FontSize="12" TextColor="#888888"/>
+                    </VerticalStackLayout>
+                </Grid>
+            </Border>
+
             <!-- ══════════════════════════════════ -->
             <!-- NÚT LƯU -->
             <!-- ══════════════════════════════════ -->
