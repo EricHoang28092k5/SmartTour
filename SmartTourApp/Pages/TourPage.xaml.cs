@@ -4,12 +4,24 @@ using SmartTourApp.Services;
 using System.Collections.ObjectModel;
 namespace SmartTourApp.Pages;
 
+[QueryProperty(nameof(TargetTourId), "targetTour")]
 public partial class TourPage : ContentPage
 {
     private readonly ApiService api;
     private readonly NarrationEngine narration;
 
     private ObservableCollection<TourViewModel> tours = new();
+    private string? targetTourId;
+
+    public string? TargetTourId
+    {
+        get => targetTourId;
+        set
+        {
+            targetTourId = value;
+            ApplyTargetTour();
+        }
+    }
 
     public TourPage(ApiService api, NarrationEngine narration)
     {
@@ -48,11 +60,22 @@ public partial class TourPage : ContentPage
                 tours.Add(t);
 
             TourList.ItemsSource = tours;
+            ApplyTargetTour();
         }
         catch (Exception ex)
         {
             await DisplayAlertAsync("Error Tour", ex.Message, "OK");
         }
+    }
+
+    private void ApplyTargetTour()
+    {
+        if (string.IsNullOrWhiteSpace(TargetTourId)) return;
+        if (!int.TryParse(TargetTourId, out var id)) return;
+        if (tours.Count == 0) return;
+
+        foreach (var t in tours)
+            t.IsExpanded = t.Id == id;
     }
 
     private void OpenTour(object sender, EventArgs e)

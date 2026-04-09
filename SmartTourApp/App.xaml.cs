@@ -8,6 +8,20 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
+
+        DeepLinkService.DeepLinkReceived += uri =>
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(300);
+                    if (Shell.Current != null)
+                        await DeepLinkService.NavigateAsync(uri);
+                }
+                catch { }
+            });
+        };
     }
 
     protected override Window CreateWindow(IActivationState? activationState)
