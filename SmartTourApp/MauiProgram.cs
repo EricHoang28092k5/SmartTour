@@ -6,6 +6,7 @@ using SmartTour.Services;
 using SmartTourApp.Data;
 using SmartTourApp.Pages;
 using SmartTourApp.Services;
+using SmartTourApp.Services.Offline;
 using ZXing.Net.Maui;
 using ZXing.Net.Maui.Controls;
 
@@ -18,7 +19,6 @@ public static class MauiProgram
         Mapsui.Logging.Logger.LogDelegate = null;
 
         var builder = MauiApp.CreateBuilder();
-
         builder
             .UseMauiApp<App>()
             .UseBarcodeReader()
@@ -38,6 +38,9 @@ public static class MauiProgram
         // ── Offline Infrastructure (Yêu cầu 1, 4, 5) ──
         builder.Services.AddSingleton<OfflineDatabase>();
         builder.Services.AddSingleton<OfflineSyncService>();
+
+        // 🔥 Offline Map Infrastructure
+        builder.Services.AddSingleton<OfflineMapService>();
 
         // ── Audio Pipeline ──
         builder.Services.AddSingleton<AudioListenTracker>();

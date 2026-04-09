@@ -1,249 +1,95 @@
 ﻿using SmartTour.Services;
 using SmartTour.Shared.Models;
 using SmartTourApp.Services;
-
+using System.Collections.ObjectModel;
 namespace SmartTourApp.Pages;
 
 public partial class TourPage : ContentPage
 {
     private readonly ApiService api;
-    private readonly PoiRepository repo;
-    private readonly OfflineSyncService offlineSync;
-    private readonly OfflineDatabase offlineDb;
+    private readonly NarrationEngine narration;
 
-    private List<TourViewModel> tours = new();
-    private bool isLoaded = false;
-    private bool isPrefetching = false;
+    private ObservableCollection<TourViewModel> tours = new();
 
-    // ── Track connectivity để cập nhật UI ──
-    private CancellationTokenSource? _prefetchCts;
-
-    public TourPage(
-        ApiService api,
-        PoiRepository repo,
-        OfflineSyncService offlineSync,
-        OfflineDatabase offlineDb)
+    public TourPage(ApiService api, NarrationEngine narration)
     {
         InitializeComponent();
         this.api = api;
-        this.repo = repo;
-        this.offlineSync = offlineSync;
-        this.offlineDb = offlineDb;
-
-        // ── Subscribe connectivity changes ──
-        offlineSync.OnConnectivityChanged += OnConnectivityChanged;
-        offlineSync.OnProgress += OnSyncProgress;
+        this.narration = narration;
     }
 
-    // ══════════════════════════════════════════════════════════════════
-    // LIFECYCLE
-    // ══════════════════════════════════════════════════════════════════
-
-    protected override void OnAppearing()
+    protected override async void OnAppearing()
     {
         base.OnAppearing();
 
-        UpdateConnectivityUI();
-        UpdateOfflineStats();
-
-        if (!isLoaded)
-            _ = LoadToursAsync();
+        if (tours.Count == 0)
+            await LoadTours();
     }
 
-    protected override void OnDisappearing()
+    private async Task LoadTours()
     {
-        base.OnDisappearing();
-        _prefetchCts?.Cancel();
-    }
-
-    // ══════════════════════════════════════════════════════════════════
-    // LOAD TOURS
-    // ══════════════════════════════════════════════════════════════════
-
-    private async Task LoadToursAsync()
-    {
-        isLoaded = true;
-
         try
         {
-            var response = await api.GetTours();
-            if (response?.Data == null) return;
+            var res = await api.GetTours();
 
-            tours = response.Data.Select(t => new TourViewModel
+            if (res?.Data == null) return;
+
+            var mapped = res.Data.Select(t => new TourViewModel
             {
                 Id = t.Id,
                 Name = t.Name,
                 Description = t.Description,
-                Pois = t.Pois ?? new List<TourPoiDto>()
-            }).ToList();
+                Pois = t.Pois?
+                    .OrderBy(p => p.OrderIndex)
+                    .ToList() ?? new List<TourPoiDto>()
+            });
+
+            foreach (var t in mapped)
+                tours.Add(t);
 
             TourList.ItemsSource = tours;
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[TourPage] Load error: {ex.Message}");
+            await DisplayAlertAsync("Error Tour", ex.Message, "OK");
         }
     }
 
-    // ══════════════════════════════════════════════════════════════════
-    // PRE-FETCH (Yêu cầu 1 — User bấm "Tải xuống offline")
-    // ══════════════════════════════════════════════════════════════════
-
-    private async void OnPrefetchClicked(object sender, EventArgs e)
+    private void OpenTour(object sender, EventArgs e)
     {
-        if (isPrefetching) return;
+        TourViewModel? tour = null;
 
-        // Lấy danh sách POI từ cache hoặc API
-        var pois = repo.GetCachedPois() ?? await repo.GetPois();
-        if (pois.Count == 0)
-        {
-            await DisplayAlert("Thông báo", "Chưa có dữ liệu địa điểm", "OK");
-            return;
-        }
+        if (sender is Button btn && btn.CommandParameter is TourViewModel t1)
+            tour = t1;
+        else if (sender is Label lbl && lbl.BindingContext is TourViewModel t2)
+            tour = t2;
 
-        // Kiểm tra có mạng không
-        var access = Connectivity.Current.NetworkAccess;
-        if (access != NetworkAccess.Internet && access != NetworkAccess.ConstrainedInternet)
-        {
-            await DisplayAlert(
-                "Không có mạng",
-                "Vui lòng kết nối WiFi hoặc 4G để tải dữ liệu offline.",
-                "OK");
-            return;
-        }
-
-        isPrefetching = true;
-        _prefetchCts = new CancellationTokenSource();
-
-        try
-        {
-            // Hiển thị progress UI
-            PrefetchBtn.Text = "⏹  Hủy";
-            PrefetchBtn.Clicked -= OnPrefetchClicked;
-            PrefetchBtn.Clicked += OnCancelPrefetchClicked;
-            PrefetchProgressSection.IsVisible = true;
-
-            await offlineSync.PrefetchPoiDataAsync(pois, _prefetchCts.Token);
-
-            // Done!
-            PrefetchBtn.Text = "✅  Đã tải xong";
-            PrefetchSubtitle.Text = $"Đã lưu {pois.Count} địa điểm — sẵn sàng offline!";
-
-            UpdateOfflineStats();
-
-            await Task.Delay(2000);
-        }
-        catch (OperationCanceledException)
-        {
-            PrefetchBtn.Text = "⬇  Tải xuống offline";
-            PrefetchSubtitle.Text = "Tải thuyết minh về máy trước khi tour bắt đầu";
-        }
-        finally
-        {
-            isPrefetching = false;
-            PrefetchProgressSection.IsVisible = false;
-            PrefetchBtn.Text = "⬇  Tải xuống offline";
-            PrefetchBtn.Clicked -= OnCancelPrefetchClicked;
-            PrefetchBtn.Clicked += OnPrefetchClicked;
-        }
+        if (tour != null)
+            tour.IsExpanded = !tour.IsExpanded;
     }
 
-    private void OnCancelPrefetchClicked(object? sender, EventArgs e)
+    private async void StartTour(object sender, EventArgs e)
     {
-        _prefetchCts?.Cancel();
-    }
+        TourViewModel? tour = null;
 
-    // ══════════════════════════════════════════════════════════════════
-    // SYNC PROGRESS CALLBACK
-    // ══════════════════════════════════════════════════════════════════
+        if (sender is Button btn && btn.CommandParameter is TourViewModel t)
+            tour = t;
 
-    private void OnSyncProgress(SyncProgress progress)
-    {
-        MainThread.BeginInvokeOnMainThread(() =>
+        if (tour == null) return;
+
+        foreach (var p in tour.Pois)
         {
-            PrefetchProgressLabel.Text = progress.Message;
-            PrefetchPercentLabel.Text = $"{progress.Percent * 100:F0}%";
+            var fakeLocation = new Location(p.Lat, p.Lng);
 
-            // Cập nhật progress bar
-            var parent = PrefetchProgressFill.Parent as View;
-            double trackWidth = parent?.Width ?? 300;
-            PrefetchProgressFill.WidthRequest = trackWidth * progress.Percent;
-        });
-    }
-
-    // ══════════════════════════════════════════════════════════════════
-    // CONNECTIVITY UI
-    // ══════════════════════════════════════════════════════════════════
-
-    private void OnConnectivityChanged(bool isOnline)
-    {
-        MainThread.BeginInvokeOnMainThread(() =>
-        {
-            UpdateConnectivityUI(isOnline);
-
-            if (isOnline)
+            await narration.PlayManual(new Poi
             {
-                // Mạng khôi phục → show toast ngắn
-                PrefetchSubtitle.Text = "🌐 Kết nối khôi phục — có thể tải offline";
-            }
-            else
-            {
-                PrefetchSubtitle.Text = "📦 Đang dùng dữ liệu offline";
-            }
-        });
-    }
+                Id = p.PoiId,
+                Name = p.Name,
+                Lat = p.Lat,
+                Lng = p.Lng
+            }, fakeLocation);
 
-    private void UpdateConnectivityUI(bool? isOnline = null)
-    {
-        isOnline ??= Connectivity.Current.NetworkAccess == NetworkAccess.Internet ||
-                     Connectivity.Current.NetworkAccess == NetworkAccess.ConstrainedInternet;
-
-        if (isOnline.Value)
-        {
-            OfflineStatusIcon.Text = "🌐";
-            OfflineStatusLabel.Text = "Online";
-            OfflineStatusLabel.TextColor = Color.FromArgb("#1565C0");
-            OfflineStatusBadge.BackgroundColor = Color.FromArgb("#F0F7FF");
-            OfflineStatusBadge.Stroke = new SolidColorBrush(Color.FromArgb("#BBDEFB"));
+            await Task.Delay(1000);
         }
-        else
-        {
-            OfflineStatusIcon.Text = "📦";
-            OfflineStatusLabel.Text = "Offline";
-            OfflineStatusLabel.TextColor = Color.FromArgb("#E65100");
-            OfflineStatusBadge.BackgroundColor = Color.FromArgb("#FFF8F0");
-            OfflineStatusBadge.Stroke = new SolidColorBrush(Color.FromArgb("#FFE0B2"));
-        }
-    }
-
-    private void UpdateOfflineStats()
-    {
-        try
-        {
-            CachedPoiCountLabel.Text = offlineDb.GetCachedPoiCount().ToString();
-            PendingLogCountLabel.Text = offlineDb.GetPendingLogCount().ToString();
-        }
-        catch { }
-    }
-
-    // ══════════════════════════════════════════════════════════════════
-    // TOUR INTERACTIONS
-    // ══════════════════════════════════════════════════════════════════
-
-    private void OnTourTapped(object sender, TappedEventArgs e)
-    {
-        if (e.Parameter is not TourViewModel tour) return;
-
-        tour.IsExpanded = !tour.IsExpanded;
-
-        // Refresh để trigger IsExpanded binding
-        TourList.ItemsSource = null;
-        TourList.ItemsSource = tours;
-    }
-
-    private async void GoToMapFromTour(object sender, TappedEventArgs e)
-    {
-        if (e.Parameter is not int poiId) return;
-        await Shell.Current.GoToAsync($"//map?targetPoi={poiId}");
     }
 }

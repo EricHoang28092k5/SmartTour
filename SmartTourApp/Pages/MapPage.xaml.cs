@@ -9,6 +9,7 @@ using SmartTour.Services;
 using SmartTour.Shared.Models;
 using SmartTourApp.Data;
 using SmartTourApp.Services;
+using SmartTourApp.Services.Offline;
 using SmartTourApp.ViewModels;
 using System.Linq;
 using static SmartTour.Services.ApiService;
@@ -23,49 +24,48 @@ public partial class MapPage : ContentPage
     private readonly PoiRepository repo;
     private readonly GeofencingEngine geo;
     private readonly ApiService api;
-
+    private readonly OfflineMapService offlineMapService;        // 🔥 NEW
     private readonly MapViewModel vm = new();
-
     private List<Poi> pois = new();
-
     private bool mapInitialized = false;
     private bool trackingStarted = false;
     private bool firstZoom = true;
     private bool heatmapLoaded = false;
-
     public string? TargetPoiId { get; set; }
     private bool openedFromRoute = false;
-
     private Location? currentLocation;
     private Poi? currentNearest;
-
-    // State that persists across page visits
     private Poi? selectedPoi = null;
     private bool cardManuallyClosed = false;
-
-    // ── Yêu cầu 3: Cờ chặn event bubbling từ nút con lên card ──
-    // Khi người dùng bấm nút chức năng bên trong card, set = true
-    // để PoiCard_Tapped bỏ qua lần tap đó
     private bool _isActionButtonTapped = false;
+
+    // 🔥 Offline download state
+    private CancellationTokenSource? _downloadCts;
+    private double _progressBarMaxWidth = 0;
 
     public MapPage(
         TrackingService tracking,
         PoiRepository repo,
         GeofencingEngine geo,
-        ApiService api)
+        ApiService api,
+        OfflineMapService offlineMapService)       // 🔥 inject
     {
         InitializeComponent();
 
         TourMap.Map!.Navigator.ViewportChanged += (s, e) =>
         {
-            if (!openedFromRoute)
-                followUser = false;
+            if (!openedFromRoute) followUser = false;
         };
 
         this.tracking = tracking;
         this.repo = repo;
         this.geo = geo;
         this.api = api;
+        this.offlineMapService = offlineMapService;
+
+        // ── Wire offline events ──
+        offlineMapService.OnConnectivityChanged += OnConnectivityChanged;
+        offlineMapService.OnDownloadProgress += OnDownloadProgress;
 
         TourMap.Loaded += async (_, _) =>
         {
@@ -75,12 +75,23 @@ public partial class MapPage : ContentPage
                 mapInitialized = true;
             }
         };
+
+        // Track progress bar container width
+        var parent = DownloadProgressFill.Parent as Microsoft.Maui.Controls.View;
+        DownloadProgressFill.SizeChanged += (s, e) =>
+        {
+            if (DownloadProgressFill.Parent is View p && p.Width > 0)
+                _progressBarMaxWidth = p.Width;
+        };
     }
+
+    // ══════════════════════════════════════════════════════════════════
+    // LIFECYCLE — giữ nguyên từ bản cũ
+    // ══════════════════════════════════════════════════════════════════
 
     protected override async void OnAppearing()
     {
         base.OnAppearing();
-
         tracking.OnLocationChanged -= UpdateLocation;
         tracking.OnLocationChanged += UpdateLocation;
 
@@ -99,35 +110,25 @@ public partial class MapPage : ContentPage
         var loc = await Geolocation.GetLastKnownLocationAsync();
         if (loc == null)
             loc = await Geolocation.GetLocationAsync(
-                new GeolocationRequest(GeolocationAccuracy.Medium,
-                    TimeSpan.FromSeconds(5)));
+                new GeolocationRequest(GeolocationAccuracy.Medium, TimeSpan.FromSeconds(5)));
 
-        if (TourMap?.Map?.Navigator == null || loc == null)
-            return;
+        if (TourMap?.Map?.Navigator == null || loc == null) return;
 
         if (!string.IsNullOrEmpty(TargetPoiId))
         {
-            if (pois.Count == 0)
-            {
-                await Task.Delay(300);
-                return;
-            }
-
+            if (pois.Count == 0) { await Task.Delay(300); return; }
             var poi = pois.FirstOrDefault(p => p.Id.ToString() == TargetPoiId);
             if (poi != null)
             {
                 openedFromRoute = true;
                 followUser = false;
                 cardManuallyClosed = false;
-
                 var mercator = SphericalMercator.FromLonLat(poi.Lng, poi.Lat);
                 var pos = new MPoint(mercator.x, mercator.y);
                 TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 0.5, 600,
                     Mapsui.Animations.Easing.CubicOut);
-
                 SelectPoi(poi);
             }
-
             TargetPoiId = null;
         }
         else
@@ -141,13 +142,15 @@ public partial class MapPage : ContentPage
 
             followUser = true;
             openedFromRoute = false;
-
             var mercator = SphericalMercator.FromLonLat(loc.Longitude, loc.Latitude);
             var pos = new MPoint(mercator.x, mercator.y);
             TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 0.5, 600,
                 Mapsui.Animations.Easing.CubicOut);
             vm.UpdateUser(TourMap.Map, loc, false);
         }
+
+        // 🔥 Update connectivity UI khi page appear
+        UpdateConnectivityUI(OfflineMapService.IsConnected());
     }
 
     protected override void OnDisappearing()
@@ -157,29 +160,8 @@ public partial class MapPage : ContentPage
     }
 
     // ══════════════════════════════════════════════════════════════════
-    // Load POI visit-count heatmap từ backend rồi render bubbles
+    // MAP INIT — 🔥 dùng OfflineTileLayer thay vì OpenStreetMap.CreateTileLayer()
     // ══════════════════════════════════════════════════════════════════
-    private async Task LoadPoiHeatmapAsync()
-    {
-        try
-        {
-            var resp = await api.GetHeatmap();
-            if (resp?.Data == null || resp.Data.Count == 0) return;
-
-            await MainThread.InvokeOnMainThreadAsync(() =>
-            {
-                if (TourMap?.Map != null)
-                    vm.LoadPoiHeatmap(TourMap.Map, resp.Data);
-            });
-
-            System.Diagnostics.Debug.WriteLine(
-                $"🔥 HEATMAP loaded: {resp.Data.Count} POIs");
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Heatmap load error: {ex.Message}");
-        }
-    }
 
     private async Task InitMap()
     {
@@ -187,7 +169,6 @@ public partial class MapPage : ContentPage
         {
             var db = Application.Current?.Handler?.MauiContext?.Services
                 .GetService<Database>();
-
             if (db != null)
             {
                 var logs = db.GetLocations();
@@ -205,19 +186,20 @@ public partial class MapPage : ContentPage
 
             TourMap.Map.Info += OnMapInfo;
 
+            // 🔥 OFFLINE TILE LAYER — thay thế OpenStreetMap.CreateTileLayer()
             if (!TourMap.Map.Layers.OfType<TileLayer>().Any())
-                TourMap.Map.Layers.Add(OpenStreetMap.CreateTileLayer());
+            {
+                var offlineTileLayer = OfflineOpenStreetMap.CreateOfflineTileLayer(
+                    offlineMapService.TileCache);
+                TourMap.Map.Layers.Add(offlineTileLayer);
+            }
 
             pois = await repo.GetPois();
-
-            if (!string.IsNullOrEmpty(TargetPoiId))
-                HandleRouteAfterLoad();
+            if (!string.IsNullOrEmpty(TargetPoiId)) HandleRouteAfterLoad();
 
             vm.LoadPois(TourMap.Map, pois);
-
             if (!TourMap.Map.Layers.Contains(vm.PoiLayer))
                 TourMap.Map.Layers.Add(vm.PoiLayer);
-
             if (!TourMap.Map.Layers.Contains(vm.UserLayer))
                 TourMap.Map.Layers.Add(vm.UserLayer);
 
@@ -226,6 +208,13 @@ public partial class MapPage : ContentPage
 
             heatmapLoaded = true;
             _ = Task.Run(LoadPoiHeatmapAsync);
+
+            // 🔥 Auto pre-cache khu vực xung quanh sau khi map init (nếu có mạng)
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(3000); // đợi map render xong
+                await AutoCacheCurrentAreaAsync();
+            });
         }
         catch (Exception ex)
         {
@@ -233,33 +222,252 @@ public partial class MapPage : ContentPage
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────
-    // MAP TAP → find nearest POI to tap point
-    // ─────────────────────────────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════
+    // 🔥 OFFLINE MAP: DOWNLOAD HANDLERS
+    // ══════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// User nhấn nút download (⬇) trên map — show dialog xác nhận rồi tải.
+    /// </summary>
+    private async void OnDownloadMapTapped(object sender, TappedEventArgs e)
+    {
+        if (offlineMapService.Downloader.IsDownloading)
+        {
+            await DisplayAlert("Đang tải", "Vui lòng đợi lần tải hiện tại hoàn thành.", "OK");
+            return;
+        }
+
+        if (!OfflineMapService.IsConnected())
+        {
+            await DisplayAlert("Không có mạng",
+                "Bạn đang offline. Kết nối mạng để tải bản đồ.", "OK");
+            return;
+        }
+
+        // Lấy vị trí trung tâm hiện tại
+        double centerLat, centerLng;
+        if (currentLocation != null)
+        {
+            centerLat = currentLocation.Latitude;
+            centerLng = currentLocation.Longitude;
+        }
+        else
+        {
+            var loc = await Geolocation.GetLastKnownLocationAsync();
+            if (loc == null) { await DisplayAlert("Lỗi", "Không lấy được vị trí GPS.", "OK"); return; }
+            centerLat = loc.Latitude;
+            centerLng = loc.Longitude;
+        }
+
+        // Estimate trước
+        var (newTiles, sizeMB, cached, desc) = offlineMapService.GetDownloadEstimate(
+            centerLat, centerLng, 2.5);
+
+        if (newTiles == 0)
+        {
+            await DisplayAlert("Đã có sẵn",
+                $"Bản đồ khu vực này đã được tải!\n{cached} tiles trong cache.", "OK");
+            return;
+        }
+
+        // Confirm dialog
+        bool confirm = await DisplayAlert(
+            "Tải bản đồ offline",
+            $"{desc}\n\nBán kính: 2.5km xung quanh vị trí hiện tại\nZoom: 14 - 18",
+            "Tải ngay", "Hủy");
+
+        if (!confirm) return;
+
+        // Bắt đầu tải
+        await StartDownloadAsync(centerLat, centerLng);
+    }
+
+    /// <summary>
+    /// Nhấn nút "Tải bản đồ" trên offline banner.
+    /// </summary>
+    private async void OnOfflineBannerDownloadTap(object sender, TappedEventArgs e)
+    {
+        if (currentLocation != null)
+            await StartDownloadAsync(currentLocation.Latitude, currentLocation.Longitude);
+    }
+
+    /// <summary>
+    /// Hủy download đang chạy.
+    /// </summary>
+    private void OnCancelDownloadTap(object sender, TappedEventArgs e)
+    {
+        offlineMapService.CancelDownload();
+        HideDownloadProgress();
+    }
+
+    private async Task StartDownloadAsync(double lat, double lng, double radiusKm = 2.5)
+    {
+        ShowDownloadProgress();
+        try
+        {
+            await offlineMapService.DownloadAreaForTourAsync(lat, lng, radiusKm);
+        }
+        finally
+        {
+            await Task.Delay(1500); // giữ UI progress hiện 1.5s sau khi xong
+            HideDownloadProgress();
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // 🔥 OFFLINE MAP: AUTO-CACHE khu vực xung quanh (silent background)
+    // ══════════════════════════════════════════════════════════════════
+
+    private async Task AutoCacheCurrentAreaAsync()
+    {
+        if (!OfflineMapService.IsConnected()) return;
+        if (currentLocation == null) return;
+
+        try
+        {
+            // Tải zoom 14-16 tự động khi có mạng (nhẹ, ~50 tiles)
+            await offlineMapService.Downloader.DownloadAreaAsync(
+                currentLocation.Latitude, currentLocation.Longitude,
+                radiusKm: 1.5,
+                minZoom: 14, maxZoom: 16);
+
+            System.Diagnostics.Debug.WriteLine("[MapPage] Auto-cache done");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[MapPage] Auto-cache error: {ex.Message}");
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // 🔥 OFFLINE MAP: CONNECTIVITY EVENT HANDLERS
+    // ══════════════════════════════════════════════════════════════════
+
+    private void OnConnectivityChanged(bool isOnline)
+    {
+        MainThread.BeginInvokeOnMainThread(() => UpdateConnectivityUI(isOnline));
+    }
+
+    private void UpdateConnectivityUI(bool isOnline)
+    {
+        // Update dot màu xanh/đỏ trên nút download
+        ConnectivityDot.Fill = isOnline
+            ? Color.FromArgb("#4CAF50")
+            : Color.FromArgb("#F44336");
+
+        // Hiện/ẩn offline banner
+        if (!isOnline)
+            ShowOfflineBanner("Chế độ ngoại tuyến — bản đồ chỉ hiện vùng đã tải");
+        else
+            HideOfflineBanner();
+    }
+
+    private void OnDownloadProgress(DownloadProgress progress)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            DownloadStatusLabel.Text = progress.Message;
+            DownloadProgressLabel.Text = $"{(int)(progress.Percent * 100)}%";
+            DownloadTileCountLabel.Text = progress.Total > 0
+                ? $"{progress.Done}/{progress.Total}"
+                : "";
+
+            // Animate progress bar fill
+            if (_progressBarMaxWidth > 0)
+                DownloadProgressFill.WidthRequest =
+                    _progressBarMaxWidth * progress.Percent;
+
+            if (progress.IsComplete)
+            {
+                DownloadSpinner.IsRunning = false;
+                DownloadStatusLabel.TextColor = Color.FromArgb("#4CAF50");
+            }
+        });
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // 🔥 UI HELPERS: OFFLINE BANNER & DOWNLOAD PROGRESS
+    // ══════════════════════════════════════════════════════════════════
+
+    private async void ShowOfflineBanner(string message)
+    {
+        OfflineBannerLabel.Text = message;
+        OfflineBanner.IsVisible = true;
+        DownloadProgressCard.IsVisible = false;
+        await OfflineBanner.TranslateTo(0, 0, 300, Easing.CubicOut);
+    }
+
+    private async void HideOfflineBanner()
+    {
+        await OfflineBanner.TranslateTo(0, -80, 250, Easing.CubicIn);
+        OfflineBanner.IsVisible = false;
+    }
+
+    private void ShowDownloadProgress()
+    {
+        OfflineBanner.IsVisible = false;
+        DownloadSpinner.IsRunning = true;
+        DownloadStatusLabel.TextColor = Color.FromArgb("#111111");
+        DownloadProgressFill.WidthRequest = 0;
+        DownloadProgressLabel.Text = "0%";
+        DownloadTileCountLabel.Text = "";
+        DownloadProgressCard.IsVisible = true;
+    }
+
+    private void HideDownloadProgress()
+    {
+        DownloadProgressCard.IsVisible = false;
+        DownloadSpinner.IsRunning = false;
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // HEATMAP — giữ nguyên từ bản cũ
+    // ══════════════════════════════════════════════════════════════════
+
+    private async Task LoadPoiHeatmapAsync()
+    {
+        try
+        {
+            var resp = await api.GetHeatmap();
+            if (resp?.Data == null || resp.Data.Count == 0) return;
+            await MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                //if (TourMap?.Map != null)
+                //    vm.LoadPoiHeatmap(TourMap.Map, resp.Data);
+            });
+            System.Diagnostics.Debug.WriteLine(
+                $"🔥 HEATMAP loaded: {resp.Data.Count} POIs");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Heatmap load error: {ex.Message}");
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // MAP TAP → giữ nguyên từ bản cũ
+    // ══════════════════════════════════════════════════════════════════
+
     private void OnMapInfo(object? sender, MapInfoEventArgs e)
     {
         if (pois.Count == 0 || e.WorldPosition == null) return;
-
         var lonLat = SphericalMercator.ToLonLat(e.WorldPosition.X, e.WorldPosition.Y);
-
         const double tapThresholdMeters = 300;
         Poi? tapped = null;
         double minDist = double.MaxValue;
-
         foreach (var poi in pois)
         {
             var dist = Location.CalculateDistance(
                 new Location(lonLat.lat, lonLat.lon),
                 new Location(poi.Lat, poi.Lng),
                 DistanceUnits.Kilometers) * 1000;
-
             if (dist < tapThresholdMeters && dist < minDist)
             {
                 minDist = dist;
                 tapped = poi;
             }
         }
-
         if (tapped != null)
         {
             MainThread.BeginInvokeOnMainThread(() =>
@@ -285,23 +493,17 @@ public partial class MapPage : ContentPage
         MainThread.BeginInvokeOnMainThread(() =>
         {
             NearestPoiLabel.Text = poi.Name;
-
             if (currentLocation != null)
             {
                 var dist = Location.CalculateDistance(
                     currentLocation,
                     new Location(poi.Lat, poi.Lng),
                     DistanceUnits.Kilometers);
-
                 PoiDistanceLabel.Text = dist < 1
                     ? $"{(int)(dist * 1000)} m"
                     : $"{dist:F1} km";
             }
-            else
-            {
-                PoiDistanceLabel.Text = "";
-            }
-
+            else PoiDistanceLabel.Text = "";
             RouteLoadingRow.IsVisible = false;
             PoiCard.IsVisible = true;
         });
@@ -310,11 +512,9 @@ public partial class MapPage : ContentPage
     private void UpdateLocation(Location loc)
     {
         if (loc == null || TourMap?.Map == null) return;
-
         MainThread.BeginInvokeOnMainThread(() =>
         {
             vm.UpdateUser(TourMap.Map, loc);
-
             if (TourMap?.Map?.Navigator != null && followUser && !openedFromRoute)
             {
                 var mercator = SphericalMercator.FromLonLat(loc.Longitude, loc.Latitude);
@@ -327,19 +527,11 @@ public partial class MapPage : ContentPage
 
             Poi? nearest = null;
             double minDist = double.MaxValue;
-
             foreach (var p in pois)
             {
-                var dist = Location.CalculateDistance(
-                    loc,
-                    new Location(p.Lat, p.Lng),
-                    DistanceUnits.Kilometers);
-
-                if (dist < minDist)
-                {
-                    minDist = dist;
-                    nearest = p;
-                }
+                var dist = Location.CalculateDistance(loc,
+                    new Location(p.Lat, p.Lng), DistanceUnits.Kilometers);
+                if (dist < minDist) { minDist = dist; nearest = p; }
             }
 
             currentLocation = loc;
@@ -353,8 +545,7 @@ public partial class MapPage : ContentPage
             else if (nearest == null && selectedPoi == null)
             {
                 currentNearest = null;
-                if (!cardManuallyClosed)
-                    PoiCard.IsVisible = false;
+                if (!cardManuallyClosed) PoiCard.IsVisible = false;
             }
 
             if (selectedPoi != null && currentLocation != null && !cardManuallyClosed)
@@ -363,7 +554,6 @@ public partial class MapPage : ContentPage
                     currentLocation,
                     new Location(selectedPoi.Lat, selectedPoi.Lng),
                     DistanceUnits.Kilometers);
-
                 PoiDistanceLabel.Text = dist < 1
                     ? $"{(int)(dist * 1000)} m"
                     : $"{dist:F1} km";
@@ -374,18 +564,17 @@ public partial class MapPage : ContentPage
     private void RemoveLoggingWidget()
     {
         if (TourMap.Map == null) return;
-
         var widgets = TourMap.Map.Widgets
-            .Where(w =>
-                !w.GetType().Name.Contains("Logging") &&
-                !w.GetType().Name.Contains("Performance"))
+            .Where(w => !w.GetType().Name.Contains("Logging") &&
+                        !w.GetType().Name.Contains("Performance"))
             .ToList();
-
         TourMap.Map.Widgets.Clear();
-
-        foreach (var w in widgets)
-            TourMap.Map.Widgets.Enqueue(w);
+        foreach (var w in widgets) TourMap.Map.Widgets.Enqueue(w);
     }
+
+    // ══════════════════════════════════════════════════════════════════
+    // ZOOM / LOCATE — giữ nguyên từ bản cũ
+    // ══════════════════════════════════════════════════════════════════
 
     private void ZoomIn_Clicked(object sender, EventArgs e)
         => TourMap?.Map?.Navigator?.ZoomIn();
@@ -397,62 +586,42 @@ public partial class MapPage : ContentPage
     {
         followUser = true;
         openedFromRoute = false;
-
         var loc = await Geolocation.GetLastKnownLocationAsync();
         if (loc == null || TourMap?.Map?.Navigator == null) return;
-
         var mercator = SphericalMercator.FromLonLat(loc.Longitude, loc.Latitude);
         var pos = new MPoint(mercator.x, mercator.y);
-        TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 0.5, 400,
-            Mapsui.Animations.Easing.CubicOut);
+        TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 0.5, 400, Mapsui.Animations.Easing.CubicOut);
     }
 
     private void HandleRouteAfterLoad()
     {
         var poi = pois.FirstOrDefault(p => p.Id.ToString() == TargetPoiId);
         if (poi == null) return;
-
         openedFromRoute = true;
         followUser = false;
-
         var mercator = SphericalMercator.FromLonLat(poi.Lng, poi.Lat);
         var pos = new MPoint(mercator.x, mercator.y);
         TourMap.Map.Navigator.CenterOnAndZoomTo(pos, 0.5, 600);
         SelectPoi(poi);
-
         TargetPoiId = null;
     }
 
-    // ─────────────────────────────────────────────────────────────────
-    // Yêu cầu 3: Tap toàn bộ Card → mở PoiDetailPage
-    // Kiểm tra cờ _isActionButtonTapped để chặn bubbling từ nút con
-    // ─────────────────────────────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════
+    // POI CARD ACTIONS — giữ nguyên từ bản cũ
+    // ══════════════════════════════════════════════════════════════════
+
     private async void PoiCard_Tapped(object sender, TappedEventArgs e)
     {
-        // Nếu người dùng vừa bấm nút con (route, close, save, share)
-        // thì bỏ qua sự kiện tap của card
-        if (_isActionButtonTapped)
-        {
-            _isActionButtonTapped = false;
-            return;
-        }
-
+        if (_isActionButtonTapped) { _isActionButtonTapped = false; return; }
         var target = selectedPoi ?? currentNearest;
         if (target == null) return;
-
-        // Hiệu ứng nhấn nhẹ
         await PoiCard.ScaleToAsync(0.97, 60, Easing.CubicIn);
         await PoiCard.ScaleToAsync(1.0, 60, Easing.CubicOut);
-
-        // Mở PoiDetailPage, truyền nguồn mở là "map" để nút back quay về đúng chỗ
         var detailPage = Application.Current?.Handler?.MauiContext?.Services
             .GetService<PoiDetailPage>();
-
         if (detailPage != null)
         {
-            // Set nguồn mở để nút back hoạt động đúng (Yêu cầu 4)
             detailPage.SetOpenedFrom("map");
-
             await Shell.Current.GoToAsync(nameof(PoiDetailPage), true,
                 new Dictionary<string, object> { ["poi"] = target });
         }
@@ -465,52 +634,33 @@ public partial class MapPage : ContentPage
 
     private async void CloseCard_Clicked(object sender, TappedEventArgs e)
     {
-        // Yêu cầu 3: Đánh dấu nút con được bấm → chặn PoiCard_Tapped
         _isActionButtonTapped = true;
-
         cardManuallyClosed = true;
         selectedPoi = null;
         vm.ClearRoute();
-
         await PoiCard.TranslateTo(0, 60, 200, Easing.CubicIn);
         PoiCard.IsVisible = false;
         await PoiCard.TranslateTo(0, 0, 0);
     }
 
-    // ─────────────────────────────────────────────────────────────────
-    // Yêu cầu 3: Route_Clicked_Action — wrapper mới cho nút "Đường đi"
-    // trong XAML (đổi tên để tránh conflict với Route_Clicked cũ)
-    // Chặn event bubbling lên PoiCard_Tapped
-    // ─────────────────────────────────────────────────────────────────
     private async void Route_Clicked_Action(object sender, TappedEventArgs e)
     {
-        // Đánh dấu nút con được bấm → chặn PoiCard_Tapped
         _isActionButtonTapped = true;
-
-        // Gọi logic tính đường đi
         await ExecuteRouteAsync();
     }
 
-    /// <summary>
-    /// Giữ nguyên hàm Route_Clicked cũ để tương thích nếu có nơi khác gọi
-    /// </summary>
     private async void Route_Clicked(object sender, EventArgs e)
-    {
-        await ExecuteRouteAsync();
-    }
+        => await ExecuteRouteAsync();
 
     private async Task ExecuteRouteAsync()
     {
         var target = selectedPoi ?? currentNearest;
         if (currentLocation == null || target == null) return;
-
         try
         {
             RouteLoadingRow.IsVisible = true;
             vm.ClearRoute();
-
             await vm.DrawRoute(TourMap.Map, currentLocation, target);
-
             await Task.Delay(300);
         }
         catch (Exception ex)
@@ -525,14 +675,12 @@ public partial class MapPage : ContentPage
 
     private void Save_Clicked(object sender, TappedEventArgs e)
     {
-        // Đánh dấu nút con được bấm → chặn PoiCard_Tapped
         _isActionButtonTapped = true;
         // TODO: implement save logic
     }
 
     private void Share_Clicked(object sender, TappedEventArgs e)
     {
-        // Đánh dấu nút con được bấm → chặn PoiCard_Tapped
         _isActionButtonTapped = true;
         // TODO: implement share logic
     }

@@ -3,7 +3,7 @@
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     x:Class="SmartTourApp.Pages.TourPage"
-    BackgroundColor="#F8F9FD"
+    BackgroundColor="#FFFFFF"
     Shell.NavBarIsVisible="False">
 
     <Grid RowDefinitions="Auto,*">
@@ -11,15 +11,16 @@
         <!-- ══════════════════════════════════════ -->
         <!--  HEADER                                -->
         <!-- ══════════════════════════════════════ -->
-        <Grid Grid.Row="0"
-              BackgroundColor="White"
-              Padding="20,54,20,20">
+        <Grid Grid.Row="0" BackgroundColor="White" Padding="20,54,20,20">
+
+            <!-- Subtle bottom separator -->
             <BoxView VerticalOptions="End"
                      HorizontalOptions="Fill"
                      HeightRequest="1"
                      BackgroundColor="#F0F0F5"/>
 
             <Grid ColumnDefinitions="*,Auto">
+
                 <VerticalStackLayout Grid.Column="0" Spacing="3">
                     <Label Text="HÀNH TRÌNH"
                            FontSize="11"
@@ -33,315 +34,284 @@
                            CharacterSpacing="-0.5"/>
                 </VerticalStackLayout>
 
-                <!-- Offline status badge -->
-                <Border x:Name="OfflineStatusBadge"
-                        Grid.Column="1"
-                        BackgroundColor="#F0F7FF"
-                        StrokeThickness="1"
-                        Stroke="#BBDEFB"
+                <!-- Filter / sort badge -->
+                <Border Grid.Column="1"
+                        BackgroundColor="#F0F5FF"
+                        StrokeThickness="0"
                         StrokeShape="RoundRectangle 20"
-                        Padding="12,6"
+                        Padding="14,8"
                         VerticalOptions="Center">
                     <HorizontalStackLayout Spacing="6">
-                        <Label x:Name="OfflineStatusIcon"
-                               Text="🌐"
-                               FontSize="13"
-                               VerticalOptions="Center"/>
-                        <Label x:Name="OfflineStatusLabel"
-                               Text="Online"
-                               FontSize="11"
-                               FontAttributes="Bold"
-                               TextColor="#1565C0"
-                               VerticalOptions="Center"/>
+                        <Label Text="⊞" FontSize="14" TextColor="#1E88E5" VerticalOptions="Center"/>
+                        <Label Text="Lọc" FontSize="13" FontAttributes="Bold" TextColor="#1E88E5" VerticalOptions="Center"/>
                     </HorizontalStackLayout>
                 </Border>
             </Grid>
         </Grid>
 
         <!-- ══════════════════════════════════════ -->
-        <!--  CONTENT                               -->
+        <!--  TOUR LIST                             -->
         <!-- ══════════════════════════════════════ -->
-        <ScrollView Grid.Row="1">
-            <VerticalStackLayout Spacing="0">
+        <CollectionView x:Name="TourList"
+                        Grid.Row="1"
+                        Margin="0"
+                        SelectionMode="None"
+                        BackgroundColor="#F8F9FD">
 
-                <!-- ── OFFLINE PREFETCH CARD (Yêu cầu 1) ── -->
-                <Border x:Name="PrefetchCard"
-                        Margin="16,20,16,0"
-                        StrokeThickness="0"
-                        StrokeShape="RoundRectangle 20">
-                    <Border.Background>
-                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                            <GradientStop Color="#1565C0" Offset="0"/>
-                            <GradientStop Color="#1E88E5" Offset="0.6"/>
-                            <GradientStop Color="#42A5F5" Offset="1"/>
-                        </LinearGradientBrush>
-                    </Border.Background>
-                    <Border.Shadow>
-                        <Shadow Brush="#1565C0" Offset="0,8" Radius="24" Opacity="0.25"/>
-                    </Border.Shadow>
+            <CollectionView.Header>
+                <BoxView HeightRequest="12" BackgroundColor="#F8F9FD"/>
+            </CollectionView.Header>
 
-                    <VerticalStackLayout Padding="20,18" Spacing="14">
+            <CollectionView.ItemTemplate>
+                <DataTemplate>
 
-                        <!-- Title row -->
-                        <Grid ColumnDefinitions="Auto,*">
-                            <Border Grid.Column="0"
-                                    WidthRequest="44" HeightRequest="44"
-                                    BackgroundColor="#1EFFFFFF"
-                                    StrokeThickness="0"
-                                    StrokeShape="RoundRectangle 14"
-                                    Margin="0,0,14,0">
-                                <Label Text="📥"
-                                       FontSize="22"
-                                       HorizontalOptions="Center"
-                                       VerticalOptions="Center"/>
-                            </Border>
+                    <!-- ─── TOUR CARD ─── -->
+                    <Border Margin="16,0,16,16"
+                            BackgroundColor="White"
+                            StrokeThickness="0"
+                            StrokeShape="RoundRectangle 24">
 
-                            <VerticalStackLayout Grid.Column="1" Spacing="3" VerticalOptions="Center">
-                                <Label Text="Tải trước để dùng Offline"
-                                       FontSize="16"
-                                       FontAttributes="Bold"
-                                       TextColor="White"/>
-                                <Label x:Name="PrefetchSubtitle"
-                                       Text="Tải thuyết minh về máy trước khi tour bắt đầu"
-                                       FontSize="12"
-                                       TextColor="#AADDFF"
-                                       LineBreakMode="WordWrap"/>
-                            </VerticalStackLayout>
-                        </Grid>
+                        <Border.Shadow>
+                            <Shadow Brush="#000000" Offset="0,4" Radius="24" Opacity="0.07"/>
+                        </Border.Shadow>
 
-                        <!-- Progress bar (ẩn khi idle) -->
-                        <VerticalStackLayout x:Name="PrefetchProgressSection"
-                                             IsVisible="False"
-                                             Spacing="8">
-                            <Grid ColumnDefinitions="*,Auto">
-                                <Label x:Name="PrefetchProgressLabel"
-                                       Text="Đang tải..."
-                                       FontSize="12"
-                                       TextColor="#AADDFF"/>
-                                <Label x:Name="PrefetchPercentLabel"
-                                       Grid.Column="1"
-                                       Text="0%"
-                                       FontSize="12"
-                                       FontAttributes="Bold"
-                                       TextColor="White"/>
-                            </Grid>
+                        <VerticalStackLayout Spacing="0">
 
-                            <Border HeightRequest="6"
-                                    BackgroundColor="#1EFFFFFF"
-                                    StrokeThickness="0"
-                                    StrokeShape="RoundRectangle 3">
-                                <Grid HorizontalOptions="Start" x:Name="PrefetchProgressFillContainer">
-                                    <Border x:Name="PrefetchProgressFill"
-                                            HeightRequest="6"
-                                            WidthRequest="0"
+                            <!-- ── TOP ACCENT BAR ── -->
+                            <BoxView HeightRequest="3"
+                                     CornerRadius="24,24,0,0"
+                                     BackgroundColor="#1E88E5"/>
+
+                            <!-- ── CARD BODY ── -->
+                            <VerticalStackLayout Spacing="0" Padding="20,18,20,18">
+
+                                <!-- ROW 1: index badge + title -->
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" Margin="0,0,0,12">
+
+                                    <!-- Number badge -->
+                                    <Border Grid.Column="0"
+                                            WidthRequest="40" HeightRequest="40"
                                             StrokeThickness="0"
-                                            StrokeShape="RoundRectangle 3"
-                                            BackgroundColor="White"
-                                            HorizontalOptions="Start"/>
-                                </Grid>
-                            </Border>
-                        </VerticalStackLayout>
-
-                        <!-- Action button -->
-                        <Border StrokeThickness="0"
-                                StrokeShape="RoundRectangle 14"
-                                BackgroundColor="#1EFFFFFF">
-                            <Button x:Name="PrefetchBtn"
-                                    Text="⬇  Tải xuống offline"
-                                    Clicked="OnPrefetchClicked"
-                                    BackgroundColor="Transparent"
-                                    TextColor="White"
-                                    FontSize="14"
-                                    FontAttributes="Bold"
-                                    HeightRequest="46"
-                                    Padding="0"/>
-                        </Border>
-
-                        <!-- Stats row -->
-                        <Grid ColumnDefinitions="*,*"
-                              x:Name="PrefetchStatsRow"
-                              ColumnSpacing="12">
-                            <Border Grid.Column="0"
-                                    BackgroundColor="#0FFFFFFF"
-                                    StrokeThickness="0"
-                                    StrokeShape="RoundRectangle 10"
-                                    Padding="12,8">
-                                <VerticalStackLayout Spacing="2" HorizontalOptions="Center">
-                                    <Label x:Name="CachedPoiCountLabel"
-                                           Text="0"
-                                           FontSize="20"
-                                           FontAttributes="Bold"
-                                           TextColor="White"
-                                           HorizontalOptions="Center"/>
-                                    <Label Text="Địa điểm đã lưu"
-                                           FontSize="10"
-                                           TextColor="#AADDFF"
-                                           HorizontalOptions="Center"/>
-                                </VerticalStackLayout>
-                            </Border>
-
-                            <Border Grid.Column="1"
-                                    BackgroundColor="#0FFFFFFF"
-                                    StrokeThickness="0"
-                                    StrokeShape="RoundRectangle 10"
-                                    Padding="12,8">
-                                <VerticalStackLayout Spacing="2" HorizontalOptions="Center">
-                                    <Label x:Name="PendingLogCountLabel"
-                                           Text="0"
-                                           FontSize="20"
-                                           FontAttributes="Bold"
-                                           TextColor="White"
-                                           HorizontalOptions="Center"/>
-                                    <Label Text="Log chờ đồng bộ"
-                                           FontSize="10"
-                                           TextColor="#AADDFF"
-                                           HorizontalOptions="Center"/>
-                                </VerticalStackLayout>
-                            </Border>
-                        </Grid>
-
-                    </VerticalStackLayout>
-                </Border>
-
-                <!-- ── SECTION TITLE ── -->
-                <Label Text="DANH SÁCH TOUR"
-                       FontSize="11"
-                       FontAttributes="Bold"
-                       TextColor="#999999"
-                       CharacterSpacing="2"
-                       Margin="20,28,20,12"/>
-
-                <!-- ── TOUR LIST ── -->
-                <CollectionView x:Name="TourList"
-                                Margin="16,0,16,32"
-                                SelectionMode="None">
-                    <CollectionView.ItemTemplate>
-                        <DataTemplate>
-                            <Border StrokeShape="RoundRectangle 20"
-                                    BackgroundColor="White"
-                                    StrokeThickness="1"
-                                    Stroke="#F0F0F5"
-                                    Margin="0,0,0,14">
-                                <Border.Shadow>
-                                    <Shadow Brush="#000000" Offset="0,4" Radius="20" Opacity="0.05"/>
-                                </Border.Shadow>
-                                <Border.GestureRecognizers>
-                                    <TapGestureRecognizer Tapped="OnTourTapped" CommandParameter="{Binding .}"/>
-                                </Border.GestureRecognizers>
-
-                                <VerticalStackLayout Padding="16" Spacing="10">
-
-                                    <!-- Tour header -->
-                                    <Grid ColumnDefinitions="Auto,*,Auto">
-                                        <Border Grid.Column="0"
-                                                WidthRequest="44" HeightRequest="44"
-                                                BackgroundColor="#EEF4FF"
-                                                StrokeThickness="0"
-                                                StrokeShape="RoundRectangle 14"
-                                                Margin="0,0,12,0">
-                                            <Label Text="🗺️"
-                                                   FontSize="20"
-                                                   HorizontalOptions="Center"
-                                                   VerticalOptions="Center"/>
-                                        </Border>
-
-                                        <VerticalStackLayout Grid.Column="1" Spacing="3" VerticalOptions="Center">
-                                            <Label Text="{Binding Name}"
-                                                   FontSize="16"
-                                                   FontAttributes="Bold"
-                                                   TextColor="#111111"
-                                                   LineBreakMode="TailTruncation"
-                                                   MaxLines="1"/>
-                                            <Label Text="{Binding Description}"
-                                                   FontSize="12"
-                                                   TextColor="#888888"
-                                                   LineBreakMode="TailTruncation"
-                                                   MaxLines="1"/>
-                                        </VerticalStackLayout>
-
-                                        <!-- Expand indicator -->
-                                        <Label Grid.Column="2"
-                                               Text="{Binding IsExpanded, Converter={StaticResource BoolToExpandIcon}}"
+                                            StrokeShape="RoundRectangle 12">
+                                        <Border.Background>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                <GradientStop Color="#1565C0" Offset="0"/>
+                                                <GradientStop Color="#42A5F5" Offset="1"/>
+                                            </LinearGradientBrush>
+                                        </Border.Background>
+                                        <Label Text="🗺️"
                                                FontSize="18"
-                                               TextColor="#AAAAAA"
+                                               HorizontalOptions="Center"
                                                VerticalOptions="Center"/>
-                                    </Grid>
+                                    </Border>
 
-                                    <!-- POI count badge -->
-                                    <HorizontalStackLayout Spacing="8">
-                                        <Border BackgroundColor="#EEF4FF"
-                                                StrokeThickness="0"
-                                                StrokeShape="RoundRectangle 8"
-                                                Padding="8,4">
-                                            <Label Text="{Binding Pois.Count, StringFormat='{0} điểm dừng'}"
-                                                   FontSize="11"
-                                                   FontAttributes="Bold"
-                                                   TextColor="#1E88E5"/>
-                                        </Border>
-                                    </HorizontalStackLayout>
-
-                                    <!-- Expanded POI list -->
-                                    <VerticalStackLayout x:Name="PoiListInTour"
-                                                         IsVisible="{Binding IsExpanded}"
-                                                         Spacing="8">
-                                        <BoxView HeightRequest="1" BackgroundColor="#F0F0F5"/>
-
-                                        <CollectionView ItemsSource="{Binding Pois}"
-                                                        SelectionMode="None">
-                                            <CollectionView.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Grid ColumnDefinitions="Auto,*,Auto"
-                                                          Padding="4,8"
-                                                          ColumnSpacing="10">
-                                                        <Border Grid.Column="0"
-                                                                WidthRequest="28" HeightRequest="28"
-                                                                BackgroundColor="#F0F5FF"
-                                                                StrokeThickness="0"
-                                                                StrokeShape="RoundRectangle 14">
-                                                            <Label Text="{Binding OrderIndex}"
-                                                                   FontSize="12"
-                                                                   FontAttributes="Bold"
-                                                                   TextColor="#1E88E5"
-                                                                   HorizontalOptions="Center"
-                                                                   VerticalOptions="Center"/>
-                                                        </Border>
-
-                                                        <Label Grid.Column="1"
-                                                               Text="{Binding Name}"
-                                                               FontSize="13"
-                                                               TextColor="#333333"
-                                                               VerticalOptions="Center"/>
-
-                                                        <Border Grid.Column="2"
-                                                                WidthRequest="32" HeightRequest="32"
-                                                                BackgroundColor="#EEF4FF"
-                                                                StrokeThickness="0"
-                                                                StrokeShape="RoundRectangle 16"
-                                                                VerticalOptions="Center">
-                                                            <Border.GestureRecognizers>
-                                                                <TapGestureRecognizer
-                                                                    Tapped="GoToMapFromTour"
-                                                                    CommandParameter="{Binding PoiId}"/>
-                                                            </Border.GestureRecognizers>
-                                                            <Label Text="🧭"
-                                                                   FontSize="14"
-                                                                   HorizontalOptions="Center"
-                                                                   VerticalOptions="Center"/>
-                                                        </Border>
-                                                    </Grid>
-                                                </DataTemplate>
-                                            </CollectionView.ItemTemplate>
-                                        </CollectionView>
+                                    <!-- Name + stops -->
+                                    <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                                        <Label Text="{Binding Name}"
+                                               FontSize="18"
+                                               FontAttributes="Bold"
+                                               TextColor="#0D0D0D"
+                                               LineBreakMode="TailTruncation"
+                                               MaxLines="1"/>
+                                        <HorizontalStackLayout Spacing="6">
+                                            <Border BackgroundColor="#EEF4FF"
+                                                    StrokeThickness="0"
+                                                    StrokeShape="RoundRectangle 8"
+                                                    Padding="7,2">
+                                                <Label Text="{Binding Pois.Count, StringFormat='{}{0} điểm dừng'}"
+                                                       FontSize="10"
+                                                       FontAttributes="Bold"
+                                                       TextColor="#1E88E5"/>
+                                            </Border>
+                                        </HorizontalStackLayout>
                                     </VerticalStackLayout>
 
-                                </VerticalStackLayout>
-                            </Border>
-                        </DataTemplate>
-                    </CollectionView.ItemTemplate>
-                </CollectionView>
+                                    <!-- Expand toggle -->
+                                    <Border Grid.Column="2"
+                                            WidthRequest="36" HeightRequest="36"
+                                            BackgroundColor="#F5F5FA"
+                                            StrokeThickness="0"
+                                            StrokeShape="RoundRectangle 18"
+                                            VerticalOptions="Center">
+                                        <Label Text="↓"
+                                               FontSize="16"
+                                               FontAttributes="Bold"
+                                               TextColor="#555"
+                                               HorizontalOptions="Center"
+                                               VerticalOptions="Center">
+                                            <Label.GestureRecognizers>
+                                                <TapGestureRecognizer
+                                                    Tapped="OpenTour"
+                                                    CommandParameter="{Binding .}"/>
+                                            </Label.GestureRecognizers>
+                                        </Label>
+                                    </Border>
+                                </Grid>
 
-            </VerticalStackLayout>
-        </ScrollView>
+                                <!-- Description -->
+                                <Label Text="{Binding Description}"
+                                       FontSize="13"
+                                       TextColor="#777777"
+                                       LineHeight="1.5"
+                                       Margin="0,0,0,16"
+                                       LineBreakMode="WordWrap"/>
+
+                                <!-- ── ACTION BUTTONS ── -->
+                                <Grid ColumnDefinitions="*,52" ColumnSpacing="10">
+
+                                    <!-- Detail button -->
+                                    <Border Grid.Column="0"
+                                            StrokeThickness="1.5"
+                                            Stroke="#1E88E5"
+                                            StrokeShape="RoundRectangle 22"
+                                            BackgroundColor="White">
+                                        <Button Text="Xem chi tiết"
+                                                Clicked="OpenTour"
+                                                CommandParameter="{Binding .}"
+                                                BackgroundColor="Transparent"
+                                                TextColor="#1E88E5"
+                                                FontSize="14"
+                                                FontAttributes="Bold"
+                                                HeightRequest="46"
+                                                Padding="0"/>
+                                    </Border>
+
+                                    <!-- Start button -->
+                                    <Border Grid.Column="1"
+                                            StrokeThickness="0"
+                                            StrokeShape="RoundRectangle 22">
+                                        <Border.Background>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                <GradientStop Color="#1565C0" Offset="0"/>
+                                                <GradientStop Color="#42A5F5" Offset="1"/>
+                                            </LinearGradientBrush>
+                                        </Border.Background>
+                                        <Button Text="▶"
+                                                Clicked="StartTour"
+                                                CommandParameter="{Binding .}"
+                                                BackgroundColor="Transparent"
+                                                TextColor="White"
+                                                FontSize="18"
+                                                HeightRequest="46"
+                                                WidthRequest="52"
+                                                Padding="0"/>
+                                    </Border>
+                                </Grid>
+
+                                <!-- ── EXPANDED TIMELINE ── -->
+                                <VerticalStackLayout
+                                    IsVisible="{Binding IsExpanded}"
+                                    Spacing="0"
+                                    Margin="0,20,0,0">
+
+                                    <!-- Divider with label -->
+                                    <Grid ColumnDefinitions="*,Auto,*" ColumnSpacing="10" Margin="0,0,0,16">
+                                        <BoxView Grid.Column="0" HeightRequest="1" BackgroundColor="#EEEEEE" VerticalOptions="Center"/>
+                                        <Label Grid.Column="1"
+                                               Text="LỊCH TRÌNH"
+                                               FontSize="10"
+                                               FontAttributes="Bold"
+                                               TextColor="#BBBBBB"
+                                               CharacterSpacing="2"
+                                               VerticalOptions="Center"/>
+                                        <BoxView Grid.Column="2" HeightRequest="1" BackgroundColor="#EEEEEE" VerticalOptions="Center"/>
+                                    </Grid>
+
+                                    <!-- Timeline items -->
+                                    <CollectionView ItemsSource="{Binding Pois}" SelectionMode="None">
+                                        <CollectionView.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid ColumnDefinitions="32,*" Margin="0,0,0,4">
+
+                                                    <!-- Timeline indicator -->
+                                                    <Grid Grid.Column="0" RowDefinitions="Auto,*">
+                                                        <Border Grid.Row="0"
+                                                                WidthRequest="12" HeightRequest="12"
+                                                                BackgroundColor="#1E88E5"
+                                                                StrokeThickness="2.5"
+                                                                Stroke="White"
+                                                                StrokeShape="RoundRectangle 6"
+                                                                HorizontalOptions="Center"
+                                                                Margin="0,10,0,0">
+                                                        </Border>
+                                                        <BoxView Grid.Row="1"
+                                                                 WidthRequest="2"
+                                                                 BackgroundColor="#DDDDDD"
+                                                                 HorizontalOptions="Center"
+                                                                 VerticalOptions="Fill"
+                                                                 Margin="0,2,0,0"/>
+                                                    </Grid>
+
+                                                    <!-- Stop content -->
+                                                    <Border Grid.Column="1"
+                                                            BackgroundColor="#F8F9FD"
+                                                            StrokeThickness="0"
+                                                            StrokeShape="RoundRectangle 14"
+                                                            Padding="12,10"
+                                                            Margin="0,4,0,6">
+                                                        <Grid ColumnDefinitions="*,Auto">
+                                                            <VerticalStackLayout Grid.Column="0" Spacing="2">
+                                                                <Label Text="{Binding Name}"
+                                                                       FontSize="13"
+                                                                       FontAttributes="Bold"
+                                                                       TextColor="#222222"/>
+                                                                <Label Text="{Binding OrderIndex, StringFormat='Điểm dừng #{0}'}"
+                                                                       FontSize="11"
+                                                                       TextColor="#AAAAAA"/>
+                                                            </VerticalStackLayout>
+                                                            <Border Grid.Column="1"
+                                                                    BackgroundColor="#EEF4FF"
+                                                                    StrokeThickness="0"
+                                                                    StrokeShape="RoundRectangle 10"
+                                                                    Padding="8,4"
+                                                                    VerticalOptions="Center">
+                                                                <Label Text="→"
+                                                                       FontSize="12"
+                                                                       FontAttributes="Bold"
+                                                                       TextColor="#1E88E5"/>
+                                                            </Border>
+                                                        </Grid>
+                                                    </Border>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </CollectionView.ItemTemplate>
+                                    </CollectionView>
+
+                                    <!-- Big start CTA -->
+                                    <Border Margin="0,12,0,0"
+                                            StrokeThickness="0"
+                                            StrokeShape="RoundRectangle 22">
+                                        <Border.Background>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                <GradientStop Color="#0D47A1" Offset="0"/>
+                                                <GradientStop Color="#1E88E5" Offset="0.6"/>
+                                                <GradientStop Color="#42A5F5" Offset="1"/>
+                                            </LinearGradientBrush>
+                                        </Border.Background>
+                                        <Button Text="🚀  Bắt đầu hành trình"
+                                                Clicked="StartTour"
+                                                CommandParameter="{Binding .}"
+                                                BackgroundColor="Transparent"
+                                                TextColor="White"
+                                                FontSize="15"
+                                                FontAttributes="Bold"
+                                                HeightRequest="52"
+                                                Padding="0"/>
+                                    </Border>
+                                </VerticalStackLayout>
+
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+                    </Border>
+
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+
+            <CollectionView.Footer>
+                <BoxView HeightRequest="32" BackgroundColor="#F8F9FD"/>
+            </CollectionView.Footer>
+
+        </CollectionView>
 
     </Grid>
 </ContentPage>

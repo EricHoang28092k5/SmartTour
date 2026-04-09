@@ -12,6 +12,7 @@ public partial class SettingsPage : ContentPage
     private readonly HeatmapService heatmap;
     private readonly RouteTrackingService routeTracking;
     private readonly AudioCoordinator coordinator;
+    private readonly OfflineMapService offlineMapService;  // 🔥 NEW
 
     // Yêu cầu 2: Key lưu trạng thái auto-play trong Preferences
     public const string AutoPlayKey = "auto_play_enabled";
@@ -24,7 +25,8 @@ public partial class SettingsPage : ContentPage
         GeofencingEngine geo,
         HeatmapService heatmap,
         RouteTrackingService routeTracking,
-        AudioCoordinator coordinator)
+        AudioCoordinator coordinator,
+        OfflineMapService offlineMapService)   // 🔥 inject
     {
         InitializeComponent();
         this.lang = lang;
@@ -35,6 +37,7 @@ public partial class SettingsPage : ContentPage
         this.heatmap = heatmap;
         this.routeTracking = routeTracking;
         this.coordinator = coordinator;
+        this.offlineMapService = offlineMapService;
     }
 
     protected override void OnAppearing()
@@ -46,22 +49,68 @@ public partial class SettingsPage : ContentPage
         var autoPlay = Preferences.Default.Get(AutoPlayKey, true);
         AutoPlaySwitch.IsToggled = autoPlay;
         UpdateAutoPlayInfo(autoPlay);
+
+        // 🔥 Cập nhật thông tin map cache
+        UpdateMapCacheInfo();
     }
 
-    // ─────────────────────────────────────────────────────────────────
+    // ───────────────────────────────────────────────────────────────────
+    // 🔥 MAP CACHE INFO — Refresh stats
+    // ───────────────────────────────────────────────────────────────────
+    private void UpdateMapCacheInfo()
+    {
+        try
+        {
+            int tiles = offlineMapService.GetCachedTileCount();
+            long mb = offlineMapService.GetCacheSizeMB();
+
+            // Update UI labels (nếu XAML có những control này — xem SettingsPage.xaml)
+            if (MapCacheTileLabel != null)
+                MapCacheTileLabel.Text = $"{tiles:N0} tiles (~{mb}MB)";
+
+            if (MapCacheStatusLabel != null)
+                MapCacheStatusLabel.Text = tiles > 0
+                    ? $"✅ {tiles} tiles đã lưu"
+                    : "Chưa có bản đồ offline";
+        }
+        catch { }
+    }
+
+    // ───────────────────────────────────────────────────────────────────
+    // 🔥 CLEAR MAP CACHE
+    // ───────────────────────────────────────────────────────────────────
+    private async void OnClearMapCacheTapped(object sender, TappedEventArgs e)
+    {
+        int tiles = offlineMapService.GetCachedTileCount();
+        if (tiles == 0)
+        {
+            await DisplayAlert("Thông báo", "Cache bản đồ đang trống.", "OK");
+            return;
+        }
+
+        bool confirm = await DisplayAlert(
+            "Xóa bản đồ offline",
+            $"Xóa {tiles} tiles ({offlineMapService.GetCacheSizeMB()}MB)?\n" +
+            "Bản đồ sẽ cần tải lại khi có mạng.",
+            "Xóa", "Hủy");
+
+        if (!confirm) return;
+
+        offlineMapService.ClearMapCache();
+        UpdateMapCacheInfo();
+        await DisplayAlert("Thành công", "Đã xóa cache bản đồ.", "OK");
+    }
+
+    // ───────────────────────────────────────────────────────────────────
     // Yêu cầu 2: Gạt Switch → lưu ngay vào Preferences
-    // Yêu cầu 1: Khi BẬT lại → reset GeofencingEngine để trigger ngay khi vào radius
-    // ─────────────────────────────────────────────────────────────────
+    // Yêu cầu 1: Khi BẬT lại → reset GeofencingEngine để trigger ngay
+    // ───────────────────────────────────────────────────────────────────
     private void OnAutoPlayToggled(object sender, ToggledEventArgs e)
     {
         var prevValue = Preferences.Default.Get(AutoPlayKey, true);
-
         Preferences.Default.Set(AutoPlayKey, e.Value);
         UpdateAutoPlayInfo(e.Value);
 
-        // ── Yêu cầu 1: Bật lại auto-play → reset geo state ngay lập tức ──
-        // TrackingService cũng detect điều này trong vòng lặp của nó,
-        // nhưng reset ở đây để đảm bảo tức thì (không chờ chu kỳ tiếp theo).
         if (e.Value && !prevValue)
         {
             System.Diagnostics.Debug.WriteLine(
@@ -70,9 +119,6 @@ public partial class SettingsPage : ContentPage
         }
     }
 
-    /// <summary>
-    /// Cập nhật nhãn mô tả bên dưới Switch theo trạng thái hiện tại.
-    /// </summary>
     private void UpdateAutoPlayInfo(bool isEnabled)
     {
         if (isEnabled)
@@ -96,7 +142,6 @@ public partial class SettingsPage : ContentPage
     private async void Save(object sender, EventArgs e)
     {
         var selected = LangPicker.SelectedItem?.ToString() ?? "vi";
-
         if (selected == lang.Current)
         {
             await DisplayAlert("Thông báo", "Ngôn ngữ không thay đổi", "OK");
@@ -104,7 +149,6 @@ public partial class SettingsPage : ContentPage
         }
 
         lang.Current = selected;
-
         await DisplayAlert("Thông báo", "Đang tải lại ứng dụng...", "OK");
 
         // RESET TOÀN BỘ
@@ -115,7 +159,6 @@ public partial class SettingsPage : ContentPage
         heatmap.Reset();
         coordinator.Reset();
 
-        // 🔥 Flush route session trước khi reset (nếu đang có session dang dở)
         await routeTracking.FlushOnAppClosingAsync();
         routeTracking.Reset();
 
