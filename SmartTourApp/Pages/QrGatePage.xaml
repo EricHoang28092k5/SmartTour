@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:zxing="clr-namespace:ZXing.Net.Maui.Controls;assembly=ZXing.Net.Maui.Controls"
+             x:Class="SmartTourApp.Pages.QrGatePage"
+             Title="Quét QR">
+
+    <Grid RowDefinitions="Auto,*,Auto" Padding="16" BackgroundColor="#111827">
+        <VerticalStackLayout Grid.Row="0" Spacing="6" Margin="0,10,0,12">
+            <Label Text="Quét mã QR để vào ứng dụng"
+                   TextColor="White"
+                   FontSize="22"
+                   FontAttributes="Bold" />
+            <Label Text="Quét QR hợp lệ để mở giao diện SmartTour."
+                   TextColor="#D1D5DB"
+                   FontSize="14" />
+        </VerticalStackLayout>
+
+        <Border Grid.Row="1"
+                Stroke="#374151"
+                StrokeThickness="1"
+                BackgroundColor="#000000"
+                StrokeShape="RoundRectangle 14">
+            <Grid>
+                <zxing:CameraBarcodeReaderView x:Name="QrReader"
+                                               IsDetecting="True"
+                                               BarcodesDetected="OnBarcodesDetected" />
+                <Border WidthRequest="240"
+                        HeightRequest="240"
+                        HorizontalOptions="Center"
+                        VerticalOptions="Center"
+                        Stroke="#22C55E"
+                        StrokeThickness="3"
+                        BackgroundColor="#00FFFFFF"
+                        StrokeShape="RoundRectangle 18" />
+            </Grid>
+        </Border>
+
+        <VerticalStackLayout Grid.Row="2" Spacing="10" Margin="0,12,0,0">
+            <Label x:Name="StatusLabel"
+                   Text="Đang chờ quét QR..."
+                   TextColor="#E5E7EB"
+                   HorizontalOptions="Center" />
+        </VerticalStackLayout>
+    </Grid>
+</ContentPage>
+

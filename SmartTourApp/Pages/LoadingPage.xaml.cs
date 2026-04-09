@@ -139,16 +139,7 @@ public partial class LoadingPage : ContentPage
             await UpdateStatusAsync("Hoàn tất!", 1.0);
 
             await this.FadeToAsync(0, 400);
-
-            Application.Current!.MainPage = new AppShell();
-
-            // Nếu app được mở từ QR/deep link khi cold start thì xử lý ngay sau khi vào Shell.
-            var pending = DeepLinkService.ConsumePending();
-            if (pending != null)
-            {
-                await Task.Delay(250);
-                await DeepLinkService.NavigateAsync(pending);
-            }
+            Application.Current!.MainPage = new QrGatePage();
         }
         catch (Exception ex)
         {
