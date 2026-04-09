@@ -333,6 +333,33 @@ erDiagram
     ASPNET_USERS ||--o{ ASPNET_USER_TOKENS : has
 ```
 
+### 8.4 Đặc tả CRUD chi tiết theo bảng
+| Bảng | Thêm (Create) | Sửa (Update) | Xóa (Delete) | Ai thao tác | Ghi chú |
+| --- | --- | --- | --- | --- | --- |
+| `Category` | Tạo danh mục | Sửa tên/mô tả | Xóa khi không còn POI | Admin | Nên chặn xóa nếu còn liên kết |
+| `Poi` | Tạo POI mới | Sửa thông tin/tọa độ/mô tả | Xóa POI | Admin, Vendor | Xóa POI cần xử lý bảng con |
+| `PoiImage` | Upload ảnh mới | Đổi ảnh chính | Xóa ảnh | Admin, Vendor | Bắt buộc còn >=1 ảnh nếu quy định |
+| `PoiTranslation` | Tự sinh theo `Language` | Sửa `Title`, `Description`, `TtsScript` | Xóa bản dịch theo ngôn ngữ | Admin, Vendor | Xóa translation nên xóa luôn audio liên quan |
+| `Language` | Thêm ngôn ngữ | Đổi tên/trạng thái | Ngừng dùng (soft delete) | Admin | Không nên hard delete |
+| `Tour` | Tạo tour | Sửa tên/mô tả/trạng thái | Xóa tour | Admin, Vendor | Xóa tour cần xóa `TourPoi` |
+| `TourPoi` | Thêm POI vào tour | Sửa `SortOrder` | Gỡ POI khỏi tour | Admin, Vendor | Bảng mapping N-N |
+| `TourTranslation` | Tạo bản dịch tour | Sửa nội dung | Xóa bản dịch tour | Admin, Vendor | Tương tự POI translation |
+| `Food` | Tạo điểm ăn uống | Sửa nội dung/vị trí | Xóa | Admin, Vendor | Có thể mở rộng translation sau |
+| `PlayLog` | Ghi log nghe | Không sửa | Không xóa thủ công | System | Dữ liệu thống kê |
+| `HeatmapEntry` | Ghi điểm nhiệt | Không sửa | Không xóa thủ công | System | Dữ liệu thống kê |
+| `RouteSession` | Tạo phiên route | Cập nhật thời gian kết thúc | Không xóa thủ công | System | Đồng bộ từ app |
+| `RouteSessionPoi` | Ghi điểm đi qua | Không sửa | Không xóa thủ công | System | Chi tiết route |
+| `AspNetUsers` | Tạo user | Sửa profile/trạng thái | Khóa hoặc xóa user | Admin | Nên khóa thay vì hard delete |
+| `AspNetRoles` | Tạo role | Sửa tên role | Xóa role | Admin | Chỉ xóa khi role không còn gán |
+| `AspNetUserRoles` | Gán role cho user | Đổi role | Thu hồi role | Admin | Quản trị phân quyền |
+
+### 8.5 Quy tắc xóa dữ liệu (Delete Policy)
+- **Xóa POI:** bắt buộc xóa/gỡ dữ liệu phụ thuộc (`PoiImage`, `PoiTranslation`, `TourPoi`) trước khi xóa bản ghi `Poi`.
+- **Xóa Tour:** bắt buộc xóa mapping `TourPoi` trước.
+- **Xóa Language:** ưu tiên chuyển trạng thái `IsActive=false`, không hard delete để tránh mồ côi translation.
+- **Xóa User:** ưu tiên khóa tài khoản thay vì xóa cứng để giữ lịch sử thao tác.
+- **Analytics (`PlayLog`, `HeatmapEntry`, `RouteSession*`):** không cho xóa thủ công trong luồng vận hành thường ngày.
+
 ## 9. Thiết kế analytics
 ### 9.1 Chỉ số theo dõi
 - Lượt nghe theo POI, theo ngôn ngữ, theo khung giờ.
@@ -432,6 +459,105 @@ flowchart LR
     System --- UC17
     System --- UC18
     System --- UC19
+```
+
+### 11.2 Use Case CRUD cho nhóm quản trị nội dung (chi tiết)
+```mermaid
+flowchart TB
+    Admin((Admin))
+    Vendor((Vendor))
+
+    subgraph POI_Module[POI Module]
+      C1[Create POI]
+      R1[Read POI]
+      U1[Update POI]
+      D1[Delete POI]
+      C2[Create POI Translation]
+      U2[Update POI Translation]
+      D2[Delete POI Translation]
+      C3[Upload POI Image]
+      U3[Set Primary Image]
+      D3[Delete POI Image]
+    end
+
+    subgraph TOUR_Module[Tour Module]
+      C4[Create Tour]
+      R4[Read Tour]
+      U4[Update Tour]
+      D4[Delete Tour]
+      C5[Add POI to Tour]
+      U5[Reorder TourPoi]
+      D5[Remove POI from Tour]
+    end
+
+    subgraph FOOD_Module[Food Module]
+      C6[Create Food]
+      R6[Read Food]
+      U6[Update Food]
+      D6[Delete Food]
+      C7[Gắn vị trí Food trên bản đồ]
+      U7[Cập nhật ảnh/mô tả Food]
+    end
+
+    Vendor --> C1
+    Vendor --> R1
+    Vendor --> U1
+    Vendor --> D1
+    Vendor --> C2
+    Vendor --> U2
+    Vendor --> D2
+    Vendor --> C3
+    Vendor --> U3
+    Vendor --> D3
+    Vendor --> C4
+    Vendor --> R4
+    Vendor --> U4
+    Vendor --> D4
+    Vendor --> C5
+    Vendor --> U5
+    Vendor --> D5
+    Vendor --> C6
+    Vendor --> R6
+    Vendor --> U6
+    Vendor --> D6
+    Vendor --> C7
+    Vendor --> U7
+
+    Admin --> C1
+    Admin --> R1
+    Admin --> U1
+    Admin --> D1
+    Admin --> C4
+    Admin --> R4
+    Admin --> U4
+    Admin --> D4
+    Admin --> C6
+    Admin --> R6
+    Admin --> U6
+    Admin --> D6
+```
+
+### 11.3 Use Case CRUD cho quản trị hệ thống
+```mermaid
+flowchart LR
+    Admin((Admin))
+    U1[Create User]
+    U2[Update User]
+    U3[Deactivate/Delete User]
+    R1[Create Role]
+    R2[Update Role]
+    R3[Delete Role]
+    M1[Assign Role]
+    M2[Revoke Role]
+
+    Admin --> U1
+    Admin --> U2
+    Admin --> U3
+    Admin --> R1
+    Admin --> R2
+    Admin --> R3
+    Admin --> M1
+    Admin --> M2
 ```
 
 ## 12. Sequence diagram
@@ -556,6 +682,99 @@ sequenceDiagram
     API-->>CMS: Trả kết quả thành công
 ```
 
+### 12.6 Sequence: Sửa POI (Update đầy đủ)
+```mermaid
+sequenceDiagram
+    actor V as Vendor/Admin
+    participant CMS as CMS
+    participant API as Backend API
+    participant DB as PostgreSQL
+
+    V->>CMS: Mở form Edit POI
+    CMS->>API: GET /poi/{id}
+    API->>DB: Lấy dữ liệu POI hiện tại
+    API-->>CMS: Trả dữ liệu
+    V->>CMS: Sửa tên/mô tả/tọa độ/category
+    CMS->>API: PUT /poi/{id}
+    API->>DB: Validate + cập nhật POI
+    alt Có thay đổi nội dung dịch/TTS
+        API->>DB: Cập nhật PoiTranslation
+        API->>API: Đánh dấu cần regenerate audio
+    end
+    API-->>CMS: 200 OK + dữ liệu mới
+```
+
+### 12.7 Sequence: Xóa POI (Delete có kiểm soát ràng buộc)
+```mermaid
+sequenceDiagram
+    actor A as Admin/Vendor
+    participant CMS as CMS
+    participant API as Backend API
+    participant DB as PostgreSQL
+    participant CLD as Cloudinary
+
+    A->>CMS: Bấm xóa POI
+    CMS->>API: DELETE /poi/{id}
+    API->>DB: Kiểm tra ràng buộc TourPoi/Translation/Image
+    API->>DB: Xóa TourPoi liên quan
+    API->>DB: Lấy danh sách audio để dọn
+    API->>CLD: Xóa audio files (nếu có)
+    API->>DB: Xóa PoiTranslation + PoiImage + Poi
+    API-->>CMS: 200 OK
+```
+
+### 12.8 Sequence: CRUD Tour + TourPoi
+```mermaid
+sequenceDiagram
+    actor V as Vendor/Admin
+    participant CMS as CMS
+    participant API as Backend API
+    participant DB as PostgreSQL
+
+    V->>CMS: Tạo/Sửa tour
+    alt Create tour
+        CMS->>API: POST /tour
+        API->>DB: Insert Tour
+    else Update tour
+        CMS->>API: PUT /tour/{id}
+        API->>DB: Update Tour
+    end
+    V->>CMS: Thêm/Xóa/Sắp xếp POI trong tour
+    CMS->>API: POST/DELETE/PUT /tour/{id}/pois
+    API->>DB: Upsert/Delete TourPoi theo thao tác
+    API-->>CMS: Trả danh sách TourPoi mới
+```
+
+### 12.9 Sequence: CRUD Food (thêm/sửa/xóa đầy đủ)
+```mermaid
+sequenceDiagram
+    actor V as Vendor/Admin
+    participant CMS as CMS
+    participant API as Backend API
+    participant DB as PostgreSQL
+
+    V->>CMS: Mở module Food
+    alt Tạo Food
+        V->>CMS: Nhập tên, mô tả, tọa độ, ảnh
+        CMS->>API: POST /api/foods
+        API->>DB: Insert Food
+        API-->>CMS: Trả Food mới
+    else Sửa Food
+        CMS->>API: GET /api/foods/{id}
+        API->>DB: Lấy dữ liệu Food
+        API-->>CMS: Trả dữ liệu hiện tại
+        V->>CMS: Cập nhật thông tin
+        CMS->>API: PUT /api/foods/{id}
+        API->>DB: Update Food
+        API-->>CMS: 200 OK
+    else Xóa Food
+        V->>CMS: Xác nhận xóa
+        CMS->>API: DELETE /api/foods/{id}
+        API->>DB: Delete Food
+        API-->>CMS: 200 OK
+    end
+```
+
 ## 13. Activity diagram
 ### 13.1 Activity: Luồng vào app bằng QR Gate
 ```mermaid
@@ -624,6 +843,96 @@ flowchart TD
     I -- Hết --> J[Kết thúc đồng bộ]
 ```
 
+### 13.5 Activity: Quản trị CRUD POI (thêm/sửa/xóa)
+```mermaid
+flowchart TD
+    A[Vào module POI] --> B{Chọn thao tác}
+    B -- Thêm --> C[Nhập form Create]
+    C --> D{Hợp lệ?}
+    D -- Không --> C
+    D -- Có --> E[Lưu POI + sinh translation/audio]
+    E --> Z[Kết thúc]
+
+    B -- Sửa --> F[Mở form Edit]
+    F --> G[Cập nhật dữ liệu]
+    G --> H{Hợp lệ?}
+    H -- Không --> G
+    H -- Có --> I[Lưu cập nhật + đánh dấu regenerate nếu cần]
+    I --> Z
+
+    B -- Xóa --> J[Xác nhận xóa]
+    J --> K{Có ràng buộc?}
+    K -- Có --> L[Hiển thị cảnh báo/ xử lý bảng con]
+    L --> M[Xóa dữ liệu phụ thuộc]
+    M --> N[Xóa POI]
+    K -- Không --> N
+    N --> Z
+```
+
+### 13.6 Activity: CRUD Tour và gán POI
+```mermaid
+flowchart TD
+    A[Mở module Tour] --> B{Tạo hay sửa tour?}
+    B -- Tạo --> C[Nhập thông tin tour]
+    C --> D[Lưu tour mới]
+    B -- Sửa --> E[Chỉnh sửa thông tin tour]
+    E --> F[Lưu tour]
+    D --> G[Quản lý danh sách POI trong tour]
+    F --> G
+    G --> H{Thao tác TourPoi}
+    H -- Thêm --> I[Add POI]
+    H -- Sắp xếp --> J[Update SortOrder]
+    H -- Xóa --> K[Remove POI]
+    I --> L[Lưu mapping]
+    J --> L
+    K --> L
+    L --> M[Kết thúc]
+```
+
+### 13.7 Activity: Quản trị User/Role (Admin)
+```mermaid
+flowchart TD
+    A[Admin vào User Management] --> B{Thao tác}
+    B -- Tạo user --> C[Nhập thông tin user]
+    C --> D[Lưu user]
+    B -- Sửa user --> E[Cập nhật profile/trạng thái]
+    E --> F[Lưu user]
+    B -- Khóa/Xóa user --> G[Xác nhận]
+    G --> H[Khóa hoặc xóa]
+    B -- Tạo role --> I[Nhập role]
+    I --> J[Lưu role]
+    B -- Gán role --> K[Chọn user + role]
+    K --> L[Lưu AspNetUserRoles]
+    D --> M[Kết thúc]
+    F --> M
+    H --> M
+    J --> M
+    L --> M
+```
+
+### 13.8 Activity: CRUD Food (đầy đủ thao tác)
+```mermaid
+flowchart TD
+    A[Vào module Food] --> B{Chọn thao tác}
+    B -- Thêm --> C[Nhập tên, mô tả, tọa độ, ảnh]
+    C --> D{Hợp lệ?}
+    D -- Không --> C
+    D -- Có --> E[Lưu Food]
+    E --> Z[Kết thúc]
+
+    B -- Sửa --> F[Chọn Food cần sửa]
+    F --> G[Cập nhật nội dung]
+    G --> H{Hợp lệ?}
+    H -- Không --> G
+    H -- Có --> I[Lưu cập nhật]
+    I --> Z
+
+    B -- Xóa --> J[Chọn Food cần xóa]
+    J --> K[Xác nhận xóa]
+    K --> L[Xóa bản ghi Food]
+    L --> Z
+```
+
 ## 14. Data Flow Diagram (DFD Level 1)
 ```mermaid
 flowchart LR
@@ -636,12 +945,14 @@ flowchart LR
     P4((P4 Quản trị nội dung CMS))
     P5((P5 Tạo/Sinh lại audio))
     P6((P6 Đồng bộ dữ liệu offline))
+    P7((P7 Quản lý Food))
 
     D1[(D1 Session QR 7 ngày)]
     D2[(D2 Master Data POI/Tour/Language)]
     D3[(D3 Audio URLs + Media)]
     D4[(D4 PlayLog/Heatmap/Route)]
     D5[(D5 Local cache map/audio)]
+    D6[(D6 Master Data Food)]
 
     EXT1[(Azure Speech)]
     EXT2[(Cloudinary)]
@@ -653,6 +964,7 @@ flowchart LR
     Traveler --> P6
     Vendor --> P4
     Vendor --> P5
+    Vendor --> P7
 
     P1 <--> D1
     P2 <--> D2
@@ -663,12 +975,14 @@ flowchart LR
     P5 <--> D3
     P6 <--> D4
     P6 <--> D5
+    P7 <--> D6
 
     P4 <--> EXT3
     P5 <--> EXT1
     P5 <--> EXT2
     P3 <--> EXT3
     P2 <--> EXT3
+    P7 <--> EXT3
 ```
 
 ## 15. UI wireframe (MVP)
@@ -687,6 +1001,7 @@ flowchart LR
 - **POI/Index:** danh sách POI, QR code từng POI.
 - **POI/Create/Edit:** thông tin chính, mô tả, tọa độ, ảnh.
 - **Tour/Index & Details:** CRUD tour, số POI trong tour.
+- **Food/Index & Food/Create/Edit:** CRUD điểm ăn uống, vị trí, mô tả, ảnh.
 - **Translation/Details:** xem bản dịch và nghe audio từng ngôn ngữ.
 - **Heatmap/Index:** bản đồ nhiệt và số liệu quan tâm.
 
@@ -713,6 +1028,13 @@ flowchart LR
 - `POST /api/heatmap/entry`
 - `GET /api/heatmap`
 
+### 16.5 Food
+- `GET /api/foods`
+- `GET /api/foods/{id}`
+- `POST /api/foods`
+- `PUT /api/foods/{id}`
+- `DELETE /api/foods/{id}`
+
 ## 17. Bảo mật
 - Dùng Identity để xác thực và phân quyền role `Admin`, `Vendor`.
 - Không commit key thật (`Cloudinary`, `Azure Speech`, DB).
@@ -737,6 +1059,7 @@ Checklist nghiệm thu theo chức năng:
 - [ ] App không ANR khi quét QR.
 - [ ] Offline map/audio chạy được khi tắt mạng.
 - [ ] Pending queue được sync lại khi có mạng.
+- [ ] CRUD Food hoạt động đủ thêm/sửa/xóa trên CMS.
 
 ## 20. Future
 - Gợi ý lịch trình cá nhân hóa theo sở thích.
@@ -760,3 +1083,4 @@ Checklist nghiệm thu theo chức năng:
 | 5.0 | 2026-04-09 | Bản rút gọn để thuyết trình nhanh |
 | 6.0 | 2026-04-09 | Chuẩn hóa 22 mục |
 | 6.1 | 2026-04-09 | Khôi phục tiếng Việt có dấu + mở rộng đầy đủ mô hình ERD/Use Case/Sequence/Activity/DFD |
+| 6.2 | 2026-04-09 | Bổ sung đầy đủ mô hình chức năng Food: CRUD ở Use Case, Sequence, Activity, DFD, UI, API và nghiệm thu |
