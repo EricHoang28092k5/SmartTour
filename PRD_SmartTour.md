@@ -511,24 +511,63 @@ flowchart TB
 
 ## 17. ERD model
 
-### 17.1 ERD khái niệm
+### 17.1 ERD đầy đủ theo DB đang sử dụng
+
+Nguồn tổng hợp: toàn bộ `DbSet<>` trong `SmartTourBackend/Data/AppDbContext.cs` + nhóm bảng Identity do kế thừa `IdentityDbContext<IdentityUser>`.
 
 ```mermaid
 erDiagram
+    %% Core POI domain
     POI ||--o{ POI_TRANSLATION : has
     LANGUAGE ||--o{ POI_TRANSLATION : defines
     POI ||--o{ FOOD : has
     POI ||--o{ PLAY_LOG : tracks
     ROUTE_SESSION ||--o{ ROUTE_SESSION_POI : contains
     POI ||--o{ ROUTE_SESSION_POI : links
+    CATEGORY ||--o{ POI : classifies
+    POI ||--o{ POI_IMAGE : has
+    POI ||--o{ AUDIO_FILE : has
+    LANGUAGE ||--o{ AUDIO_FILE : typed_by
+    POI ||--o{ HEATMAP_ENTRY : heat_events
+    POI ||--o{ QR_CODE : has
+    POI ||--o{ IMAGE : has
+    POI ||--o{ USER_LOCATION_LOG : location_events
+
+    %% Tour domain
+    TOUR ||--o{ TOUR_POI : includes
+    POI ||--o{ TOUR_POI : appears_in
+    TOUR ||--o{ TOUR_TRANSLATION : has
+
+    %% Identity/Auth domain
+    ASPNET_USERS ||--o{ ASPNET_USER_ROLES : has
+    ASPNET_ROLES ||--o{ ASPNET_USER_ROLES : grants
+    ASPNET_USERS ||--o{ ASPNET_USER_CLAIMS : has
+    ASPNET_USERS ||--o{ ASPNET_USER_LOGINS : has
+    ASPNET_USERS ||--o{ ASPNET_USER_TOKENS : has
+    ASPNET_ROLES ||--o{ ASPNET_ROLE_CLAIMS : has
 
     POI {
       int Id PK
       string Name
+      double Lat
+      double Lng
+      int Radius
       string Description
+      string ImageUrl
+      string AudioUrl
+      string TtsScript
+      int Priority
+      bool IsActive
+      int CategoryId FK
+      string VendorId
       datetime CreatedAt
-      decimal Latitude
-      decimal Longitude
+      datetime UpdatedAt
+    }
+
+    APP_SETTING {
+      int Id PK
+      string SettingKey
+      string SettingValue
     }
 
     LANGUAGE {
@@ -545,7 +584,6 @@ erDiagram
       string Description
       string TtsScript
       string AudioUrl
-      datetime CreatedAt
     }
 
     FOOD {
@@ -567,17 +605,146 @@ erDiagram
 
     ROUTE_SESSION {
       int Id PK
-      string SessionCode
+      string DeviceId
+      string PoiSequence
+      int StopCount
       datetime StartedAt
       datetime EndedAt
+      int DurationMinutes
+      string Status
     }
 
     ROUTE_SESSION_POI {
       int Id PK
       int RouteSessionId FK
       int PoiId FK
-      int VisitOrder
-      datetime ArrivedAt
+      int OrderIndex
+      string TriggerType
+      datetime TriggeredAt
+      int DwellSeconds
+    }
+
+    CATEGORY {
+      int Id PK
+      string Name
+      string Description
+      string IconUrl
+      string ColorCode
+    }
+
+    POI_IMAGE {
+      int Id PK
+      int PoiId FK
+      string ImageUrl
+    }
+
+    AUDIO_FILE {
+      int Id PK
+      int PoiId FK
+      int LanguageId FK
+      string FileUrl
+      int Duration
+      string AudioType
+      string VendorId
+    }
+
+    IMAGE {
+      int Id PK
+      int PoiId FK
+      string ImageUrl
+      string Caption
+    }
+
+    USER_LOCATION_LOG {
+      long Id PK
+      int UserId
+      decimal Latitude
+      decimal Longitude
+      datetime Timestamp
+    }
+
+    HEATMAP_ENTRY {
+      int Id PK
+      int PoiId FK
+      string DeviceId
+      datetime RecordedAt
+      string TriggerType
+      double Lat
+      double Lng
+    }
+
+    QR_CODE {
+      int Id PK
+      int PoiId FK
+      string QrToken
+      string LocationName
+    }
+
+    TOUR {
+      int Id PK
+      string Name
+      string Description
+      datetime CreatedAt
+      string CreatedBy
+      string VendorId
+    }
+
+    TOUR_POI {
+      int Id PK
+      int TourId FK
+      int PoiId FK
+      int OrderIndex
+    }
+
+    TOUR_TRANSLATION {
+      int Id PK
+      int TourId FK
+      string LanguageCode
+      string Name
+      string Description
+    }
+
+    ASPNET_USERS {
+      string Id PK
+      string UserName
+      string Email
+    }
+
+    ASPNET_ROLES {
+      string Id PK
+      string Name
+    }
+
+    ASPNET_USER_ROLES {
+      string UserId FK
+      string RoleId FK
+    }
+
+    ASPNET_USER_CLAIMS {
+      int Id PK
+      string UserId FK
+      string ClaimType
+      string ClaimValue
+    }
+
+    ASPNET_ROLE_CLAIMS {
+      int Id PK
+      string RoleId FK
+      string ClaimType
+      string ClaimValue
+    }
+
+    ASPNET_USER_LOGINS {
+      string LoginProvider PK
+      string ProviderKey PK
+      string UserId FK
+    }
+
+    ASPNET_USER_TOKENS {
+      string UserId FK
+      string LoginProvider PK
+      string Name PK
+      string Value
     }
 ```
 
@@ -587,12 +754,20 @@ erDiagram
 - Cặp (`PoiId`, `LanguageId`) trong `PoiTranslation` là unique.
 - `AudioUrl` cho phép null trong giai đoạn chưa generate.
 - `PlayLog.PlayedAt` bắt buộc để thống kê theo thời gian.
+- Cặp (`TourId`, `PoiId`) trong `TourPoi` là unique theo nghiệp vụ.
+- `TourTranslation.LanguageCode` nên unique theo từng `TourId`.
+- `CategoryId` trong `Poi` nên dùng FK mềm/cứng tùy chiến lược migration.
+- `AppSetting.SettingKey` nên unique để tránh ghi đè cấu hình.
+- Nhóm bảng `AspNet*` tuân theo khóa/chỉ mục mặc định của ASP.NET Identity.
 
 ### 17.3 Data quality rules
 
 - Nếu `TtsScript` rỗng thì fallback `Description`.
 - Nếu cả hai rỗng thì bỏ qua generate audio và gắn cảnh báo.
 - Khi xóa `Poi`, cần cascade hoặc soft-delete nhất quán cho translation/food/playlog.
+- `TourPoi.OrderIndex` cần liên tục để đảm bảo thứ tự tuyến.
+- `RouteSessionPoi.TriggerType` chỉ nhận giá trị hợp lệ (`dwell`, `audio_manual`).
+- `UserLocationLog` và `HeatmapEntry` cần policy dọn dữ liệu định kỳ để tránh phình DB.
 
 ---
 
