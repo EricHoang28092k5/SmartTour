@@ -1,0 +1,37 @@
+@{
+    var deepLink = (string)ViewBag.DeepLink;
+    var type = (string)ViewBag.Type;
+    var id = (int)ViewBag.Id;
+    ViewData["Title"] = "Mở SmartTour";
+}
+
+<!doctype html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@ViewData["Title"]</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; background: #f6f7fb; color: #1b1f2a; }
+        .wrap { max-width: 520px; margin: 48px auto; background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 8px 24px rgba(0,0,0,.08); }
+        .btn { display: inline-block; margin-top: 12px; background: #2563eb; color: #fff; text-decoration: none; padding: 10px 14px; border-radius: 8px; }
+        .muted { color: #6b7280; font-size: 14px; }
+        code { background: #f1f5f9; padding: 2px 6px; border-radius: 6px; }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <h2>Mở ứng dụng SmartTour</h2>
+        <p>Đang mở <strong>@type.ToUpper()</strong> ID <strong>@id</strong> trong app...</p>
+        <p class="muted">Nếu app không tự mở, nhấn nút bên dưới:</p>
+        <a class="btn" href="@deepLink">Mở SmartTour</a>
+        <p class="muted">Deep link: <code>@deepLink</code></p>
+    </div>
+
+    <script>
+        // Tự mở app sau khi trang QR trung gian được tải
+        window.location.href = "@deepLink";
+    </script>
+</body>
+</html>
+
