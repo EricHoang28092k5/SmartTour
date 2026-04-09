@@ -42,7 +42,6 @@ public class NarrationEngine
         this.coordinator = coordinator;
     }
 
-    // 🔥 FIX: thêm force
     public async Task Play(Poi? poi, Location location, bool force = false)
     {
         if (poi == null) return;
@@ -52,9 +51,6 @@ public class NarrationEngine
             (DateTime.Now - history[poi.Id]).TotalMinutes < COOLDOWN_MINUTES)
             return;
 
-        // ── Đăng ký với coordinator; nếu có nguồn khác đang phát, nó sẽ bị stop ──
-        // Auto-play: đăng ký AudioSource.Auto
-        // Callback stop của chính mình để khi bị preempt coordinator gọi được
         coordinator.RequestPlay(AudioSource.Auto, () => StopInternal());
 
         CancellationTokenSource localCts;
@@ -79,41 +75,64 @@ public class NarrationEngine
 
             if (selected == null) return;
 
-            // Kiểm tra lại sau await — có thể bị preempt bởi manual play trong lúc fetch scripts
             if (token.IsCancellationRequested) return;
             if (!coordinator.IsActiveSource(AudioSource.Auto)) return;
 
-            bool played = false;
-
-            // 🔥 Start tracking
             tracker.StartSession(poi.Id, location.Latitude, location.Longitude);
 
-            if (!string.IsNullOrWhiteSpace(poi.AudioUrl))
+            bool played = false;
+
+            // ── 🔥 Ưu tiên 1: AudioUrl từ Cloudinary (nếu có wifi) ──
+            if (!string.IsNullOrWhiteSpace(selected.AudioUrl))
             {
                 try
                 {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[Narration] ▶ Cloudinary audio: {selected.AudioUrl}");
+                    await audio.Play(selected.AudioUrl!, token);
+                    played = true;
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[Narration] Cloudinary play failed, fallback TTS: {ex.Message}");
+                }
+            }
+
+            // ── Ưu tiên 2: audioUrl cũ trên POI object (legacy field) ──
+            if (!played && !string.IsNullOrWhiteSpace(poi.AudioUrl))
+            {
+                try
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[Narration] ▶ Legacy POI.AudioUrl: {poi.AudioUrl}");
                     await audio.Play(poi.AudioUrl, token);
                     played = true;
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[Narration] Legacy audio failed, fallback TTS: {ex.Message}");
+                }
             }
 
+            // ── Ưu tiên 3: TtsScript (offline — device TTS) ──
             if (!played && !string.IsNullOrWhiteSpace(selected.TtsScript))
             {
                 if (!token.IsCancellationRequested &&
                     coordinator.IsActiveSource(AudioSource.Auto))
                 {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[Narration] ▶ TTS fallback: {selected.LanguageCode}");
                     await tts.Speak(selected.TtsScript, selected.LanguageCode, token);
                 }
             }
 
-            // 🔥 Stop tracking — audio completed naturally
             tracker.StopSession();
             coordinator.NotifyStop(AudioSource.Auto);
 
             history[poi.Id] = DateTime.Now;
 
-            // Legacy log (no duration — tracker handles the full log)
             db.AddLog(new PlayLog
             {
                 PoiId = poi.Id,
@@ -124,7 +143,6 @@ public class NarrationEngine
         }
         catch (OperationCanceledException)
         {
-            // 🔥 Cancelled (bị preempt hoặc stop thủ công) — flush accumulated time
             tracker.StopSession();
             coordinator.NotifyStop(AudioSource.Auto);
         }
@@ -134,7 +152,6 @@ public class NarrationEngine
     {
         if (poi == null) return;
 
-        // ── Manual từ HomePage luôn thắng auto-play ──
         coordinator.RequestPlay(AudioSource.HomeManual, () => StopInternal());
 
         CancellationTokenSource localCts;
@@ -155,31 +172,55 @@ public class NarrationEngine
             var selected = SelectLang(scripts);
 
             if (selected == null) return;
-
             if (token.IsCancellationRequested) return;
+
+            tracker.StartSession(poi.Id, location.Latitude, location.Longitude);
 
             bool played = false;
 
-            // 🔥 Start tracking
-            tracker.StartSession(poi.Id, location.Latitude, location.Longitude);
+            // ── 🔥 Ưu tiên 1: AudioUrl Cloudinary ──
+            if (!string.IsNullOrWhiteSpace(selected.AudioUrl))
+            {
+                try
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[Narration/Manual] ▶ Cloudinary audio: {selected.AudioUrl}");
+                    await audio.Play(selected.AudioUrl!, token);
+                    played = true;
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[Narration/Manual] Cloudinary failed, fallback: {ex.Message}");
+                }
+            }
 
-            if (!string.IsNullOrWhiteSpace(poi.AudioUrl))
+            // ── Ưu tiên 2: Legacy POI.AudioUrl ──
+            if (!played && !string.IsNullOrWhiteSpace(poi.AudioUrl))
             {
                 try
                 {
                     await audio.Play(poi.AudioUrl, token);
                     played = true;
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[Narration/Manual] Legacy audio failed: {ex.Message}");
+                }
             }
 
+            // ── Ưu tiên 3: TtsScript (offline) ──
             if (!played && !string.IsNullOrWhiteSpace(selected.TtsScript))
             {
                 if (!token.IsCancellationRequested)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[Narration/Manual] ▶ TTS fallback: {selected.LanguageCode}");
                     await tts.Speak(selected.TtsScript, selected.LanguageCode, token);
+                }
             }
 
-            // 🔥 Completed naturally
             tracker.StopSession();
             coordinator.NotifyStop(AudioSource.HomeManual);
 
@@ -199,7 +240,6 @@ public class NarrationEngine
         coordinator.NotifyStop(AudioSource.HomeManual);
     }
 
-    // Dùng nội bộ để không double-notify coordinator
     private void StopInternal()
     {
         cts?.Cancel();
@@ -217,7 +257,6 @@ public class NarrationEngine
         cts?.Cancel();
         tracker.StopSession();
 
-        // 🔥 FIX
         audio.Stop();
         tts.Stop();
 
@@ -230,6 +269,7 @@ public class NarrationEngine
         {
             try
             {
+                // 🔥 GetTtsScripts đã gọi API mới bên trong, trả về TtsDto có AudioUrl
                 var scripts = await api.GetTtsScripts(poi.Id);
                 ttsCache[poi.Id] = scripts ?? new();
             }

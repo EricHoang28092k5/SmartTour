@@ -36,7 +36,7 @@ public static class MauiProgram
 
         builder.Services.AddSingleton<AudioListenTracker>();
 
-        // 🔥 AudioCoordinator: singleton điều phối tránh xung đột NarrationEngine vs ExoPlayer
+        // AudioCoordinator: singleton điều phối tránh xung đột NarrationEngine vs ExoPlayer
         builder.Services.AddSingleton<AudioCoordinator>();
 
         builder.Services.AddSingleton<NarrationEngine>();
@@ -52,16 +52,17 @@ public static class MauiProgram
         builder.Services.AddSingleton<TtsService>();
         builder.Services.AddSingleton<LocationLogger>();
 
-        // 🔥 HeatmapService: singleton để giữ state machine (zones, cooldown) suốt vòng đời app
+        // HeatmapService: singleton giữ state machine (zones, cooldown)
         builder.Services.AddSingleton<HeatmapService>();
 
-        // 🔥 RouteTrackingService: singleton để giữ state machine tuyến đi suốt vòng đời app
+        // RouteTrackingService: singleton giữ state machine tuyến đi
         builder.Services.AddSingleton<RouteTrackingService>();
 
         builder.Services.AddSingleton<TrackingService>();
         builder.Services.AddSingleton<OfflineService>();
         builder.Services.AddSingleton<LanguageService>();
 
+        // 🔥 PoiDetailAudioManager nhận thêm AudioService để stream Cloudinary URL
         builder.Services.AddSingleton<PoiDetailAudioManager>();
 
         builder.Services.AddSingleton<SettingsPage>();

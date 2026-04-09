@@ -27,10 +27,62 @@ public class ApiService
         }
     }
 
+    // ══════════════════════════════════════════════════════════════════
+    // 🔥 AUDIO API MỚI — GET /api/audio/poi/{poiId}
+    // Trả về audioUrl (Cloudinary) + ttsScript cho từng ngôn ngữ
+    // Logic ưu tiên: audioUrl (wifi/online) → ttsScript (offline fallback)
+    // ══════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Lấy danh sách audio tracks đầy đủ cho POI.
+    /// Mỗi track có cả <c>AudioUrl</c> (Cloudinary MP3) lẫn <c>TtsScript</c> để fallback.
+    /// </summary>
+    public async Task<PoiAudioResponse?> GetPoiAudios(int poiId)
+    {
+        try
+        {
+            return await http.GetFromJsonAsync<PoiAudioResponse>($"api/audio/poi/{poiId}");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[AudioAPI] GetPoiAudios({poiId}) error: {ex.Message}");
+            return null;
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // BACKWARD-COMPAT — giữ nguyên signature để không ảnh hưởng file khác
+    // Nội bộ đã gọi API mới và map sang TtsDto (có thêm AudioUrl)
+    // ══════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// [Backward-compat] Giữ nguyên để NarrationEngine / PoiDetailAudioManager
+    /// không cần sửa signature. Nội bộ gọi <see cref="GetPoiAudios"/> mới.
+    /// TtsDto giờ có thêm <c>AudioUrl</c> — callers có thể dùng hoặc bỏ qua.
+    /// </summary>
     public async Task<List<TtsDto>> GetTtsScripts(int poiId)
     {
-        var res = await http.GetFromJsonAsync<TtsResponse>($"api/pois/{poiId}/tts-all");
-        return res?.Data ?? new List<TtsDto>();
+        try
+        {
+            var res = await GetPoiAudios(poiId);
+            if (res?.Data != null && res.Data.Count > 0)
+            {
+                return res.Data.Select(d => new TtsDto
+                {
+                    LanguageCode = d.LanguageCode,
+                    LanguageName = d.LanguageName,
+                    Title = d.Title,
+                    TtsScript = d.TtsScript,
+                    AudioUrl = d.AudioUrl
+                }).ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[AudioAPI] GetTtsScripts({poiId}) error: {ex.Message}");
+        }
+
+        return new List<TtsDto>();
     }
 
     /// <summary>
@@ -57,14 +109,9 @@ public class ApiService
     }
 
     // ══════════════════════════════════════════════════════════════════
-    // 🔥 HEATMAP — ghi nhận lần user bước vào vùng radius của POI
-    // POST /api/heatmap/entry
+    // HEATMAP
     // ══════════════════════════════════════════════════════════════════
 
-    /// <summary>
-    /// Gửi 1 heatmap entry lên server.
-    /// triggerType: "app_open" | "zone_enter"
-    /// </summary>
     public async Task PostHeatmapEntry(HeatmapEntryDto dto)
     {
         try
@@ -74,14 +121,9 @@ public class ApiService
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine("HEATMAP API ERROR: " + ex.Message);
-            // Không throw — heatmap là non-critical
         }
     }
 
-    /// <summary>
-    /// Lấy toàn bộ heatmap aggregated data (poiId + sum) để render trên map.
-    /// GET /api/heatmap
-    /// </summary>
     public async Task<HeatmapResponse?> GetHeatmap()
     {
         try
@@ -96,23 +138,14 @@ public class ApiService
     }
 
     // ══════════════════════════════════════════════════════════════════
-    // 🔥 ROUTE TRACKING — ghi nhận tuyến đi của user
-    // POST /api/routes/session
+    // ROUTE TRACKING
     // ══════════════════════════════════════════════════════════════════
 
-    /// <summary>
-    /// Gửi một route session hoàn chỉnh lên server.
-    /// Chỉ được gọi khi session có ít nhất 2 POI (đã kiểm tra phía client).
-    /// </summary>
     public async Task PostRouteSession(RouteSessionDto dto)
     {
         await http.PostAsJsonAsync("api/routes/session", dto);
     }
 
-    /// <summary>
-    /// Lấy danh sách các tuyến đi phổ biến (dùng cho analytics/admin).
-    /// GET /api/routes/popular
-    /// </summary>
     public async Task<RouteAnalyticsResponse?> GetPopularRoutes()
     {
         try
@@ -126,21 +159,50 @@ public class ApiService
         }
     }
 
-    // ─── Response models ───────────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════
+    // RESPONSE / DTO MODELS
+    // ══════════════════════════════════════════════════════════════════
 
-    public class TtsResponse
+    /// <summary>Response của GET /api/audio/poi/{id}</summary>
+    public class PoiAudioResponse
     {
         public bool Success { get; set; }
         public int PoiId { get; set; }
-        public List<TtsDto> Data { get; set; } = new();
+        public int Total { get; set; }
+        public int WithAudio { get; set; }
+        public List<AudioTrackDto> Data { get; set; } = new();
     }
 
+    /// <summary>Một ngôn ngữ trong response audio mới.</summary>
+    public class AudioTrackDto
+    {
+        public int TranslationId { get; set; }
+        public string LanguageCode { get; set; } = "";
+        public string LanguageName { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string TtsScript { get; set; } = "";
+        /// <summary>Cloudinary URL — null nếu chưa generate server-side.</summary>
+        public string? AudioUrl { get; set; }
+    }
+
+    /// <summary>
+    /// TtsDto mở rộng — thêm <c>AudioUrl</c> nhưng vẫn backward-compatible.
+    /// </summary>
     public class TtsDto
     {
         public string LanguageCode { get; set; } = "";
         public string LanguageName { get; set; } = "";
         public string Title { get; set; } = "";
         public string TtsScript { get; set; } = "";
+        /// <summary>🔥 Mới: Cloudinary MP3 URL. Null nếu chưa có.</summary>
+        public string? AudioUrl { get; set; }
+    }
+
+    public class TtsResponse
+    {
+        public bool Success { get; set; }
+        public int PoiId { get; set; }
+        public List<TtsDto> Data { get; set; } = new();
     }
 
     public class HeatmapResponse
@@ -156,10 +218,7 @@ public class ApiService
         public string PoiName { get; set; } = "";
         public double Lat { get; set; }
         public double Lng { get; set; }
-
-        /// <summary>Tổng số lần user bước vào radius của POI này.</summary>
         public int Sum { get; set; }
-
         public int AppOpenCount { get; set; }
         public int ZoneEnterCount { get; set; }
         public DateTime LastRecordedAt { get; set; }
