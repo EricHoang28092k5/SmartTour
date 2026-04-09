@@ -73,8 +73,29 @@ public partial class QrGatePage : ContentPage
     private static bool IsValidGateQr(string value)
     {
         var text = value.Trim();
-        if (text.StartsWith("smarttour://", StringComparison.OrdinalIgnoreCase)) return true;
-        if (text.Contains("/Qr/Open?", StringComparison.OrdinalIgnoreCase)) return true;
+        if (string.IsNullOrWhiteSpace(text)) return false;
+
+        // 1) Chuẩn deep link chính thức
+        if (text.StartsWith("smarttour://poi/", StringComparison.OrdinalIgnoreCase)) return true;
+        if (text.StartsWith("smarttour://tour/", StringComparison.OrdinalIgnoreCase)) return true;
+
+        // 2) Một số scanner trả plain path
+        if (text.StartsWith("poi/", StringComparison.OrdinalIgnoreCase)) return true;
+        if (text.StartsWith("tour/", StringComparison.OrdinalIgnoreCase)) return true;
+
+        // 3) QR URL trung gian/fallback (kể cả chữ hoa/thường khác nhau)
+        if (Uri.TryCreate(text, UriKind.Absolute, out var uri))
+        {
+            var path = (uri.AbsolutePath ?? string.Empty).ToLowerInvariant();
+            var query = (uri.Query ?? string.Empty).ToLowerInvariant();
+
+            if (path.Contains("/qr/open")) return true;
+            if (path.Contains("/poi/")) return true;
+            if (path.Contains("/tour/")) return true;
+            if (query.Contains("type=poi") || query.Contains("type=tour")) return true;
+        }
+
+        // 4) Fallback mềm
         if (text.Contains("smarttour", StringComparison.OrdinalIgnoreCase)) return true;
         return false;
     }
