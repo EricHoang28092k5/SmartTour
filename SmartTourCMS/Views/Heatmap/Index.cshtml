@@ -1,109 +1,160 @@
 ﻿@{
-    ViewData["Title"] = "Bản đồ nhiệt độ tương tác POI";
+    ViewData["Title"] = "Phân tích Tuyến đường & Heatmap";
 }
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
 
-<div class="card shadow mb-4">
-    <div class="card-header py-3 d-flex justify-content-between align-items-center">
-        <h6 class="m-0 font-weight-bold text-primary">Bản đồ nhiệt độ tương tác POI</h6>
-        <button id="btn-find-heatmap" class="btn btn-sm btn-danger">
-            <i class="fa-solid fa-fire"></i> Bay về Sài Gòn xem Heatmap
-        </button>
-    </div>
-    <div class="card-body">
-        <div id="heatmap-container" style="width: 100%; height: 600px; border-radius: 8px;"></div>
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Tuyến người dùng hay đi</h6>
+                </div>
+                <div class="card-body" style="height: 600px; overflow-y: auto;">
+                    <div id="route-list" class="list-group">
+                        <div class="text-center p-5">
+                            <div class="spinner-border text-primary" role="status"></div>
+                            <p class="mt-2">Đang tải dữ liệu...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 font-weight-bold text-primary">Bản đồ tương tác POI</h6>
+                    <button id="btn-reset" class="btn btn-sm btn-outline-primary">Đặt lại bản đồ</button>
+                </div>
+                <div class="card-body p-0">
+                    <div id="map" style="width: 100%; height: 600px; border-radius: 0 0 0.35rem 0.35rem;"></div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
 <script>
-    // Bắt đầu sự kiện tải trang - Đừng có lỡ tay xóa dấu ngoặc của tao!
-    document.addEventListener("DOMContentLoaded", function () {
-        
-    // 1. Khởi tạo bản đồ
-    var map = L.map('heatmap-container');
-
-    // 2. Thêm lớp bản đồ nền
+document.addEventListener("DOMContentLoaded", function () {
+    // 1. Khởi tạo Map
+    var map = L.map('map').setView([10.779, 106.684], 14);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap contributors'
+        attribution: '© OpenStreetMap'
     }).addTo(map);
 
-    // 3. Xin quyền GPS
-    map.locate({setView: true, maxZoom: 16});
+    var currentRouteLayer = null;
 
-    map.on('locationfound', function(e) {
-    console.log("Đã tìm thấy vị trí GPS.");
-    L.marker(e.latlng).addTo(map).bindPopup("<b>Mày đang đứng đây này!</b>").openPopup();
-    });
-
-    map.on('locationerror', function(e) {
-    console.warn("Lỗi GPS, ném về Sài Gòn mặc định.");
-    map.setView([10.779, 106.684], 13);
-    });
-
-    // 4. Sự kiện bấm nút bay về Sài Gòn
-    document.getElementById('btn-find-heatmap').addEventListener('click', function() {
-    map.flyTo([10.779, 106.684], 13);
-    });
-
-    // 5. GỌI API ĐỒNG THỜI (Lấy dữ liệu TẤT CẢ và dữ liệu HEATMAP)
+    // 2. Gọi 3 API cùng lúc (Nhớ check kỹ tên API của mày!)
     Promise.all([
-    fetch('/api/cms-pois').then(res => res.json()),       // Nếu mày đổi cả tên API này
-    fetch('/api/cms-heatmap').then(res => res.json())
+        fetch('/api/cms-pois').then(res => res.json()),
+        fetch('/api/cms-heatmap').then(res => res.json()),
+        fetch('/api/routes/popular?limit=10').then(res => res.json())
     ])
-    .then(([poiRes, heatRes]) => {
+    .then(([poiRes, heatRes, routeRes]) => {
+        console.log("Data nhận về:", { poiRes, heatRes, routeRes });
+
+        // Logic bóc tách dữ liệu an toàn (đề phòng API không có .data)
+        const allPois = poiRes.data || poiRes || [];
+        const heatDataRaw = heatRes.data || heatRes || [];
+        const routes = routeRes.data || routeRes || [];
+
+        // --- VẼ HEATMAP ---
+        if (heatDataRaw.length > 0) {
+            var heatPoints = heatDataRaw.map(h => [h.lat, h.lng, h.sum]);
+            L.heatLayer(heatPoints, { 
+                radius: 40, 
+                blur: 20, 
+                max: 0.5, 
+                minOpacity: 0.4,
+                gradient: { 0.4: 'blue', 0.6: 'lime', 0.8: 'yellow', 1.0: 'red' }
+            }).addTo(map);
+        }
+
+        // --- CẮM MARKER ---
+        allPois.forEach(poi => {
+            L.marker([poi.latitude, poi.longitude])
+             .addTo(map)
+             .bindPopup(`<b>${poi.name}</b>`);
+        });
+
+        // --- ĐỔ DANH SÁCH SANG CỘT TRÁI ---
+        const listContainer = document.getElementById('route-list');
+        listContainer.innerHTML = '';
+
+        if (routes.length > 0) {
+            routes.forEach((route, index) => {
+                // Biến chuỗi "24,3" thành tên POI
+                var ids = route.poiSequence.split(',').map(Number);
+                var names = ids.map(id => {
+                    var found = allPois.find(p => p.id === id);
+                    return found ? found.name : "POI " + id;
+                }).join(" → ");
+
+                var itemHtml = `
+                    <a href="javascript:void(0)" class="list-group-item list-group-item-action mb-2 shadow-sm border-left-primary" 
+                       onclick="drawRoute('${route.poiSequence}', this)">
+                        <div class="fw-bold text-dark" style="font-size: 0.85rem;">${names}</div>
+                        <div class="d-flex justify-content-between mt-1">
+                            <small class="text-primary font-weight-bold">${route.count} lượt đi</small>
+                            <small class="text-muted">Tuyến #${index + 1}</small>
+                        </div>
+                    </a>`;
+                listContainer.innerHTML += itemHtml;
+            });
+        } else {
+            listContainer.innerHTML = '<div class="alert alert-warning">Không có dữ liệu tuyến đường.</div>';
+        }
+
+        // --- HÀM VẼ TUYẾN ĐƯỜNG KHI CLICK ---
+        window.drawRoute = function(sequence, element) {
+            if (currentRouteLayer) map.removeLayer(currentRouteLayer);
             
-    if (poiRes.success && heatRes.success) {
-    var allPois = poiRes.data;
-    var hotPois = heatRes.data;
+            // Highlight item được chọn
+            document.querySelectorAll('.list-group-item').forEach(i => i.classList.remove('active'));
+            element.classList.add('active');
 
-    // A. VẼ HEATMAP (Cho mấy điểm có data)
-    var heatData = hotPois.map(item => [item.lat, item.lng, item.sum]);
-    if (heatData.length > 0) {
-    L.heatLayer(heatData, {
-    radius: 35,         // Bán kính đốm nhiệt (vừa đủ để không che mất icon)
-    blur: 15,           // Độ nhòe (giảm bớt blur để màu nó tập trung, trông sẽ đậm hơn)
-    max: 1.0,           // CHIÊU CUỐI: Để max cực thấp (ví dụ 1.0 hoặc 2.0)
-    minOpacity: 0.5,    // Độ hiển thị tối thiểu (không cho nó mờ quá)
-    gradient: {         // Định nghĩa lại bảng màu cho nó rực rỡ
-    0.2: 'blue',
-    0.4: 'cyan',
-    0.6: 'lime',
-    0.8: 'yellow',
-    1.0: 'red'      // Chỉ cần đạt mốc 1.0 là đỏ rực ngay!
-    }
-    }).addTo(map);
-    }
+            var ids = sequence.split(',').map(Number);
+            var latlngs = ids.map(id => {
+                var p = allPois.find(poi => poi.id === id);
+                return p ? [p.latitude, p.longitude] : null;
+            }).filter(l => l !== null);
 
-    // B. CẮM CỌC (Chỉ cắm cho mấy điểm KHÔNG NẰM TRONG danh sách Heatmap)
-    var hotPoiIds = hotPois.map(item => item.poiId);
+            if (latlngs.length >= 2) {
+                currentRouteLayer = L.polyline(latlngs, {
+                    color: '#e74c3c', weight: 6, opacity: 0.8, dashArray: '10, 10'
+                }).addTo(map);
                 
-    allPois.forEach(poi => {
-    // Kiểm tra xem thằng POI này có nằm trong danh sách "Hot" không để hiện thông tin cho ngầu
-    var hotInfo = hotPois.find(h => h.poiId === poi.id);
-    var viewCount = hotInfo ? hotInfo.sum : 0;
-
-    L.marker([poi.latitude, poi.longitude])
-    .addTo(map)
-    .bindPopup(`
-    <div style="text-align:center">
-    <b>${poi.name}</b><br>
-    <span style="color:${viewCount > 0 ? 'red' : 'gray'}">
-    Lượt tương tác: ${viewCount}
-    </span>
-    </div>
-    `);
-    });
-
-    } else {
-    console.error("API trả về lỗi hoặc thiếu dữ liệu!");
-    }
+                // Tự động zoom vào tuyến đường
+                map.fitBounds(currentRouteLayer.getBounds(), { padding: [50, 50] });
+            }
+        };
     })
-    .catch(error => {
-    console.error("Lỗi khi kết nối API: ", error);
+    .catch(err => {
+        console.error("Lỗi sấp mặt:", err);
+        document.getElementById('route-list').innerHTML = '<div class="alert alert-danger">Lỗi kết nối API!</div>';
     });
 
-    }); // <-- CHỐT HẠ ĐÓNG NGOẶC CỦA DOMContentLoaded! CẤM XÓA CÁI DÒNG NÀY!!!
+    // Nút reset bản đồ
+    document.getElementById('btn-reset').addEventListener('click', function() {
+        map.setView([10.779, 106.684], 14);
+        if (currentRouteLayer) map.removeLayer(currentRouteLayer);
+        document.querySelectorAll('.list-group-item').forEach(i => i.classList.remove('active'));
+    });
+});
 </script>
+
+<style>
+    .border-left-primary { border-left: 0.25rem solid #4e73df !important; }
+    .list-group-item-action:hover { background-color: #f8f9fc; }
+    .list-group-item.active { 
+        background-color: #eaecf4 !important; 
+        color: #4e73df !important; 
+        border-color: #4e73df !important; 
+    }
+    #route-list::-webkit-scrollbar { width: 5px; }
+    #route-list::-webkit-scrollbar-thumb { background: #dddfeb; border-radius: 10px; }
+</style>

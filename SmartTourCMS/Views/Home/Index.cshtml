@@ -2,6 +2,8 @@
     ViewData["Title"] = "Bảng điều khiển Admin";
 }
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 <div class="container-fluid pt-4">
     <div class="row">
         <div class="col-lg-3 col-6">
@@ -10,9 +12,7 @@
                     <h3>@ViewBag.TotalPois</h3>
                     <p>Địa điểm (POI)</p>
                 </div>
-                <div class="icon">
-                    <i class="fa-solid fa-map-location-dot fa-2x"></i>
-                </div>
+                <div class="icon"><i class="fa-solid fa-map-location-dot fa-2x"></i></div>
             </div>
         </div>
 
@@ -22,92 +22,66 @@
                     <h3>@ViewBag.TotalTranslations</h3>
                     <p>Bản dịch đa ngôn ngữ</p>
                 </div>
-                <div class="icon">
-                    <i class="fa-solid fa-language fa-2x"></i>
+                <div class="icon"><i class="fa-solid fa-language fa-2x"></i></div>
+            </div>
+        </div>
+
+        <div class="col-lg-3 col-6">
+            <div class="small-box bg-primary p-3 rounded shadow-sm text-white mb-4">
+                <div class="inner">
+                    <h3 id="stat-sessions">0</h3>
+                    <p>Tổng phiên hành trình</p>
                 </div>
+                <div class="icon"><i class="fa-solid fa-shoe-prints fa-2x"></i></div>
             </div>
         </div>
 
         <div class="col-lg-3 col-6">
             <div class="small-box bg-warning p-3 rounded shadow-sm text-white mb-4">
                 <div class="inner">
-                    <h3>1,250</h3>
-                    <p>Lượt khách ghé thăm</p>
+                    <h3 id="stat-stops">0</h3>
+                    <p>Trạm dừng trung bình</p>
                 </div>
-                <div class="icon">
-                    <i class="fa-solid fa-users-viewfinder fa-2x"></i>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-lg-3 col-6">
-            <div class="small-box bg-danger p-3 rounded shadow-sm text-white mb-4">
-                <div class="inner">
-                    <h3>15.5 Tr</h3>
-                    <p>Doanh thu bán quà</p>
-                </div>
-                <div class="icon">
-                    <i class="fa-solid fa-cart-shopping fa-2x"></i>
-                </div>
+                <div class="icon"><i class="fa-solid fa-street-view fa-2x"></i></div>
             </div>
         </div>
     </div>
 
-    <div class="row mt-4">
+    <div class="row">
         <div class="col-md-8">
-            <div class="card shadow-sm border-0">
+            <div class="card shadow-sm border-0 mb-4">
                 <div class="card-header bg-white fw-bold">
-                    <i class="fa-solid fa-clock-rotate-left"></i> Địa điểm mới tạo gần đây
+                    <i class="fa-solid fa-chart-bar text-success"></i> Thống kê lượt nghe Audio theo địa điểm
                 </div>
-                <div class="card-body p-0">
-                    <table class="table table-hover mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Tên POI</th>
-                                <th>Tọa độ</th>
-                                <th>Ngày tạo</th>
-                                <th>Thao tác</th>
-                            </tr>
-                        </thead>
-            <tbody>
-                @foreach (var item in Model)
-                {
-                    <tr>
-                        <td><strong>@item.Name</strong></td> 
-            
-                        <td>
-                            <span class="badge bg-info">
-                                @(item.TourPois?.Count ?? 0) địa điểm
-                            </span>
-                        </td>
-
-                        <td>@item.CreatedAt.ToString("dd/MM/yyyy")</td>
-
-                        <td>
-                            <a href="/Tour/Edit/@item.Id" class="btn btn-sm btn-outline-primary">Sửa</a>
-                        </td>
-                    </tr>
-                }
-            </tbody>
-                    </table>
+                <div class="card-body">
+                    <div style="height: 320px;">
+                        <canvas id="poiAudioChart"></canvas>
+                    </div>
                 </div>
             </div>
         </div>
 
         <div class="col-md-4">
+            <div class="card shadow-sm border-0 mb-4 bg-gradient-light">
+                <div class="card-body text-center">
+                    <div class="text-xs font-weight-bold text-uppercase mb-1">Thời gian di chuyển trung bình</div>
+                    <div id="stat-duration" class="h2 mb-0 font-weight-bold text-primary">0 phút</div>
+                </div>
+            </div>
+
             <div class="card shadow-sm border-0">
                 <div class="card-header bg-white fw-bold">
-                    <i class="fa-solid fa-bolt"></i> Thao tác nhanh
+                    <i class="fa-solid fa-bolt text-warning"></i> Thao tác nhanh
                 </div>
                 <div class="card-body">
-                    <a href="/Poi/Create" class="btn btn-primary w-100 mb-2 text-start">
+                    <a href="/Poi/Create" class="btn btn-outline-primary w-100 mb-2 text-start">
                         <i class="fa-solid fa-plus"></i> Thêm địa điểm mới
                     </a>
-                    <a href="/Translation/Index" class="btn btn-info w-100 mb-2 text-start text-white">
-                        <i class="fa-solid fa-language"></i> Kiểm tra bản dịch AI
-                    </a>
-                    <a href="/Audio/Upload" class="btn btn-success w-100 mb-2 text-start">
+                    <a href="/Audio/Upload" class="btn btn-outline-success w-100 mb-2 text-start">
                         <i class="fa-solid fa-microphone"></i> Quản lý âm thanh
+                    </a>
+                    <a href="/Heatmap/Index" class="btn btn-outline-danger w-100 mb-2 text-start">
+                        <i class="fa-solid fa-fire"></i> Xem Bản đồ nhiệt (Heatmap)
                     </a>
                 </div>
             </div>
@@ -115,8 +89,49 @@
     </div>
 </div>
 
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    // Gọi API lấy thống kê thật
+    Promise.all([
+        fetch('/api/pois/stats').then(r => r.json()),
+        fetch('/api/routes/stats').then(r => r.json())
+    ])
+    .then(([poiStats, routeStats]) => {
+        // 1. Đổ dữ liệu vào Biểu đồ Audio
+        if (poiStats.success && poiStats.data.length > 0) {
+            new Chart(document.getElementById('poiAudioChart'), {
+                type: 'bar',
+                data: {
+                    labels: poiStats.data.map(p => p.poiName),
+                    datasets: [{
+                        label: 'Lượt nghe',
+                        data: poiStats.data.map(p => p.totalPlays),
+                        backgroundColor: '#1cc88a',
+                        borderRadius: 5
+                    }]
+                },
+                options: {
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+        }
+
+        // 2. Đổ dữ liệu vào các ô chỉ số
+        if (routeStats.success) {
+            document.getElementById('stat-sessions').innerText = routeStats.totalSessions;
+            document.getElementById('stat-stops').innerText = routeStats.avgStops;
+            document.getElementById('stat-duration').innerText = routeStats.avgDurationMinutes + " phút";
+        }
+    })
+    .catch(err => console.error("Lỗi Dashboard:", err));
+});
+</script>
+
 <style>
-    .small-box { position: relative; overflow: hidden; }
-    .small-box .icon { position: absolute; right: 15px; top: 15px; opacity: 0.3; transition: transform 0.3s; }
-    .small-box:hover .icon { transform: scale(1.2); }
+    .small-box { position: relative; overflow: hidden; transition: transform 0.2s; }
+    .small-box:hover { transform: translateY(-5px); }
+    .small-box .icon { position: absolute; right: 15px; top: 15px; opacity: 0.2; }
+    .bg-gradient-light { background: linear-gradient(135deg, #f8f9fc 0%, #e2e6ea 100%); }
 </style>

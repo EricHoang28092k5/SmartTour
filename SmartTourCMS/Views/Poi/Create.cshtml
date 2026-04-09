@@ -40,6 +40,11 @@
                         <span asp-validation-for="Description" class="text-danger"></span>
                     </div>
                     <div class="mb-3">
+                        <label asp-for="TtsScript" class="control-label fw-bold">TTS Script gốc (tuỳ chọn)</label>
+                        <textarea asp-for="TtsScript" class="form-control" rows="4" placeholder="Nếu để trống sẽ dùng Description để tạo audio đa ngôn ngữ..."></textarea>
+                        <span asp-validation-for="TtsScript" class="text-danger"></span>
+                    </div>
+                    <div class="mb-3">
                         <label class="form-label fw-bold">Ảnh bìa chính (1 ảnh)</label>
                         <input type="file" name="imageFile" class="form-control" accept="image/*" />
                     </div>

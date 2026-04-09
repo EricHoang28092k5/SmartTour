@@ -5,6 +5,14 @@
     ViewData["Title"] = "Quản lý địa điểm";
 }
 
+@if (TempData["AudioWarning"] != null)
+{
+    <div class="alert alert-warning alert-dismissible fade show" role="alert">
+        @TempData["AudioWarning"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+}
+
 @* 1. TIÊU ĐỀ VÀ Ô TÌM KIẾM *@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2><i class="fa-solid fa-map-location-dot text-primary"></i> Quản lý địa điểm</h2>

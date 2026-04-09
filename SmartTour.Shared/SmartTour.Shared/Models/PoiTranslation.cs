@@ -1,16 +1,23 @@
-﻿namespace SmartTour.Shared.Models
+﻿using SQLite;
+
+namespace SmartTour.Shared.Models
 {
     public class PoiTranslation
     {
+        [PrimaryKey]
         public int Id { get; set; }
         public int PoiId { get; set; }
-        public Poi? Poi { get; set; } // Kết nối tới POI
-
         public int LanguageId { get; set; }
-        public Language? Language { get; set; } // Kết nối tới Ngôn ngữ
+        public string Title { get; set; } = "";
+        public string Description { get; set; } = "";
+        public string? TtsScript { get; set; }
 
-        public string Title { get; set; } = string.Empty;
-        public string Description { get; set; } = string.Empty;
-        public string TtsScript { get; set; } = string.Empty;
+        // --- THÊM DUY NHẤT DÒNG NÀY ĐỂ LƯU LINK AUDIO ---
+        public string? AudioUrl { get; set; }
+
+        [Ignore]
+        public virtual Poi? Poi { get; set; }
+        [Ignore]
+        public virtual Language? Language { get; set; }
     }
 }

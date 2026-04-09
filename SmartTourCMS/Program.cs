@@ -3,6 +3,7 @@ using DotNetEnv;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using SmartTourBackend.Data;
+using SmartTourBackend.Services;
 
 Env.Load();
 var builder = WebApplication.CreateBuilder(args);
@@ -14,7 +15,14 @@ builder.Services.AddControllersWithViews();
 // Kết nối Database Neon
 var connectionString = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING");
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(connectionString));
+    options.UseNpgsql(connectionString, npgsql =>
+    {
+        // Neon/network có thể chập chờn ngắn hạn, retry để tránh app chết lúc khởi động.
+        npgsql.EnableRetryOnFailure(
+            maxRetryCount: 5,
+            maxRetryDelay: TimeSpan.FromSeconds(10),
+            errorCodesToAdd: null);
+    }));
 
 // Cấu hình Cloudinary
 var cloudinaryAccount = new Account(
@@ -45,6 +53,7 @@ builder.Services.ConfigureApplicationCookie(options =>
 });
 
 builder.Services.AddAuthorization();
+builder.Services.AddScoped<IVoiceService, VoiceService>();
 
 var app = builder.Build();
 
@@ -71,15 +80,18 @@ app.MapControllerRoute(
 
 // --- 4. SEED DATA (TẠO ACC ADMIN NẾU CHƯA CÓ) ---
 // Đoạn này để bác cứu net nếu tài khoản cũ không vào được
-using (var scope = app.Services.CreateScope())
+try
 {
+    using var scope = app.Services.CreateScope();
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
 
-    if (!await roleManager.RoleExistsAsync("Admin")) await roleManager.CreateAsync(new IdentityRole("Admin"));
-    if (!await roleManager.RoleExistsAsync("Vendor")) await roleManager.CreateAsync(new IdentityRole("Vendor"));
+    if (!await roleManager.RoleExistsAsync("Admin"))
+        await roleManager.CreateAsync(new IdentityRole("Admin"));
+    if (!await roleManager.RoleExistsAsync("Vendor"))
+        await roleManager.CreateAsync(new IdentityRole("Vendor"));
 
-    var adminEmail = "admin@smarttour.com";
+    const string adminEmail = "admin@smarttour.com";
     var adminUser = await userManager.FindByEmailAsync(adminEmail);
     if (adminUser == null)
     {
@@ -87,6 +99,11 @@ using (var scope = app.Services.CreateScope())
         await userManager.CreateAsync(newAdmin, "Admin@123");
         await userManager.AddToRoleAsync(newAdmin, "Admin");
     }
+}
+catch (Exception ex)
+{
+    // Không để lỗi seed chặn app start; log để xử lý sau.
+    Console.WriteLine($"[Startup Seed Warning] {ex.Message}");
 }
 
 app.Run();

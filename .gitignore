@@ -11,6 +11,9 @@ obj/
 .env
 .env.local
 .env.*
+**/google-credentials.json
+**/*credentials*.json
+**/appsettings.Development.json
 
 # --- Các file đặc thù khác ---
 *.userosscache

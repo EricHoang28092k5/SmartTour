@@ -1,9 +1,33 @@
 ﻿@model IEnumerable<SmartTour.Shared.Models.PoiTranslation>
 
 <div class="container mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h3>🌐 Bản dịch của: <span class="text-primary">@ViewBag.PoiName</span></h3>
-        <a href="/Translation/Create?poiId=@ViewBag.PoiId" class="btn btn-success">+ Thêm ngôn ngữ</a>
+    @if (TempData["AudioWarning"] != null)
+    {
+        <div class="alert alert-warning alert-dismissible fade show" role="alert">
+            @TempData["AudioWarning"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+    @if (TempData["AudioSuccess"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            @TempData["AudioSuccess"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <h3 class="mb-0">🌐 Bản dịch của: <span class="text-primary">@ViewBag.PoiName</span></h3>
+        <div class="d-flex gap-2 flex-wrap">
+            <form asp-controller="Poi" asp-action="RegenerateTranslationAudios" method="post" class="d-inline">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="poiId" value="@ViewBag.PoiId" />
+                <button type="submit" class="btn btn-outline-primary" title="Dùng khi trước đó thiếu Google TTS hoặc Cloudinary"
+                        onclick="return confirm('Tạo lại file audio cho tất cả bản dịch của địa điểm này?');">
+                    <i class="fa-solid fa-rotate"></i> Tạo lại audio
+                </button>
+            </form>
+            <a href="/Translation/Create?poiId=@ViewBag.PoiId" class="btn btn-success">+ Thêm ngôn ngữ</a>
+        </div>
     </div>
 
     <table class="table table-bordered shadow-sm">
@@ -12,6 +36,7 @@
                 <th>Ngôn ngữ</th>
                 <th>Tiêu đề (Dịch)</th>
                 <th>Mô tả</th>
+                <th>Nghe audio</th>
                 <th>Thao tác</th>
             </tr>
         </thead>
@@ -22,6 +47,19 @@
                     <td><span class="badge bg-info text-dark">@item.Language?.Name (@item.Language?.Code)</span></td>
                     <td><strong>@item.Title</strong></td>
                     <td class="text-truncate" style="max-width: 250px;">@item.Description</td>
+                    <td style="min-width: 260px;">
+                        @if (!string.IsNullOrWhiteSpace(item.AudioUrl))
+                        {
+                            <audio controls preload="none" style="width: 100%; max-width: 320px;">
+                                <source src="@item.AudioUrl" type="audio/mpeg" />
+                                Trinh duyet khong ho tro audio.
+                            </audio>
+                        }
+                        else
+                        {
+                            <span class="text-muted small">Chưa có audio</span>
+                        }
+                    </td>
                     <td class="text-center">
                         <div class="btn-group">
                             <a asp-action="Details" asp-route-id="@item.Id" class="btn btn-sm btn-outline-info" title="Xem chi tiết">

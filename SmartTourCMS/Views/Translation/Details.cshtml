@@ -37,6 +37,21 @@
                             <span class="fst-italic">@Model.TtsScript</span>
                         </div>
                     </div>
+                    
+                    <div class="mb-4">
+                        <label class="text-muted small uppercase fw-bold">Nghe audio ban dich</label>
+                        @if (!string.IsNullOrWhiteSpace(Model.AudioUrl))
+                        {
+                            <audio controls preload="none" style="width:100%;">
+                                <source src="@Model.AudioUrl" type="audio/mpeg" />
+                                Trinh duyet khong ho tro audio.
+                            </audio>
+                        }
+                        else
+                        {
+                            <div class="alert alert-warning mb-0">Ban dich nay chua co audio.</div>
+                        }
+                    </div>
 
                     <hr />
                     <div class="d-flex justify-content-between">
