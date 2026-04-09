@@ -1069,8 +1069,6 @@ Checklist nghiệm thu theo chức năng:
 
 ## 21. Danh mục tài liệu & mã tham chiếu
 - Tài liệu chính: `PRD_SmartTour.md`
-- Hướng dẫn báo cáo Web: `HUONG_DAN_BAO_CAO_WEB.md`
-- Hướng dẫn báo cáo App: `HUONG_DAN_BAO_CAO_APP.md`
 - Source code:
   - `SmartTourApp/`
   - `SmartTourCMS/`
