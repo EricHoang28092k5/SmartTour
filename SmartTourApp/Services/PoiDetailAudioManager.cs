@@ -11,12 +11,18 @@ using AndroidTTS = Android.Speech.Tts.TextToSpeech;
 /// <summary>
 /// PoiDetailAudioManager — Quản lý audio cho màn hình chi tiết POI.
 ///
-/// Enhancement (Yêu cầu 2):
+/// Enhancement (Yêu cầu 2 + 3):
 ///   - Cloudinary stream → nếu fail nửa chừng → auto-fallback sang TTS
 ///   - Offline: đọc script từ OfflineSyncService (SQLite)
+///   - Tracker chỉ ghi khi thực sự Playing (StartSession/PauseSession ghép đúng)
+///   - Seek: PauseSession → engine.Seek → StartSession mới (không tính giây skip)
 /// </summary>
 public class PoiDetailAudioManager
 {
+    // ══════════════════════════════════════════════════════════════════
+    // DEPENDENCIES
+    // ══════════════════════════════════════════════════════════════════
+
     private readonly ApiService api;
     private readonly LanguageService lang;
     private readonly AudioListenTracker tracker;
@@ -32,25 +38,32 @@ public class PoiDetailAudioManager
 
     private readonly string cacheDir = Path.Combine(FileSystem.AppDataDirectory, "tts_exo");
 
+    // ══════════════════════════════════════════════════════════════════
+    // EVENTS
+    // ══════════════════════════════════════════════════════════════════
+
     public event Action<double>? OnProgress;
     public event Action<double>? OnDuration;
 
-    /// <summary>
-    /// Fired when audio completes naturally — UI should reset to beginning.
-    /// </summary>
+    /// <summary>Fired when audio completes naturally — UI should transition to Ended.</summary>
     public event Action? OnCompleted;
+
+    // ══════════════════════════════════════════════════════════════════
+    // STATE
+    // ══════════════════════════════════════════════════════════════════
 
     public bool IsPlaying { get; private set; }
 
     private Poi? currentPoi;
     private double currentDuration;
     private double lastProgressSec;
-
     private Location? _playStartLocation;
-
-    // Track nguồn đang phát để Stop/Resume đúng engine
     private bool _isStreamingCloudinary = false;
     private CancellationTokenSource? _streamCts;
+
+    // ══════════════════════════════════════════════════════════════════
+    // CONSTRUCTOR
+    // ══════════════════════════════════════════════════════════════════
 
     public PoiDetailAudioManager(
         ApiService api,
@@ -80,6 +93,7 @@ public class PoiDetailAudioManager
             lastProgressSec = p;
             OnProgress?.Invoke(p);
 
+            // Detect natural completion (within 0.5s of end)
             if (currentDuration > 0 && p >= currentDuration - 0.5)
             {
                 HandleCompleted();
@@ -95,14 +109,15 @@ public class PoiDetailAudioManager
     }
 
     // ══════════════════════════════════════════════════════════════════
-    // PLAY (Yêu cầu 2: Fallback logic)
+    // PLAY — Entry point từ PoiDetailPage
     // ══════════════════════════════════════════════════════════════════
 
     /// <summary>
-    /// Play audio cho POI.
+    /// Bắt đầu phát audio cho POI.
+    ///
     /// Fallback chain:
     ///   1. Cloudinary URL → ExoPlayer (Android) / AudioService
-    ///   2. Mất mạng nửa chừng → TTS ngay (không ngắt quãng)
+    ///   2. Mạng ngắt nửa chừng → TTS fallback không gián đoạn
     ///   3. Offline hoàn toàn → SQLite TtsScript → TTS
     /// </summary>
     public async Task Play(Poi poi, Location? userLocation = null)
@@ -113,7 +128,7 @@ public class PoiDetailAudioManager
         _playStartLocation = userLocation;
         _isStreamingCloudinary = false;
 
-        // DetailManual luôn thắng Auto và HomeManual
+        // DetailManual luôn preempt Auto và HomeManual
         coordinator.RequestPlay(AudioSource.DetailManual, () =>
         {
             IsPlaying = false;
@@ -125,17 +140,16 @@ public class PoiDetailAudioManager
 #endif
         });
 
-        // ── Lấy scripts (online → offline fallback) ──
+        // Lấy scripts (online → SQLite fallback)
         var scripts = await GetScriptsWithFallbackAsync(poi);
 
         var selected = scripts.FirstOrDefault(x =>
-            x.LanguageCode.StartsWith(lang.Current,
-                StringComparison.OrdinalIgnoreCase))
+            x.LanguageCode.StartsWith(lang.Current, StringComparison.OrdinalIgnoreCase))
             ?? scripts.FirstOrDefault();
 
         if (selected == null)
         {
-            // Không có script nào → thử description
+            // Last resort: dùng description của POI
             var fallbackScript = poi.Description;
             if (!string.IsNullOrWhiteSpace(fallbackScript))
             {
@@ -150,26 +164,23 @@ public class PoiDetailAudioManager
 
         if (!coordinator.IsActiveSource(AudioSource.DetailManual)) return;
 
-        // ── Ưu tiên 1: Cloudinary Audio ──
+        // Ưu tiên 1: Cloudinary
         if (!string.IsNullOrWhiteSpace(selected.AudioUrl))
         {
             bool audioOk = await TryPlayCloudinaryAsync(selected.AudioUrl!, poi);
-
             if (!audioOk)
             {
-                // Mất mạng / stream fail → fallback TTS (Yêu cầu 2)
-                System.Diagnostics.Debug.WriteLine(
-                    "[DetailAudio] Cloudinary failed → TTS fallback");
+                System.Diagnostics.Debug.WriteLine("[DetailAudio] Cloudinary failed → TTS fallback");
                 await FallbackToTtsAsync(selected, poi);
             }
         }
         else
         {
-            // Không có audio URL → TTS ngay
+            // Không có URL → TTS ngay
             await FallbackToTtsAsync(selected, poi);
         }
 
-        // ── Route Tracking ──
+        // Route Tracking (kiểm tra radius)
         if (userLocation != null)
         {
             _ = Task.Run(async () =>
@@ -180,23 +191,19 @@ public class PoiDetailAudioManager
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine(
-                        $"[RouteTracking] error: {ex.Message}");
+                    System.Diagnostics.Debug.WriteLine($"[RouteTracking] error: {ex.Message}");
                 }
             });
         }
     }
 
     // ══════════════════════════════════════════════════════════════════
-    // SCRIPT RESOLUTION (Yêu cầu 4: Offline Translation)
+    // SCRIPT RESOLUTION — Online → SQLite fallback (Yêu cầu 4)
     // ══════════════════════════════════════════════════════════════════
 
     private async Task<List<ApiService.TtsDto>> GetScriptsWithFallbackAsync(Poi poi)
     {
-        bool isOnline = IsOnline();
-
-        // Online: thử API
-        if (isOnline)
+        if (IsOnline())
         {
             try
             {
@@ -207,16 +214,16 @@ public class PoiDetailAudioManager
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine(
-                    $"[DetailAudio] API failed: {ex.Message} → SQLite fallback");
+                    $"[DetailAudio] API failed → SQLite: {ex.Message}");
             }
         }
 
-        // Offline / API fail: SQLite (Yêu cầu 4)
+        // SQLite offline (Yêu cầu 4)
         var localScripts = offlineSync.GetAllLocalScripts(poi.Id);
         if (localScripts.Count > 0)
         {
             System.Diagnostics.Debug.WriteLine(
-                $"[DetailAudio] 📦 Using {localScripts.Count} SQLite scripts");
+                $"[DetailAudio] 📦 SQLite: {localScripts.Count} scripts");
 
             return localScripts.Select(s => new ApiService.TtsDto
             {
@@ -255,30 +262,26 @@ public class PoiDetailAudioManager
 #else
             _streamCts?.Cancel();
             _streamCts = new CancellationTokenSource();
-
             await audioService.Play(url, _streamCts.Token);
 #endif
             IsPlaying = true;
+            // ✅ Chỉ bắt đầu tính log khi audio thực sự đang phát
             tracker.StartSession(poi.Id, 0, 0);
             return true;
         }
         catch (OperationCanceledException)
         {
             _isStreamingCloudinary = false;
-            return true; // cancelled by user — not a failure
+            return true; // cancelled by user
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[DetailAudio] Cloudinary play failed: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[DetailAudio] Cloudinary failed: {ex.Message}");
             _isStreamingCloudinary = false;
             return false;
         }
     }
 
-    /// <summary>
-    /// Fallback: phát bằng TTS khi không có audio file hoặc mạng bị ngắt.
-    /// </summary>
     private async Task FallbackToTtsAsync(ApiService.TtsDto selected, Poi poi)
     {
         if (!coordinator.IsActiveSource(AudioSource.DetailManual)) return;
@@ -290,7 +293,6 @@ public class PoiDetailAudioManager
         if (string.IsNullOrWhiteSpace(script)) return;
 
 #if ANDROID
-        // Android: generate WAV → ExoPlayer (có seek/progress)
         try
         {
             if (exo.IsPlaying) exo.Stop();
@@ -300,14 +302,12 @@ public class PoiDetailAudioManager
 
             exo.Play(file);
             IsPlaying = true;
+            // ✅ Bắt đầu tính log sau khi TTS generate xong và thực sự phát
             tracker.StartSession(poi.Id, 0, 0);
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[DetailAudio] TTS generate failed: {ex.Message}");
-
-            // Last resort: device TTS speak
+            System.Diagnostics.Debug.WriteLine($"[DetailAudio] TTS gen failed: {ex.Message}");
             await DeviceTtsSpeakAsync(script, selected.LanguageCode, poi);
         }
 #else
@@ -318,10 +318,10 @@ public class PoiDetailAudioManager
     private async Task DeviceTtsSpeakAsync(string script, string langCode, Poi poi)
     {
         IsPlaying = true;
+        // ✅ Tính log bắt đầu khi device TTS speak thực sự phát
         tracker.StartSession(poi.Id, 0, 0);
 
-        // Fake duration for UI
-        var estimatedSec = script.Length / 5.0; // ~5 chars/sec average
+        var estimatedSec = script.Length / 5.0;
         OnDuration?.Invoke(estimatedSec);
 
         try
@@ -334,6 +334,7 @@ public class PoiDetailAudioManager
         finally
         {
             IsPlaying = false;
+            // ✅ Dừng tính log khi TTS kết thúc
             tracker.StopSession();
             coordinator.NotifyStop(AudioSource.DetailManual);
             OnCompleted?.Invoke();
@@ -341,9 +342,13 @@ public class PoiDetailAudioManager
     }
 
     // ══════════════════════════════════════════════════════════════════
-    // PLAYBACK CONTROLS
+    // PLAYBACK CONTROLS — Tên hàm giữ nguyên để không ảnh hưởng caller
     // ══════════════════════════════════════════════════════════════════
 
+    /// <summary>
+    /// Resume từ vị trí đã dừng.
+    /// Mở phiên log mới — chỉ tính từ điểm resume.
+    /// </summary>
     public void Resume()
     {
 #if ANDROID
@@ -351,10 +356,14 @@ public class PoiDetailAudioManager
 #endif
         IsPlaying = true;
 
+        // ✅ StartSession mới từ thời điểm resume (không tính thời gian đã pause)
         if (currentPoi != null)
             tracker.StartSession(currentPoi.Id, 0, 0);
     }
 
+    /// <summary>
+    /// Pause — đóng băng log, KHÔNG flush.
+    /// </summary>
     public void Pause()
     {
 #if ANDROID
@@ -362,20 +371,34 @@ public class PoiDetailAudioManager
 #endif
         _streamCts?.Cancel();
         IsPlaying = false;
+
+        // ✅ Đóng băng log — snapshot thời gian tích lũy, KHÔNG ghi API
         tracker.PauseSession();
     }
 
+    /// <summary>
+    /// Seek đến vị trí mới.
+    ///
+    /// Quy trình:
+    ///   1. tracker.OnSkip() → PauseSession() (snapshot, không tính giây skip)
+    ///   2. engine.Seek(sec)
+    ///   3. Caller sẽ Resume() → tracker.StartSession() từ vị trí mới
+    /// </summary>
     public void Seek(double sec)
     {
+        // ✅ Chốt log đoạn trước — không tính quãng bị skip
+        tracker.OnSkip();
+
 #if ANDROID
         exo.Seek(sec);
 #endif
-        tracker.OnSkip();
-
-        if (IsPlaying && currentPoi != null)
-            tracker.StartSession(currentPoi.Id, 0, 0);
+        // NOTE: Caller (PoiDetailPage) sẽ gọi Resume() sau Seek nếu cần
+        // để StartSession() mới bắt đầu tính từ sec
     }
 
+    /// <summary>
+    /// Dừng hoàn toàn — flush log nếu đủ điều kiện.
+    /// </summary>
     public void Stop()
     {
         _streamCts?.Cancel();
@@ -386,6 +409,7 @@ public class PoiDetailAudioManager
         IsPlaying = false;
         _isStreamingCloudinary = false;
 
+        // ✅ Flush log — ghi tổng thời gian nghe thực sự
         tracker.StopSession();
         coordinator.NotifyStop(AudioSource.DetailManual);
 
@@ -396,7 +420,7 @@ public class PoiDetailAudioManager
     }
 
     // ══════════════════════════════════════════════════════════════════
-    // COMPLETION HANDLER
+    // COMPLETION HANDLER — audio kết thúc tự nhiên
     // ══════════════════════════════════════════════════════════════════
 
     private void HandleCompleted()
@@ -404,6 +428,7 @@ public class PoiDetailAudioManager
         IsPlaying = false;
         _isStreamingCloudinary = false;
 
+        // ✅ Flush log đoạn cuối
         tracker.StopSession();
         coordinator.NotifyStop(AudioSource.DetailManual);
 
@@ -421,7 +446,7 @@ public class PoiDetailAudioManager
     }
 
     // ══════════════════════════════════════════════════════════════════
-    // DOWNLOAD HELPER (cache Cloudinary MP3)
+    // DOWNLOAD HELPER
     // ══════════════════════════════════════════════════════════════════
 
     private static readonly HttpClient _httpClient = new();
@@ -436,8 +461,7 @@ public class PoiDetailAudioManager
 
         if (File.Exists(filePath))
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[DetailAudio] Cache hit: {fileName}");
+            System.Diagnostics.Debug.WriteLine($"[DetailAudio] Cache hit: {fileName}");
             return filePath;
         }
 
@@ -447,9 +471,8 @@ public class PoiDetailAudioManager
             {
                 var bytes = await _httpClient.GetByteArrayAsync(url);
                 await File.WriteAllBytesAsync(filePath, bytes);
-
                 System.Diagnostics.Debug.WriteLine(
-                    $"[DetailAudio] Downloaded: {fileName} ({bytes.Length / 1024} KB)");
+                    $"[DetailAudio] Downloaded: {fileName} ({bytes.Length / 1024}KB)");
                 return filePath;
             }
             catch (Exception ex)
@@ -464,7 +487,7 @@ public class PoiDetailAudioManager
     }
 
     // ══════════════════════════════════════════════════════════════════
-    // TTS LOCAL GENERATOR (Android fallback)
+    // TTS LOCAL GENERATOR (Android fallback offline)
     // ══════════════════════════════════════════════════════════════════
 
     private async Task<string> GenerateAudio(string text, int poiId)
@@ -503,9 +526,7 @@ public class PoiDetailAudioManager
         var javaFile = new Java.IO.File(file);
 
         tts.SetOnUtteranceProgressListener(new TtsProgressListener(() =>
-        {
-            tcsDone.TrySetResult(true);
-        }));
+            tcsDone.TrySetResult(true)));
 
         var bundle = new Android.OS.Bundle();
         bundle.PutString(AndroidTTS.Engine.KeyParamUtteranceId, "tts_id");
@@ -533,6 +554,10 @@ public class PoiDetailAudioManager
         }
         catch { return false; }
     }
+
+    // ══════════════════════════════════════════════════════════════════
+    // ANDROID INNER CLASSES
+    // ══════════════════════════════════════════════════════════════════
 
 #if ANDROID
     class InitListener : Java.Lang.Object, AndroidTTS.IOnInitListener

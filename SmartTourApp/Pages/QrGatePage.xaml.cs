@@ -196,4 +196,3 @@ public partial class QrGatePage : ContentPage
         return false;
     }
 }
-

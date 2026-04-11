@@ -5,29 +5,68 @@ using SmartTour.Services;
 namespace SmartTourApp.Services;
 
 /// <summary>
-/// AudioListenTracker — Ghi nhận thời gian nghe thực tế cho tất cả nguồn phát.
+/// AudioListenTracker — Ghi nhận thời gian nghe thực tế.
 ///
-/// Enhancement (Yêu cầu 5):
-///   - Khi online: gửi log lên API ngay.
-///   - Khi offline: lưu vào OfflinePlayLog (SQLite) → sync sau.
+/// ╔══════════════════════════════════════════════════════════════════╗
+/// ║  NGUYÊN TẮC CỐT LÕI (Yêu cầu 3)                               ║
+/// ║  • Chỉ tích lũy thời gian khi isTracking = TRUE                ║
+/// ║  • Pause()  → isTracking = false, snapshot thời gian tích lũy  ║
+/// ║  • Seek()   → PauseSession() ngay → snapshot, KHÔNG tính giây  ║
+/// ║    quãng seek. StartSession() mới sẽ bắt đầu từ vị trí mới.   ║
+/// ║  • Resume() → StartSession() mở phiên mới từ vị trí hiện tại  ║
+/// ║  • Stop()   → FlushSession() ghi log nếu ≥ 1 giây thực nghe   ║
+/// ║                                                                  ║
+/// ║  ONLINE/OFFLINE (Yêu cầu 5)                                    ║
+/// ║  • Online  → PostPlayLog ngay lập tức                          ║
+/// ║  • Offline → RecordOfflineLog → sync sau                       ║
+/// ╚══════════════════════════════════════════════════════════════════╝
 /// </summary>
 public class AudioListenTracker
 {
+    // ══════════════════════════════════════════════════════════════════
+    // DEPENDENCIES
+    // ══════════════════════════════════════════════════════════════════
+
     private readonly Database db;
     private readonly ApiService api;
     private readonly OfflineSyncService offlineSync;
 
+    // ══════════════════════════════════════════════════════════════════
+    // SESSION STATE
+    // ══════════════════════════════════════════════════════════════════
+
     private int? currentPoiId;
     private double currentLat;
     private double currentLng;
+
+    /// <summary>
+    /// Thời điểm phiên nghe HIỆN TẠI bắt đầu.
+    /// Null khi đang Paused hoặc chưa phát.
+    /// </summary>
     private DateTime? sessionStart;
 
-    // Accumulated seconds across pause/resume cycles in one session
+    /// <summary>
+    /// Tổng giây đã nghe thực tế (tích lũy qua nhiều lần Pause/Resume).
+    /// KHÔNG bao gồm khoảng seek.
+    /// </summary>
     private double accumulatedSeconds;
+
+    /// <summary>
+    /// TRUE chỉ khi audio đang thực sự phát (không phải pause/seek).
+    /// Đây là guard chính để tránh ghi log sai.
+    /// </summary>
     private bool isTracking;
+
+    // ══════════════════════════════════════════════════════════════════
+    // DEVICE ID
+    // ══════════════════════════════════════════════════════════════════
 
     private static readonly string DeviceId =
         Preferences.Default.Get("heatmap_device_id", "");
+
+    // ══════════════════════════════════════════════════════════════════
+    // CONSTRUCTOR
+    // ══════════════════════════════════════════════════════════════════
 
     public AudioListenTracker(Database db, ApiService api, OfflineSyncService offlineSync)
     {
@@ -36,63 +75,112 @@ public class AudioListenTracker
         this.offlineSync = offlineSync;
     }
 
+    // ══════════════════════════════════════════════════════════════════
+    // PUBLIC API
+    // ══════════════════════════════════════════════════════════════════
+
     /// <summary>
-    /// Start or resume tracking for a POI.
-    /// Call on Play / Resume.
+    /// Bắt đầu hoặc tiếp tục ghi nhận thời gian nghe cho một POI.
+    /// Gọi khi: Play / Resume.
+    ///
+    /// Nếu đang theo dõi POI khác → flush phiên cũ trước.
     /// </summary>
     public void StartSession(int poiId, double lat, double lng)
     {
-        // If switching POI mid-session, flush the old one first
+        // Nếu đang theo dõi POI khác → flush trước
         if (isTracking && currentPoiId.HasValue && currentPoiId.Value != poiId)
+        {
             FlushSession();
+        }
+
+        // Nếu đổi POI nhưng chưa flush (paused state) → flush
+        if (!isTracking && currentPoiId.HasValue && currentPoiId.Value != poiId)
+        {
+            FlushSession();
+        }
 
         currentPoiId = poiId;
         currentLat = lat;
         currentLng = lng;
+
+        // Bắt đầu tính giờ từ đây — chỉ kể từ thời điểm này
         sessionStart = DateTime.Now;
         isTracking = true;
+
+        System.Diagnostics.Debug.WriteLine(
+            $"[Tracker] ▶ StartSession POI={poiId} | accumulated={accumulatedSeconds:F1}s");
     }
 
     /// <summary>
-    /// Pause tracking (user paused / skipped). Accumulates elapsed seconds.
+    /// Tạm dừng ghi nhận (Pause hoặc trước Seek).
+    /// Snapshot thời gian đã nghe → dừng đồng hồ, KHÔNG flush.
     /// </summary>
     public void PauseSession()
     {
-        if (!isTracking || sessionStart == null) return;
+        if (!isTracking || sessionStart == null)
+        {
+            // Đã pause rồi hoặc chưa bắt đầu — không làm gì
+            return;
+        }
 
-        accumulatedSeconds += (DateTime.Now - sessionStart.Value).TotalSeconds;
+        var elapsed = (DateTime.Now - sessionStart.Value).TotalSeconds;
+        accumulatedSeconds += elapsed;
         sessionStart = null;
         isTracking = false;
+
+        System.Diagnostics.Debug.WriteLine(
+            $"[Tracker] ⏸ PauseSession | elapsed={elapsed:F1}s | total={accumulatedSeconds:F1}s");
     }
 
     /// <summary>
-    /// Stop and flush the current session to DB + API.
-    /// Call on Stop / audio completed.
+    /// Dừng hoàn toàn và ghi log nếu đã nghe ≥ 1 giây.
+    /// Gọi khi: Stop / audio kết thúc tự nhiên.
     /// </summary>
     public void StopSession()
     {
         if (sessionStart != null)
         {
-            accumulatedSeconds += (DateTime.Now - sessionStart.Value).TotalSeconds;
+            var elapsed = (DateTime.Now - sessionStart.Value).TotalSeconds;
+            accumulatedSeconds += elapsed;
             sessionStart = null;
         }
 
         isTracking = false;
+
+        System.Diagnostics.Debug.WriteLine(
+            $"[Tracker] ⏹ StopSession | total={accumulatedSeconds:F1}s");
+
         FlushSession();
     }
 
     /// <summary>
-    /// Called when skip occurs — pause accumulation, caller will StartSession again on resume.
+    /// Gọi khi người dùng kéo Seek — chốt log đoạn đã nghe,
+    /// KHÔNG tính quãng thời gian bị skip.
+    ///
+    /// Flow: OnSeekStarted → OnSkip() → PauseSession()
+    ///       OnSeekCompleted → audio.Seek() → StartSession() (vị trí mới)
     /// </summary>
     public void OnSkip()
     {
+        // Đóng băng log đoạn hiện tại — quãng seek không được tính
         PauseSession();
+
+        System.Diagnostics.Debug.WriteLine(
+            $"[Tracker] ⏭ OnSkip | accumulated={accumulatedSeconds:F1}s (frozen)");
     }
+
+    // ══════════════════════════════════════════════════════════════════
+    // INTERNAL: FLUSH
+    // ══════════════════════════════════════════════════════════════════
 
     private void FlushSession()
     {
-        if (currentPoiId == null || accumulatedSeconds < 1)
+        // Guard: chỉ ghi khi đã nghe thực sự ít nhất 1 giây
+        if (currentPoiId == null || accumulatedSeconds < 1.0)
         {
+            System.Diagnostics.Debug.WriteLine(
+                $"[Tracker] ⚡ Flush skipped: " +
+                $"poiId={currentPoiId}, seconds={accumulatedSeconds:F1}");
             ResetState();
             return;
         }
@@ -108,10 +196,17 @@ public class AudioListenTracker
             UserId = string.Empty
         };
 
-        // Save locally to SQLite
-        try { db.AddLog(log); } catch { }
+        System.Diagnostics.Debug.WriteLine(
+            $"[Tracker] 💾 Flush: POI={log.PoiId}, duration={log.DurationListened}s");
 
-        // ── Yêu cầu 5: Online → API ngay / Offline → OfflinePlayLog ──
+        // Lưu local SQLite (luôn luôn, backup)
+        try { db.AddLog(log); }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Tracker] SQLite error: {ex.Message}");
+        }
+
+        // Fire-and-forget: gửi API online hoặc queue offline
         var logCopy = log;
         var poiId = currentPoiId.Value;
         var lat = currentLat;
@@ -124,39 +219,35 @@ public class AudioListenTracker
 
             if (isOnline)
             {
-                // Online: gửi ngay
                 try
                 {
                     await api.PostPlayLog(logCopy);
                     System.Diagnostics.Debug.WriteLine(
-                        $"[Tracker] ✅ Online log sent: POI={poiId}, " +
-                        $"duration={duration}s");
+                        $"[Tracker] ✅ Online log sent: POI={poiId}, duration={duration}s");
                 }
                 catch (Exception ex)
                 {
-                    // API fail → fallback sang offline log
+                    // API fail → fallback sang offline queue
                     System.Diagnostics.Debug.WriteLine(
-                        $"[Tracker] API fail, saving offline: {ex.Message}");
-                    offlineSync.RecordOfflineLog(
-                        poiId, lat, lng, duration,
-                        DeviceId, string.Empty);
+                        $"[Tracker] API fail → offline queue: {ex.Message}");
+                    offlineSync.RecordOfflineLog(poiId, lat, lng, duration, DeviceId, string.Empty);
                 }
             }
             else
             {
-                // Offline: lưu vào SQLite chờ sync
-                offlineSync.RecordOfflineLog(
-                    poiId, lat, lng, duration,
-                    DeviceId, string.Empty);
-
+                // Offline → queue để sync sau
+                offlineSync.RecordOfflineLog(poiId, lat, lng, duration, DeviceId, string.Empty);
                 System.Diagnostics.Debug.WriteLine(
-                    $"[Tracker] 📦 Offline log queued: POI={poiId}, " +
-                    $"duration={duration}s");
+                    $"[Tracker] 📦 Offline queued: POI={poiId}, duration={duration}s");
             }
         });
 
         ResetState();
     }
+
+    // ══════════════════════════════════════════════════════════════════
+    // RESET
+    // ══════════════════════════════════════════════════════════════════
 
     private void ResetState()
     {
@@ -165,6 +256,10 @@ public class AudioListenTracker
         sessionStart = null;
         isTracking = false;
     }
+
+    // ══════════════════════════════════════════════════════════════════
+    // HELPERS
+    // ══════════════════════════════════════════════════════════════════
 
     private static bool IsOnline()
     {
