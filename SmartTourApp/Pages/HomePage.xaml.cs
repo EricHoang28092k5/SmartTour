@@ -9,6 +9,7 @@ public partial class HomePage : ContentPage
     private readonly NarrationEngine narration;
     private readonly LocationService locationService;
     private readonly RouteTrackingService routeTracking;
+    private readonly LocalizationService loc;
 
     private List<Poi> pois = new();
     private Poi? nearest;
@@ -16,8 +17,6 @@ public partial class HomePage : ContentPage
 
     private bool isLoaded;
     private bool isPlaying;
-
-    // ── Track item đang phát trong danh sách ──
     private bool isItemPlaying = false;
     private Poi? currentPlayingPoi;
 
@@ -25,23 +24,39 @@ public partial class HomePage : ContentPage
         PoiRepository repo,
         NarrationEngine narration,
         LocationService locationService,
-        RouteTrackingService routeTracking)
+        RouteTrackingService routeTracking,
+        LocalizationService loc)
     {
         InitializeComponent();
         this.repo = repo;
         this.narration = narration;
         this.locationService = locationService;
         this.routeTracking = routeTracking;
+        this.loc = loc;
     }
 
     protected override void OnAppearing()
     {
         base.OnAppearing();
 
-        UpdateGreeting();
+        ApplyLocalization();
 
         if (!isLoaded)
             _ = LoadAsync();
+    }
+
+    private void ApplyLocalization()
+    {
+        AppNameLabel.Text = loc.AppName;
+        UpdateGreeting();
+        LblNearestBadge.Text = loc.NearestBadge;
+        HeroPlayBtn.Text = isPlaying ? loc.NowPlaying : loc.ListenNow;
+        LblPlaces.Text = loc.Places;
+        LblJourneys.Text = loc.Journeys;
+        LblRating.Text = loc.Rating;
+        LblNearbyTitle.Text = loc.NearbyPlaces;
+        LblNearbySubtitle.Text = loc.ExploreAround;
+        LblViewAll.Text = loc.ViewAll;
     }
 
     private void UpdateGreeting()
@@ -49,20 +64,18 @@ public partial class HomePage : ContentPage
         var hour = DateTime.Now.Hour;
         GreetingLabel.Text = hour switch
         {
-            < 12 => "Chào buổi sáng 👋",
-            < 18 => "Chào buổi chiều 👋",
-            _ => "Chào buổi tối 👋"
+            < 12 => loc.GreetingMorning,
+            < 18 => loc.GreetingAfternoon,
+            _ => loc.GreetingEvening
         };
     }
 
     private async Task LoadAsync()
     {
         isLoaded = true;
-
-        HeroTitle.Text = "Đang tải...";
+        HeroTitle.Text = loc.Loading;
 
         pois = repo.GetCachedPois() ?? await repo.GetPois();
-
         PoiList.ItemsSource = pois;
 
         await LoadLocationAsync();
@@ -70,11 +83,10 @@ public partial class HomePage : ContentPage
 
     private async Task LoadLocationAsync()
     {
-        var loc = await Geolocation.GetLastKnownLocationAsync();
-        if (loc == null) return;
+        var loc2 = await Geolocation.GetLastKnownLocationAsync();
+        if (loc2 == null) return;
 
-        userLoc = loc;
-
+        userLoc = loc2;
         FindNearest();
         SortPois();
     }
@@ -85,9 +97,7 @@ public partial class HomePage : ContentPage
 
         nearest = pois
             .OrderBy(p => Location.CalculateDistance(
-                userLoc,
-                new Location(p.Lat, p.Lng),
-                DistanceUnits.Kilometers))
+                userLoc, new Location(p.Lat, p.Lng), DistanceUnits.Kilometers))
             .FirstOrDefault();
 
         if (nearest == null) return;
@@ -101,32 +111,23 @@ public partial class HomePage : ContentPage
         await HeroImage.FadeToAsync(1, 400);
 
         var dist = Location.CalculateDistance(
-            userLoc,
-            new Location(nearest.Lat, nearest.Lng),
-            DistanceUnits.Kilometers);
+            userLoc, new Location(nearest.Lat, nearest.Lng), DistanceUnits.Kilometers);
 
         HeroDistance.Text = dist < 1
-            ? $"Cách bạn {(int)(dist * 1000)} m"
-            : $"Cách bạn {Math.Round(dist, 1)} km";
+            ? string.Format(loc.DistanceM, (int)(dist * 1000))
+            : string.Format(loc.DistanceKmFar, Math.Round(dist, 1));
     }
 
     private void SortPois()
     {
         if (userLoc == null) return;
-
         pois = pois.OrderBy(p =>
             Location.CalculateDistance(
-                userLoc,
-                new Location(p.Lat, p.Lng),
-                DistanceUnits.Kilometers))
+                userLoc, new Location(p.Lat, p.Lng), DistanceUnits.Kilometers))
             .ToList();
-
         PoiList.ItemsSource = pois;
     }
 
-    // ─────────────────────────────────────────────────────────────────
-    // Yêu cầu 2: PlayNearest — chỉ ghi nhận RouteTracking khi trong radius
-    // ─────────────────────────────────────────────────────────────────
     private async void PlayNearest(object sender, EventArgs e)
     {
         if (nearest == null || userLoc == null) return;
@@ -135,48 +136,36 @@ public partial class HomePage : ContentPage
         {
             narration.Stop();
             isPlaying = false;
-            HeroPlayBtn.Text = "🎧  Nghe ngay";
+            HeroPlayBtn.Text = loc.ListenNow;
             return;
         }
 
-        // 🔥 Lấy GPS mới nhất để kiểm tra radius chính xác
         var freshLoc = await GetFreshLocationAsync();
-        var loc = freshLoc ?? userLoc;
+        var currentLoc = freshLoc ?? userLoc;
 
         try
         {
             isPlaying = true;
-            HeroPlayBtn.Text = "🔊  Đang phát...";
-
-            // PlayManual sẽ dừng auto-play qua AudioCoordinator
-            await narration.PlayManual(nearest, loc);
-
-            // ── Yêu cầu 2: Ghi nhận RouteTracking nếu user đang trong radius ──
-            await TryRecordRouteAsync(nearest, loc);
+            HeroPlayBtn.Text = loc.NowPlaying;
+            await narration.PlayManual(nearest, currentLoc);
+            await TryRecordRouteAsync(nearest, currentLoc);
         }
         finally
         {
             isPlaying = false;
-            HeroPlayBtn.Text = "🎧  Nghe ngay";
+            HeroPlayBtn.Text = loc.ListenNow;
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────
-    // Yêu cầu 4: Mở PoiDetailPage từ HomePage
-    // → set SetOpenedFrom("home") để nút back trong PoiDetailPage
-    //   biết phải quay về HomePage
-    // ─────────────────────────────────────────────────────────────────
     private async void OpenDetailTap(object sender, TappedEventArgs e)
     {
         if (sender is not VisualElement el) return;
-
         var poi = el.BindingContext as Poi;
         if (poi == null) return;
 
-        await el.ScaleToAsync(0.97, 80);
-        await el.ScaleToAsync(1, 80);
+        await el.ScaleToAsync(0.97, 70);
+        await el.ScaleToAsync(1.0, 70);
 
-        // Lấy PoiDetailPage từ DI và set nguồn mở là "home"
         var services = Application.Current?.Handler?.MauiContext?.Services;
         var detailPage = services?.GetService<PoiDetailPage>();
         detailPage?.SetOpenedFrom("home");
@@ -185,9 +174,6 @@ public partial class HomePage : ContentPage
             new Dictionary<string, object> { ["poi"] = poi });
     }
 
-    // ─────────────────────────────────────────────────────────────────
-    // Yêu cầu 2: PlayPoiAudio — chỉ ghi nhận khi user chủ động bấm
-    // ─────────────────────────────────────────────────────────────────
     private async void PlayPoiAudio(object sender, TappedEventArgs e)
     {
         if (sender is not Element el || el.BindingContext is not Poi poi) return;
@@ -201,20 +187,15 @@ public partial class HomePage : ContentPage
             return;
         }
 
-        // 🔥 Lấy GPS mới nhất để kiểm tra radius
         var freshLoc = await GetFreshLocationAsync();
-        var loc = freshLoc ?? userLoc;
+        var currentLoc = freshLoc ?? userLoc;
 
         try
         {
             isItemPlaying = true;
             currentPlayingPoi = poi;
-
-            // PlayManual sẽ dừng auto-play qua AudioCoordinator
-            await narration.PlayManual(poi, loc);
-
-            // ── Yêu cầu 2: Ghi nhận RouteTracking nếu user đang trong radius ──
-            await TryRecordRouteAsync(poi, loc);
+            await narration.PlayManual(poi, currentLoc);
+            await TryRecordRouteAsync(poi, currentLoc);
         }
         finally
         {
@@ -225,51 +206,27 @@ public partial class HomePage : ContentPage
 
     private async void GoToMapRoute(object sender, TappedEventArgs e)
     {
-        if (sender is not Element el || el.BindingContext is not Poi poi)
-            return;
-
+        if (sender is not Element el || el.BindingContext is not Poi poi) return;
         await Shell.Current.GoToAsync($"//map?targetPoi={poi.Id}");
     }
 
-    // ─────────────────────────────────────────────────────────────────
-    // Helpers
-    // ─────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Yêu cầu 2: Chỉ ghi nhận route khi user đang trong radius của poi đó.
-    /// Delegate hẳn cho RouteTrackingService.OnManualAudioPlayedAsync
-    /// (nó đã có guard IsInRadius bên trong).
-    /// </summary>
-    private async Task TryRecordRouteAsync(Poi poi, Location loc)
+    private async Task TryRecordRouteAsync(Poi poi, Location currentLoc)
     {
-        try
-        {
-            await routeTracking.OnManualAudioPlayedAsync(poi, loc);
-        }
+        try { await routeTracking.OnManualAudioPlayedAsync(poi, currentLoc); }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[HomePage] RouteTracking error: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[HomePage] RouteTracking error: {ex.Message}");
         }
     }
 
-    /// <summary>
-    /// Lấy GPS mới nhất với timeout 2s, fallback sang cached.
-    /// </summary>
     private async Task<Location?> GetFreshLocationAsync()
     {
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
             var fresh = await locationService.GetLocation();
-            if (fresh != null)
-            {
-                userLoc = fresh;
-                return fresh;
-            }
+            if (fresh != null) { userLoc = fresh; return fresh; }
         }
         catch { }
-
         return userLoc;
     }
 }

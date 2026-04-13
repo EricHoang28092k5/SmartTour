@@ -8,114 +8,214 @@
 
     <Grid RowDefinitions="*, Auto">
 
-        <!-- ═══════════════════════════════════════════════════════════ -->
-        <!-- SCROLLABLE CONTENT                                          -->
-        <!-- ═══════════════════════════════════════════════════════════ -->
         <ScrollView Grid.Row="0">
             <VerticalStackLayout Spacing="0">
 
-                <!-- Hero image + overlay + back btn + name -->
+                <!-- ══════════════════════════════════════ -->
+                <!-- HERO IMAGE                             -->
+                <!-- ══════════════════════════════════════ -->
                 <Grid HeightRequest="320">
-                    <Image x:Name="PoiImage" Aspect="AspectFill"/>
+                    <Image x:Name="PoiImage"
+                           Aspect="AspectFill"/>
+
+                    <!-- Gradient overlay -->
                     <BoxView>
                         <BoxView.Background>
                             <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
                                 <GradientStop Color="#00000000" Offset="0.0"/>
-                                <GradientStop Color="#33000000" Offset="0.5"/>
-                                <GradientStop Color="#CCffffff" Offset="1.0"/>
+                                <GradientStop Color="#22000000" Offset="0.4"/>
+                                <GradientStop Color="#DDffffff" Offset="1.0"/>
                             </LinearGradientBrush>
                         </BoxView.Background>
                     </BoxView>
 
                     <!-- Back button -->
-                    <Border WidthRequest="40" HeightRequest="40"
-                            BackgroundColor="White" StrokeThickness="0"
-                            StrokeShape="RoundRectangle 20"
-                            HorizontalOptions="Start" VerticalOptions="Start"
-                            Margin="16,52,0,0">
+                    <Border
+                        WidthRequest="44"
+                        HeightRequest="44"
+                        BackgroundColor="White"
+                        StrokeThickness="0"
+                        StrokeShape="RoundRectangle 22"
+                        HorizontalOptions="Start"
+                        VerticalOptions="Start"
+                        Margin="16,52,0,0">
                         <Border.Shadow>
-                            <Shadow Brush="#000000" Offset="0,2" Radius="8" Opacity="0.12"/>
+                            <Shadow Brush="#000000" Offset="0,2" Radius="12" Opacity="0.10"/>
                         </Border.Shadow>
                         <Border.GestureRecognizers>
                             <TapGestureRecognizer Tapped="OnBackTapped"/>
                         </Border.GestureRecognizers>
-                        <Label Text="‹" FontSize="24" FontAttributes="Bold"
-                               TextColor="#1A1A2E" HorizontalOptions="Center"
-                               VerticalOptions="Center" Margin="0,0,0,2"/>
+                        <Label Text="‹"
+                               FontSize="26"
+                               FontAttributes="Bold"
+                               TextColor="#1A1A2E"
+                               HorizontalOptions="Center"
+                               VerticalOptions="Center"
+                               Margin="0,0,2,2"/>
                     </Border>
 
-                    <!-- Open status + POI name -->
-                    <VerticalStackLayout VerticalOptions="End" HorizontalOptions="Start"
-                                         Margin="20,0,20,20" Spacing="6">
+                    <!-- Bottom info -->
+                    <VerticalStackLayout VerticalOptions="End"
+                                         HorizontalOptions="Start"
+                                         Margin="20,0,20,22"
+                                         Spacing="8">
+
+                        <!-- Open/close status -->
                         <HorizontalStackLayout Spacing="8">
-                            <Border x:Name="OpenStatusBadge" BackgroundColor="#1A00FF88"
-                                    StrokeThickness="1" Stroke="#4400FF88"
-                                    StrokeShape="RoundRectangle 20" Padding="10,4">
-                                <Label x:Name="OpenStatus" FontSize="11" FontAttributes="Bold"
-                                       TextColor="#00FF88" CharacterSpacing="0.5"/>
+                            <Border x:Name="OpenStatusBadge"
+                                    BackgroundColor="#1A00FF88"
+                                    StrokeThickness="1"
+                                    Stroke="#4400FF88"
+                                    StrokeShape="RoundRectangle 20"
+                                    Padding="10,5">
+                                <Label x:Name="OpenStatus"
+                                       FontSize="11"
+                                       FontAttributes="Bold"
+                                       TextColor="#00FF88"
+                                       CharacterSpacing="0.3"/>
                             </Border>
-                            <Label x:Name="OpenDetail" FontSize="12" TextColor="#666666"
+                            <Label x:Name="OpenDetail"
+                                   FontSize="12"
+                                   TextColor="#555555"
                                    VerticalOptions="Center"/>
                         </HorizontalStackLayout>
-                        <Label x:Name="PoiName" FontSize="26" FontAttributes="Bold"
-                               TextColor="#1A1A2E" LineHeight="1.2" CharacterSpacing="-0.3"/>
+
+                        <Label x:Name="PoiName"
+                               FontSize="26"
+                               FontAttributes="Bold"
+                               TextColor="#1A1A2E"
+                               LineHeight="1.15"
+                               CharacterSpacing="-0.3"/>
                     </VerticalStackLayout>
                 </Grid>
 
-                <!-- Tabs -->
-                <Grid Margin="16,16,16,0" ColumnDefinitions="*,*" ColumnSpacing="10">
-                    <Border x:Name="OverviewTabBorder" StrokeThickness="0"
-                            StrokeShape="RoundRectangle 14">
+                <!-- ══════════════════════════════════════ -->
+                <!-- TAB SWITCHER                           -->
+                <!-- ══════════════════════════════════════ -->
+                <Grid Margin="16,16,16,0"
+                      ColumnDefinitions="*,*"
+                      ColumnSpacing="10">
+
+                    <!-- Overview tab -->
+                    <Border x:Name="OverviewTabBorder"
+                            StrokeThickness="0"
+                            StrokeShape="RoundRectangle 16">
                         <Border.Background>
                             <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                <GradientStop Color="#1976D2" Offset="0"/>
-                                <GradientStop Color="#5B8CFF" Offset="1"/>
+                                <GradientStop Color="#3461FF" Offset="0"/>
+                                <GradientStop Color="#7C9FFF" Offset="1"/>
                             </LinearGradientBrush>
                         </Border.Background>
-                        <Button x:Name="OverviewTab" Text="Tổng quan" Clicked="ShowOverview"
-                                BackgroundColor="Transparent" TextColor="White"
-                                FontSize="14" FontAttributes="Bold" HeightRequest="44"/>
+                        <Border.Shadow>
+                            <Shadow Brush="#3461FF" Offset="0,4" Radius="16" Opacity="0.25"/>
+                        </Border.Shadow>
+                        <Button x:Name="OverviewTab"
+                                Text="Tổng quan"
+                                Clicked="ShowOverview"
+                                BackgroundColor="Transparent"
+                                TextColor="White"
+                                FontSize="14"
+                                FontAttributes="Bold"
+                                HeightRequest="46"/>
                     </Border>
-                    <Border x:Name="MenuTabBorder" Grid.Column="1"
-                            BackgroundColor="#F5F6FA" StrokeThickness="1"
-                            Stroke="#E8ECF0" StrokeShape="RoundRectangle 14">
-                        <Button x:Name="MenuTab" Text="Thực đơn" Clicked="ShowMenu"
-                                BackgroundColor="Transparent" TextColor="#9B9BAA"
-                                FontSize="14" HeightRequest="44"/>
+
+                    <!-- Menu tab -->
+                    <Border x:Name="MenuTabBorder"
+                            Grid.Column="1"
+                            BackgroundColor="#F5F6FA"
+                            StrokeThickness="1"
+                            Stroke="#E8ECF0"
+                            StrokeShape="RoundRectangle 16">
+                        <Button x:Name="MenuTab"
+                                Text="Thực đơn"
+                                Clicked="ShowMenu"
+                                BackgroundColor="Transparent"
+                                TextColor="#9B9BAA"
+                                FontSize="14"
+                                HeightRequest="46"/>
                     </Border>
                 </Grid>
 
-                <!-- Overview section -->
-                <VerticalStackLayout x:Name="OverviewSection" Margin="16,16,16,40" Spacing="10">
-                    <Label Text="GIỚI THIỆU" FontSize="11" FontAttributes="Bold"
-                           TextColor="#5B8CFF" CharacterSpacing="2"/>
-                    <Label x:Name="PoiDescription" FontSize="14.5"
-                           TextColor="#444455" LineHeight="1.65"/>
+                <!-- ══════════════════════════════════════ -->
+                <!-- OVERVIEW SECTION                       -->
+                <!-- ══════════════════════════════════════ -->
+                <VerticalStackLayout x:Name="OverviewSection"
+                                     Margin="16,20,16,40"
+                                     Spacing="12">
+
+                    <Label x:Name="LblIntroduction"
+                           Text="GIỚI THIỆU"
+                           FontSize="11"
+                           FontAttributes="Bold"
+                           TextColor="#3461FF"
+                           CharacterSpacing="2"/>
+
+                    <!-- Description from TtsScript (YC3) -->
+                    <Label x:Name="PoiDescription"
+                           FontSize="15"
+                           TextColor="#444455"
+                           LineHeight="1.7"/>
+
+                    <!-- Loading indicator for description -->
+                    <HorizontalStackLayout x:Name="DescLoadingRow"
+                                           IsVisible="False"
+                                           Spacing="8"
+                                           HorizontalOptions="Start">
+                        <ActivityIndicator IsRunning="True"
+                                           Color="#3461FF"
+                                           WidthRequest="16" HeightRequest="16"/>
+                        <Label Text="Đang tải mô tả..."
+                               FontSize="12"
+                               TextColor="#9B9BAA"
+                               VerticalOptions="Center"/>
+                    </HorizontalStackLayout>
+
                 </VerticalStackLayout>
 
-                <!-- Food list -->
-                <CollectionView x:Name="FoodList" Margin="16,16,16,40" IsVisible="False">
+                <!-- ══════════════════════════════════════ -->
+                <!-- MENU/FOOD LIST                         -->
+                <!-- ══════════════════════════════════════ -->
+                <CollectionView x:Name="FoodList"
+                                Margin="16,20,16,40"
+                                IsVisible="False">
                     <CollectionView.ItemTemplate>
                         <DataTemplate>
-                            <Border StrokeShape="RoundRectangle 16" BackgroundColor="White"
-                                    StrokeThickness="1" Stroke="#EEEEF5" Margin="0,0,0,12">
+                            <Border StrokeShape="RoundRectangle 18"
+                                    BackgroundColor="White"
+                                    StrokeThickness="1"
+                                    Stroke="#EEEEF5"
+                                    Margin="0,0,0,14">
                                 <Border.Shadow>
-                                    <Shadow Brush="#000000" Offset="0,2" Radius="8" Opacity="0.06"/>
+                                    <Shadow Brush="#000000" Offset="0,3" Radius="12" Opacity="0.06"/>
                                 </Border.Shadow>
                                 <Grid ColumnDefinitions="110,*">
-                                    <Image Source="{Binding ImageUrl}" HeightRequest="100" Aspect="AspectFill">
-                                        <Image.GestureRecognizers>
-                                            <TapGestureRecognizer Tapped="OnFoodImageTapped"/>
-                                        </Image.GestureRecognizers>
-                                    </Image>
-                                    <VerticalStackLayout Grid.Column="1" Padding="14,12" Spacing="4">
-                                        <Label Text="{Binding Name}" FontAttributes="Bold"
-                                               FontSize="14" TextColor="#1A1A2E"/>
-                                        <Label Text="{Binding Description}" FontSize="12"
-                                               TextColor="#888" LineHeight="1.4"/>
+                                    <Border StrokeShape="RoundRectangle 16,0,0,16"
+                                            StrokeThickness="0" Grid.Column="0">
+                                        <Image Source="{Binding ImageUrl}"
+                                               HeightRequest="110"
+                                               Aspect="AspectFill">
+                                            <Image.GestureRecognizers>
+                                                <TapGestureRecognizer Tapped="OnFoodImageTapped"/>
+                                            </Image.GestureRecognizers>
+                                        </Image>
+                                    </Border>
+
+                                    <VerticalStackLayout Grid.Column="1"
+                                                         Padding="14,14"
+                                                         Spacing="5">
+                                        <Label Text="{Binding Name}"
+                                               FontAttributes="Bold"
+                                               FontSize="14"
+                                               TextColor="#1A1A2E"/>
+                                        <Label Text="{Binding Description}"
+                                               FontSize="12"
+                                               TextColor="#888"
+                                               LineHeight="1.45"/>
                                         <Label Text="{Binding Price, StringFormat='{}{0:N0} đ'}"
-                                               TextColor="#5B8CFF" FontAttributes="Bold"
-                                               FontSize="14" Margin="0,6,0,0"/>
+                                               TextColor="#3461FF"
+                                               FontAttributes="Bold"
+                                               FontSize="14"
+                                               Margin="0,6,0,0"/>
                                     </VerticalStackLayout>
                                 </Grid>
                             </Border>
@@ -127,262 +227,255 @@
         </ScrollView>
 
         <!-- ═══════════════════════════════════════════════════════════ -->
-        <!--  AUDIO CONTROL PANEL — "Studio Monitor Card"               -->
-        <!--  Tất cả x:Name phải khớp với code-behind                   -->
+        <!--  AUDIO PLAYER CARD — Clean modern design                    -->
         <!-- ═══════════════════════════════════════════════════════════ -->
         <Border x:Name="AudioBar"
                 Grid.Row="1"
                 BackgroundColor="White"
                 StrokeThickness="0"
-                StrokeShape="RoundRectangle 24,24,0,0">
+                StrokeShape="RoundRectangle 28,28,0,0">
 
             <Border.Shadow>
-                <Shadow Brush="#111827" Offset="0,-6" Radius="32" Opacity="0.09"/>
+                <Shadow Brush="#1A1A2E" Offset="0,-8" Radius="40" Opacity="0.09"/>
             </Border.Shadow>
 
-            <Grid RowDefinitions="3,Auto">
+            <VerticalStackLayout Spacing="0" Padding="20,16,20,38">
 
-                <!-- Accent line -->
-                <Border Grid.Row="0" HeightRequest="3"
-                        StrokeThickness="0" StrokeShape="RoundRectangle 3,3,0,0">
-                    <Border.Background>
-                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                            <GradientStop Color="#EFF6FF" Offset="0"/>
-                            <GradientStop Color="#2563EB" Offset="0.3"/>
-                            <GradientStop Color="#1D4ED8" Offset="0.5"/>
-                            <GradientStop Color="#2563EB" Offset="0.7"/>
-                            <GradientStop Color="#EFF6FF" Offset="1"/>
-                        </LinearGradientBrush>
-                    </Border.Background>
-                </Border>
+                <!-- Drag handle -->
+                <BoxView WidthRequest="36"
+                         HeightRequest="4"
+                         CornerRadius="2"
+                         BackgroundColor="#E0E5F5"
+                         HorizontalOptions="Center"
+                         Margin="0,0,0,18"/>
 
-                <!-- Card body -->
-                <VerticalStackLayout Grid.Row="1" Padding="20,14,20,0" Spacing="0">
+                <!-- ── Header: icon + title + duration ── -->
+                <Grid ColumnDefinitions="Auto,*,Auto"
+                      ColumnSpacing="14"
+                      Margin="0,0,0,18">
 
-                    <!-- Drag pill -->
-                    <BoxView WidthRequest="28" HeightRequest="3" CornerRadius="2"
-                             BackgroundColor="#E5E7EB" HorizontalOptions="Center"
-                             Margin="0,0,0,14"/>
+                    <!-- Waveform icon -->
+                    <Border Grid.Column="0"
+                            WidthRequest="48"
+                            HeightRequest="48"
+                            StrokeThickness="0"
+                            StrokeShape="RoundRectangle 15">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                <GradientStop Color="#3461FF" Offset="0"/>
+                                <GradientStop Color="#7C9FFF" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Border.Background>
+                        <HorizontalStackLayout Spacing="3"
+                                               VerticalOptions="Center"
+                                               HorizontalOptions="Center">
+                            <BoxView WidthRequest="3" HeightRequest="8"  CornerRadius="2" BackgroundColor="White" Opacity="0.5"/>
+                            <BoxView WidthRequest="3" HeightRequest="18" CornerRadius="2" BackgroundColor="White" Opacity="0.75"/>
+                            <BoxView WidthRequest="3" HeightRequest="26" CornerRadius="2" BackgroundColor="White"/>
+                            <BoxView WidthRequest="3" HeightRequest="14" CornerRadius="2" BackgroundColor="White" Opacity="0.65"/>
+                            <BoxView WidthRequest="3" HeightRequest="7"  CornerRadius="2" BackgroundColor="White" Opacity="0.4"/>
+                        </HorizontalStackLayout>
+                    </Border>
 
-                    <!-- Header: status label + POI name + buffering badge + duration chip -->
-                    <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,12" ColumnSpacing="8">
+                    <!-- Title info -->
+                    <VerticalStackLayout Grid.Column="1"
+                                         VerticalOptions="Center"
+                                         Spacing="3">
+                        <Label x:Name="LblAudioGuide"
+                               Text="Audio Guide"
+                               FontSize="15"
+                               FontAttributes="Bold"
+                               TextColor="#1A1A2E"
+                               CharacterSpacing="-0.2"/>
+                        <Label x:Name="LblNarrationPoint"
+                               Text="Thuyết minh điểm tham quan"
+                               FontSize="11"
+                               TextColor="#9BA3C4"/>
+                    </VerticalStackLayout>
 
-                        <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
-                            <!--
-                                PlayerStatusMicroLabel — thay đổi text theo state:
-                                Idle: "NHẤN ▶ ĐỂ PHÁT"
-                                Buffering: "ĐANG TẢI..."
-                                Playing: "ĐANG PHÁT"
-                                Paused: "TẠM DỪNG"
-                                Ended: "ĐÃ PHÁT XONG"
-                            -->
-                            <Label x:Name="PlayerStatusMicroLabel"
-                                   Text="NHẤN ▶ ĐỂ PHÁT"
-                                   FontSize="8"
-                                   FontAttributes="Bold"
-                                   TextColor="#9CA3AF"
-                                   CharacterSpacing="2"/>
-                            <Label x:Name="PlayerPoiNameLabel"
-                                   Text="Thuyết minh điểm tham quan"
-                                   FontSize="14"
-                                   FontAttributes="Bold"
-                                   TextColor="#0F172A"
-                                   MaxLines="1"
-                                   LineBreakMode="TailTruncation"/>
-                        </VerticalStackLayout>
+                    <!-- Duration pill -->
+                    <Border Grid.Column="2"
+                            BackgroundColor="#EEF1FF"
+                            StrokeThickness="0"
+                            StrokeShape="RoundRectangle 20"
+                            Padding="12,6"
+                            VerticalOptions="Center">
+                        <Label x:Name="TotalTimeLabel"
+                               Text="00:00"
+                               FontSize="12"
+                               FontAttributes="Bold"
+                               TextColor="#3461FF"/>
+                    </Border>
+                </Grid>
 
-                        <!--
-                            BufferingBadge — hiện khi state = Buffering
-                            IsVisible = False by default
-                        -->
-                        <Border x:Name="BufferingBadge"
-                                Grid.Column="1"
-                                BackgroundColor="#FFF7ED"
-                                StrokeThickness="1"
-                                Stroke="#FED7AA"
-                                StrokeShape="RoundRectangle 20"
-                                Padding="8,3"
-                                VerticalOptions="Center"
-                                IsVisible="False">
-                            <Label Text="Đang tải..."
-                                   FontSize="10"
-                                   FontAttributes="Bold"
-                                   TextColor="#EA580C"/>
-                        </Border>
+                <!-- ── Progress track ── -->
+                <Grid RowDefinitions="Auto,Auto">
 
-                        <!-- Duration chip — hiện tổng thời lượng (set bởi OnDuration) -->
-                        <Border Grid.Column="2"
-                                BackgroundColor="#EFF6FF"
-                                StrokeThickness="1"
-                                Stroke="#BFDBFE"
-                                StrokeShape="RoundRectangle 20"
-                                Padding="10,4"
-                                VerticalOptions="Center">
-                            <Label x:Name="TotalTimeLabel"
-                                   Text="--:--"
-                                   FontSize="12"
-                                   FontAttributes="Bold"
-                                   TextColor="#1D4ED8"/>
-                        </Border>
-                    </Grid>
+                    <Border Grid.Row="0"
+                            HeightRequest="5"
+                            BackgroundColor="#EEF1FF"
+                            StrokeThickness="0"
+                            StrokeShape="RoundRectangle 3">
+                        <Grid HorizontalOptions="Start" x:Name="ProgressFillContainer">
+                            <Border x:Name="ProgressFill"
+                                    HeightRequest="5"
+                                    WidthRequest="0"
+                                    StrokeThickness="0"
+                                    StrokeShape="RoundRectangle 3"
+                                    HorizontalOptions="Start">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                        <GradientStop Color="#3461FF" Offset="0"/>
+                                        <GradientStop Color="#7C9FFF" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                            </Border>
+                        </Grid>
+                    </Border>
 
-                    <!--
-                        THE SLIDER — Root cause fix:
-                        • Maximum = 1 (placeholder) khi Idle/Buffering
-                        • Maximum = duration thực tế SAU KHI OnDuration fire
-                        • Value được set bởi OnProgress qua UpdateSliderUI()
-                        • IsEnabled = False khi Idle/Buffering
-                        • DragStarted/DragCompleted → log session A/B
-                    -->
+                    <!-- Transparent slider for touch -->
                     <Slider x:Name="ProgressSlider"
+                            Grid.Row="0"
                             Minimum="0"
-                            Maximum="1"
-                            Value="0"
-                            MinimumTrackColor="#2563EB"
-                            MaximumTrackColor="#E5E7EB"
-                            ThumbColor="#1D4ED8"
+                            Maximum="0"
                             DragStarted="OnSeekStarted"
                             DragCompleted="OnSeekCompleted"
                             ValueChanged="OnSeek"
-                            HeightRequest="36"
-                            IsEnabled="False"
-                            Margin="-4,0,-4,0"/>
+                            ThumbColor="Transparent"
+                            MinimumTrackColor="Transparent"
+                            MaximumTrackColor="Transparent"
+                            HeightRequest="28"
+                            Margin="0,-12,0,0"/>
 
-                    <!--
-                        Time labels:
-                        • CurrentTimeLabel (trái)  = giây đang phát (tăng dần)
-                        • RemainingTimeLabel (phải) = tổng thời lượng (cố định)
-                    -->
-                    <Grid ColumnDefinitions="Auto,*,Auto" Margin="4,-6,4,0">
+                    <!-- Time labels -->
+                    <Grid Grid.Row="1"
+                          ColumnDefinitions="Auto,*,Auto"
+                          Margin="2,5,2,0">
                         <Label x:Name="CurrentTimeLabel"
                                Text="00:00"
                                FontSize="11"
                                FontAttributes="Bold"
-                               TextColor="#2563EB"/>
+                               TextColor="#3461FF"/>
                         <Label Grid.Column="2"
                                x:Name="RemainingTimeLabel"
                                Text="00:00"
                                FontSize="11"
-                               TextColor="#9CA3AF"/>
+                               TextColor="#C0C6E0"/>
                     </Grid>
+                </Grid>
 
-                    <!-- Control row: Skip Back | Play | Skip Forward -->
-                    <Grid ColumnDefinitions="*,Auto,Auto,Auto,*"
-                          Margin="0,16,0,0"
-                          ColumnSpacing="0">
+                <!-- ── Controls row ── -->
+                <Grid ColumnDefinitions="*,Auto,Auto,Auto,*"
+                      ColumnSpacing="0"
+                      HorizontalOptions="Fill"
+                      Margin="0,20,0,0">
 
-                        <!-- Skip ↺ 10s -->
-                        <Grid Grid.Column="1"
-                              WidthRequest="52" HeightRequest="52"
-                              Margin="0,0,10,0" VerticalOptions="Center">
-                            <Grid.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnSkipBackTap"/>
-                            </Grid.GestureRecognizers>
-                            <Ellipse x:Name="SkipBackCircle"
-                                     Fill="#F1F5F9" WidthRequest="48" HeightRequest="48"
-                                     HorizontalOptions="Center" VerticalOptions="Center"/>
-                            <VerticalStackLayout HorizontalOptions="Center"
-                                                 VerticalOptions="Center" Spacing="-1">
-                                <Label Text="↺" FontSize="19" TextColor="#475569"
-                                       HorizontalOptions="Center"/>
-                                <Label Text="10s" FontSize="7" FontAttributes="Bold"
-                                       TextColor="#94A3B8" HorizontalOptions="Center"/>
-                            </VerticalStackLayout>
-                        </Grid>
+                    <!-- Skip back -->
+                    <Border Grid.Column="1"
+                            WidthRequest="52"
+                            HeightRequest="52"
+                            BackgroundColor="#F0F4FF"
+                            StrokeThickness="0"
+                            StrokeShape="RoundRectangle 26"
+                            Margin="0,0,16,0">
+                        <Button x:Name="SkipBackBtn"
+                                BackgroundColor="Transparent"
+                                WidthRequest="52"
+                                HeightRequest="52"
+                                Clicked="OnSkipBack"
+                                Text="↺"
+                                FontSize="20"
+                                TextColor="#3461FF"/>
+                    </Border>
 
-                        <!-- MAIN BUTTON — Play / Pause / Spinner / Replay -->
-                        <Border x:Name="PlayBtnContainer"
-                                Grid.Column="2"
-                                WidthRequest="68" HeightRequest="68"
-                                StrokeThickness="0"
-                                StrokeShape="RoundRectangle 34"
-                                HorizontalOptions="Center" VerticalOptions="Center">
-                            <Border.Background>
-                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                    <GradientStop Color="#2563EB" Offset="0"/>
-                                    <GradientStop Color="#1D4ED8" Offset="1"/>
-                                </LinearGradientBrush>
-                            </Border.Background>
-                            <Border.Shadow>
-                                <Shadow Brush="#2563EB" Offset="0,6" Radius="18" Opacity="0.38"/>
-                            </Border.Shadow>
-                            <Button x:Name="PlayBtn"
-                                    Text="▶"
-                                    FontSize="22"
-                                    Clicked="OnPlayClicked"
-                                    BackgroundColor="Transparent"
-                                    TextColor="White"
-                                    WidthRequest="68"
-                                    HeightRequest="68"/>
-                        </Border>
+                    <!-- Play / Pause -->
+                    <Border x:Name="PlayBtnContainer"
+                            Grid.Column="2"
+                            WidthRequest="66"
+                            HeightRequest="66"
+                            StrokeThickness="0"
+                            StrokeShape="RoundRectangle 33"
+                            HorizontalOptions="Center">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                <GradientStop Color="#3461FF" Offset="0"/>
+                                <GradientStop Color="#7C9FFF" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Border.Background>
+                        <Border.Shadow>
+                            <Shadow Brush="#3461FF" Offset="0,6" Radius="22" Opacity="0.35"/>
+                        </Border.Shadow>
+                        <Button x:Name="PlayBtn"
+                                Text="▶"
+                                FontSize="24"
+                                Clicked="OnPlayClicked"
+                                BackgroundColor="Transparent"
+                                TextColor="White"
+                                WidthRequest="66"
+                                HeightRequest="66"/>
+                    </Border>
 
-                        <!-- Skip ↻ 10s -->
-                        <Grid Grid.Column="3"
-                              WidthRequest="52" HeightRequest="52"
-                              Margin="10,0,0,0" VerticalOptions="Center">
-                            <Grid.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnSkipFwdTap"/>
-                            </Grid.GestureRecognizers>
-                            <Ellipse x:Name="SkipFwdCircle"
-                                     Fill="#F1F5F9" WidthRequest="48" HeightRequest="48"
-                                     HorizontalOptions="Center" VerticalOptions="Center"/>
-                            <VerticalStackLayout HorizontalOptions="Center"
-                                                 VerticalOptions="Center" Spacing="-1">
-                                <Label Text="↻" FontSize="19" TextColor="#475569"
-                                       HorizontalOptions="Center"/>
-                                <Label Text="10s" FontSize="7" FontAttributes="Bold"
-                                       TextColor="#94A3B8" HorizontalOptions="Center"/>
-                            </VerticalStackLayout>
-                        </Grid>
+                    <!-- Skip forward -->
+                    <Border Grid.Column="3"
+                            WidthRequest="52"
+                            HeightRequest="52"
+                            BackgroundColor="#F0F4FF"
+                            StrokeThickness="0"
+                            StrokeShape="RoundRectangle 26"
+                            Margin="16,0,0,0">
+                        <Button x:Name="SkipFwdBtn"
+                                BackgroundColor="Transparent"
+                                WidthRequest="52"
+                                HeightRequest="52"
+                                Clicked="OnSkipForward"
+                                Text="↻"
+                                FontSize="20"
+                                TextColor="#3461FF"/>
+                    </Border>
+                </Grid>
 
-                    </Grid>
+                <!-- Stop button -->
+                <Button x:Name="StopBtn"
+                        Text="■  Dừng phát"
+                        FontSize="12"
+                        FontAttributes="Bold"
+                        TextColor="#FF5A5A"
+                        BackgroundColor="Transparent"
+                        HorizontalOptions="Center"
+                        Margin="0,14,0,0"
+                        Padding="24,8"
+                        IsVisible="False"
+                        Clicked="OnStopClicked"/>
 
-                    <!-- Stop label -->
-                    <Label x:Name="StopBtn"
-                           Text="■  Dừng phát"
-                           FontSize="11" FontAttributes="Bold"
-                           TextColor="#EF4444"
-                           HorizontalOptions="Center"
-                           IsVisible="False"
-                           Margin="0,8,0,0">
-                        <Label.GestureRecognizers>
-                            <TapGestureRecognizer Tapped="OnStopTap"/>
-                        </Label.GestureRecognizers>
-                    </Label>
+                <!-- Hidden controls kept for XAML compat -->
+                <Button x:Name="PauseBtn" IsVisible="False" IsEnabled="False" Clicked="OnPauseClicked"/>
+                <Border x:Name="PauseBtnContainer" IsVisible="False" WidthRequest="0" HeightRequest="0"/>
 
-                    <!-- Safe area -->
-                    <BoxView HeightRequest="28" BackgroundColor="Transparent"/>
-
-                </VerticalStackLayout>
-            </Grid>
+            </VerticalStackLayout>
         </Border>
 
-        <!-- ── Hidden compat elements — zero-size, giữ XAML binding ── -->
-        <Button x:Name="SkipBackBtn" Grid.Row="1"
-                IsVisible="False" IsEnabled="False"
-                WidthRequest="0" HeightRequest="0"
-                Clicked="OnSkipBack"/>
-        <Button x:Name="SkipFwdBtn" Grid.Row="1"
-                IsVisible="False" IsEnabled="False"
-                WidthRequest="0" HeightRequest="0"
-                Clicked="OnSkipForward"/>
-        <Button x:Name="PauseBtn" Grid.Row="1"
-                IsVisible="False" IsEnabled="False"
-                WidthRequest="0" HeightRequest="0"
-                Clicked="OnPauseClicked"/>
-        <Border x:Name="PauseBtnContainer" Grid.Row="1"
-                IsVisible="False" WidthRequest="0" HeightRequest="0"/>
-
-        <!-- Image lightbox -->
-        <Grid x:Name="ImageViewer" Grid.RowSpan="2"
-              BackgroundColor="#EE000000" IsVisible="False" Opacity="0">
+        <!-- ── Image lightbox ── -->
+        <Grid x:Name="ImageViewer"
+              Grid.RowSpan="2"
+              BackgroundColor="#EE000000"
+              IsVisible="False"
+              Opacity="0">
             <Grid.GestureRecognizers>
                 <TapGestureRecognizer Tapped="CloseImageViewer"/>
             </Grid.GestureRecognizers>
-            <Image x:Name="PreviewImage" Aspect="AspectFit" Scale="0.8"
-                   Margin="24" HorizontalOptions="Center" VerticalOptions="Center"/>
-            <Label Text="Nhấn để đóng" TextColor="#44FFFFFF" FontSize="12"
-                   HorizontalOptions="Center" VerticalOptions="End" Margin="0,0,0,40"/>
+            <Image x:Name="PreviewImage"
+                   Aspect="AspectFit"
+                   Scale="0.8"
+                   Margin="24"
+                   HorizontalOptions="Center"
+                   VerticalOptions="Center"/>
+            <Label x:Name="LblTapToClose"
+                   Text="Nhấn để đóng"
+                   TextColor="#44FFFFFF"
+                   FontSize="12"
+                   HorizontalOptions="Center"
+                   VerticalOptions="End"
+                   Margin="0,0,0,40"/>
         </Grid>
 
     </Grid>

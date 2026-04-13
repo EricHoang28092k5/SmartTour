@@ -5,7 +5,9 @@ namespace SmartTourApp.Pages;
 public partial class SettingsPage : ContentPage
 {
     private const string QrGateUntilKey = "qr_gate_until_utc";
+
     private readonly LanguageService lang;
+    private readonly LocalizationService loc;
     private readonly PoiRepository repo;
     private readonly TrackingService tracking;
     private readonly NarrationEngine narration;
@@ -13,13 +15,13 @@ public partial class SettingsPage : ContentPage
     private readonly HeatmapService heatmap;
     private readonly RouteTrackingService routeTracking;
     private readonly AudioCoordinator coordinator;
-    private readonly OfflineMapService offlineMapService;  // 🔥 NEW
+    private readonly OfflineMapService offlineMapService;
 
-    // Yêu cầu 2: Key lưu trạng thái auto-play trong Preferences
     public const string AutoPlayKey = "auto_play_enabled";
 
     public SettingsPage(
         LanguageService lang,
+        LocalizationService loc,
         PoiRepository repo,
         TrackingService tracking,
         NarrationEngine narration,
@@ -27,10 +29,11 @@ public partial class SettingsPage : ContentPage
         HeatmapService heatmap,
         RouteTrackingService routeTracking,
         AudioCoordinator coordinator,
-        OfflineMapService offlineMapService)   // 🔥 inject
+        OfflineMapService offlineMapService)
     {
         InitializeComponent();
         this.lang = lang;
+        this.loc = loc;
         this.repo = repo;
         this.tracking = tracking;
         this.narration = narration;
@@ -44,20 +47,51 @@ public partial class SettingsPage : ContentPage
     protected override void OnAppearing()
     {
         base.OnAppearing();
+
+        // Apply localization
+        ApplyLocalization();
+
         LangPicker.SelectedItem = lang.Current;
 
-        // Yêu cầu 2: Đọc trạng thái auto-play từ Preferences, mặc định = true
         var autoPlay = Preferences.Default.Get(AutoPlayKey, true);
         AutoPlaySwitch.IsToggled = autoPlay;
         UpdateAutoPlayInfo(autoPlay);
 
-        // 🔥 Cập nhật thông tin map cache
         UpdateMapCacheInfo();
     }
 
-    // ───────────────────────────────────────────────────────────────────
-    // 🔥 MAP CACHE INFO — Refresh stats
-    // ───────────────────────────────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════
+    // LOCALIZATION
+    // ══════════════════════════════════════════════════════════════
+
+    private void ApplyLocalization()
+    {
+        LblSettingsSubtitle.Text = loc.SettingsSubtitle;
+        LblSettingsTitle.Text = loc.SettingsTitle;
+        LblLangSection.Text = loc.Language;
+        LblNarrationLanguage.Text = loc.NarrationLanguage;
+        LangPicker.Title = loc.ChooseLanguage;
+        LblAutoSection.Text = loc.AutoNarration;
+        LblAutoPlay.Text = loc.AutoPlay;
+        LblAutoPlayDesc.Text = loc.AutoPlayDesc;
+        LblStatsSection.Text = loc.StatsHeatmap;
+        LblHeatmapData.Text = loc.HeatmapData;
+        LblHeatmapDesc.Text = loc.HeatmapDesc;
+        LblOfflineMapSection.Text = loc.OfflineMapTitle;
+        LblMapSaved.Text = loc.MapSaved;
+        LblClearMapCache.Text = loc.ClearMapCache;
+        LblClearMapCacheDesc.Text = loc.ClearMapCacheDesc;
+        LblMapCacheInfo.Text = loc.MapCacheInfo;
+        LblSecuritySection.Text = loc.SecurityAccess;
+        LblClearQr.Text = loc.ClearQrSession;
+        LblClearQrDesc.Text = loc.ClearQrSessionDesc;
+        LblSaveSettings.Text = loc.SaveSettings;
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // MAP CACHE
+    // ══════════════════════════════════════════════════════════════
+
     private void UpdateMapCacheInfo()
     {
         try
@@ -65,61 +99,56 @@ public partial class SettingsPage : ContentPage
             int tiles = offlineMapService.GetCachedTileCount();
             long mb = offlineMapService.GetCacheSizeMB();
 
-            // Update UI labels (nếu XAML có những control này — xem SettingsPage.xaml)
-            if (MapCacheTileLabel != null)
-                MapCacheTileLabel.Text = $"{tiles:N0} tiles (~{mb}MB)";
-
-            if (MapCacheStatusLabel != null)
-                MapCacheStatusLabel.Text = tiles > 0
-                    ? $"✅ {tiles} tiles đã lưu"
-                    : "Chưa có bản đồ offline";
+            MapCacheTileLabel.Text = string.Format(loc.TilesInfo, tiles, mb);
+            MapCacheStatusLabel.Text = tiles > 0
+                ? string.Format(loc.TilesCached, tiles)
+                : loc.NoOfflineMap;
         }
         catch { }
     }
 
-    // ───────────────────────────────────────────────────────────────────
-    // 🔥 CLEAR MAP CACHE
-    // ───────────────────────────────────────────────────────────────────
     private async void OnClearMapCacheTapped(object sender, TappedEventArgs e)
     {
         int tiles = offlineMapService.GetCachedTileCount();
         if (tiles == 0)
         {
-            await DisplayAlert("Thông báo", "Cache bản đồ đang trống.", "OK");
+            await DisplayAlert(loc.Notice, loc.EmptyCache, loc.OK);
             return;
         }
 
         bool confirm = await DisplayAlert(
-            "Xóa bản đồ offline",
-            $"Xóa {tiles} tiles ({offlineMapService.GetCacheSizeMB()}MB)?\n" +
-            "Bản đồ sẽ cần tải lại khi có mạng.",
-            "Xóa", "Hủy");
+            loc.ClearMapConfirm,
+            string.Format(loc.ClearMapConfirmMsg, tiles, offlineMapService.GetCacheSizeMB()),
+            loc.Delete, loc.Cancel);
 
         if (!confirm) return;
 
         offlineMapService.ClearMapCache();
         UpdateMapCacheInfo();
-        await DisplayAlert("Thành công", "Đã xóa cache bản đồ.", "OK");
+        await DisplayAlert(loc.Success, loc.MapCacheCleared, loc.OK);
     }
+
+    // ══════════════════════════════════════════════════════════════
+    // QR SESSION
+    // ══════════════════════════════════════════════════════════════
 
     private async void OnClearQrSessionTapped(object sender, TappedEventArgs e)
     {
         var confirm = await DisplayAlert(
-            "Xóa phiên quét QR",
-            "Sau khi xóa, lần mở app tiếp theo sẽ bắt buộc quét QR lại. Bạn chắc chắn chứ?",
-            "Xóa",
-            "Hủy");
+            loc.ClearQrConfirmTitle,
+            loc.ClearQrConfirmMsg,
+            loc.Delete, loc.Cancel);
 
         if (!confirm) return;
 
         Preferences.Default.Remove(QrGateUntilKey);
-        await DisplayAlert("Thành công", "Đã xóa phiên QR. Mở lại app sẽ yêu cầu quét lại.", "OK");
+        await DisplayAlert(loc.Success, loc.ClearQrSuccess, loc.OK);
     }
 
-    // ───────────────────────────────────────────────────────────────────
-    // Yêu cầu 2: Gạt Switch → lưu ngay vào Preferences
-    // Yêu cầu 1: Khi BẬT lại → reset GeofencingEngine để trigger ngay
-    // ───────────────────────────────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════
+    // AUTO PLAY TOGGLE
+    // ══════════════════════════════════════════════════════════════
+
     private void OnAutoPlayToggled(object sender, ToggledEventArgs e)
     {
         var prevValue = Preferences.Default.Get(AutoPlayKey, true);
@@ -128,8 +157,7 @@ public partial class SettingsPage : ContentPage
 
         if (e.Value && !prevValue)
         {
-            System.Diagnostics.Debug.WriteLine(
-                "🔄 [Settings] Auto-play turned ON → Reset GeofencingEngine");
+            System.Diagnostics.Debug.WriteLine("🔄 [Settings] Auto-play ON → Reset GeofencingEngine");
             geo.Reset();
         }
     }
@@ -139,7 +167,7 @@ public partial class SettingsPage : ContentPage
         if (isEnabled)
         {
             AutoPlayInfoIcon.Text = "✅";
-            AutoPlayInfoLabel.Text = "Thuyết minh sẽ tự động phát khi bạn tiếp cận điểm tham quan.";
+            AutoPlayInfoLabel.Text = loc.AutoPlayOn;
             AutoPlayInfoBorder.BackgroundColor = Color.FromArgb("#F0F7FF");
             AutoPlayInfoBorder.Stroke = new SolidColorBrush(Color.FromArgb("#E3F2FD"));
             AutoPlayInfoLabel.TextColor = Color.FromArgb("#1565C0");
@@ -147,24 +175,30 @@ public partial class SettingsPage : ContentPage
         else
         {
             AutoPlayInfoIcon.Text = "🔕";
-            AutoPlayInfoLabel.Text = "Tự động phát đã tắt. Heatmap vẫn được ghi nhận.";
+            AutoPlayInfoLabel.Text = loc.AutoPlayOff;
             AutoPlayInfoBorder.BackgroundColor = Color.FromArgb("#FFF8F0");
             AutoPlayInfoBorder.Stroke = new SolidColorBrush(Color.FromArgb("#FFE0B2"));
             AutoPlayInfoLabel.TextColor = Color.FromArgb("#E65100");
         }
     }
 
+    // ══════════════════════════════════════════════════════════════
+    // SAVE
+    // ══════════════════════════════════════════════════════════════
+
     private async void Save(object sender, EventArgs e)
     {
-        var selected = LangPicker.SelectedItem?.ToString() ?? "vi";
+        var selected = LangPicker.SelectedItem?.ToString() ?? "en";
         if (selected == lang.Current)
         {
-            await DisplayAlert("Thông báo", "Ngôn ngữ không thay đổi", "OK");
+            await DisplayAlert(loc.Notice, loc.LanguageUnchanged, loc.OK);
             return;
         }
 
+        // Cập nhật language (LanguageService sẽ fire OnLanguageChanged event)
         lang.Current = selected;
-        await DisplayAlert("Thông báo", "Đang tải lại ứng dụng...", "OK");
+
+        await DisplayAlert(loc.Notice, loc.Reloading, loc.OK);
 
         // RESET TOÀN BỘ
         repo.ClearCache();
@@ -176,6 +210,9 @@ public partial class SettingsPage : ContentPage
 
         await routeTracking.FlushOnAppClosingAsync();
         routeTracking.Reset();
+
+        // Notify localization service
+        loc.NotifyChanged();
 
         Application.Current!.MainPage = new LoadingPage(repo, tracking);
     }

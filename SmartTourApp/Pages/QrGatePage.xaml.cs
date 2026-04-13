@@ -40,32 +40,41 @@ public partial class QrGatePage : ContentPage
 
     private async void OnBarcodesDetected(object? sender, BarcodeDetectionEventArgs e)
     {
-        // Chống bắn event liên tục gây treo UI
+        // 1. Chống bắn event liên tục
         if (Interlocked.CompareExchange(ref _processing, 1, 0) != 0) return;
 
         var raw = e.Results?.FirstOrDefault()?.Value?.Trim();
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            Interlocked.Exchange(ref _processing, 0);
-            return;
-        }
 
-        // Dừng detect sớm để tránh callback dồn dập trong lúc xử lý navigation
+        // 2. Dừng camera để xử lý
         await MainThread.InvokeOnMainThreadAsync(() =>
         {
             QrReader.IsDetecting = false;
             QrReader.IsEnabled = false;
         });
 
-        if (!IsValidGateQr(raw))
+        // =============================================================
+        // 🔥 ĐOẠN LÁCH LUẬT CHO GIẢ LẬP NẰM Ở ĐÂY 🔥
+        // =============================================================
+#if DEBUG
+        if (DeviceInfo.DeviceType == DeviceType.Virtual || raw == "9999")
+        {
+            Preferences.Default.Set(QrGateUntilKey, DateTime.UtcNow.AddDays(7).ToString("O"));
+            await MainThread.InvokeOnMainThreadAsync(() => {
+                StatusLabel.Text = "Đang lách luật giả lập để vào App...";
+                Application.Current!.MainPage = new AppShell();
+            });
+            Interlocked.Exchange(ref _processing, 0);
+            return;
+        }
+#endif
+        // =============================================================
+
+        // 3. Nếu không phải giả lập thì mới chạy logic kiểm tra QR thật bên dưới
+        if (string.IsNullOrWhiteSpace(raw) || !IsValidGateQr(raw))
         {
             await MainThread.InvokeOnMainThreadAsync(() =>
             {
                 StatusLabel.Text = "QR không hợp lệ. Vui lòng quét lại mã SmartTour.";
-            });
-            await Task.Delay(800);
-            await MainThread.InvokeOnMainThreadAsync(() =>
-            {
                 QrReader.IsEnabled = true;
                 QrReader.IsDetecting = true;
             });
@@ -79,10 +88,6 @@ public partial class QrGatePage : ContentPage
             await MainThread.InvokeOnMainThreadAsync(() =>
             {
                 StatusLabel.Text = "Không đọc được định dạng QR.";
-            });
-            await Task.Delay(800);
-            await MainThread.InvokeOnMainThreadAsync(() =>
-            {
                 QrReader.IsEnabled = true;
                 QrReader.IsDetecting = true;
             });
@@ -90,26 +95,15 @@ public partial class QrGatePage : ContentPage
             return;
         }
 
-        // Lưu phiên hợp lệ 7 ngày kể từ lúc quét thành công
+        // Lưu phiên hợp lệ 7 ngày
         Preferences.Default.Set(QrGateUntilKey, DateTime.UtcNow.AddDays(7).ToString("O"));
 
-        await MainThread.InvokeOnMainThreadAsync(() => StatusLabel.Text = "Quét thành công, đang vào trang chủ...");
-        await MainThread.InvokeOnMainThreadAsync(() => Application.Current!.MainPage = new AppShell());
-        await Task.Delay(120);
-        await MainThread.InvokeOnMainThreadAsync(async () => await Shell.Current.GoToAsync("//home"));
+        await MainThread.InvokeOnMainThreadAsync(() => {
+            StatusLabel.Text = "Quét thành công, đang vào trang chủ...";
+            Application.Current!.MainPage = new AppShell();
+        });
 
-        try
-        {
-            _ = targetUri; // giữ parse để validate QR, nhưng không dùng điều hướng ngay.
-        }
-        catch
-        {
-            // Không chặn vào app.
-        }
-        finally
-        {
-            Interlocked.Exchange(ref _processing, 0);
-        }
+        Interlocked.Exchange(ref _processing, 0);
     }
 
     private static Uri? NormalizeQr(string raw)

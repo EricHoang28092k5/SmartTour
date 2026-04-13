@@ -1,18 +1,15 @@
 ﻿using Microsoft.Maui.Controls;
 using SmartTourApp.Services;
-using SmartTourApp.Pages; // AutoPlayKey
+using SmartTourApp.Pages;
 
 namespace SmartTourApp.Pages;
 
 public partial class LoadingPage : ContentPage
 {
-    private const string QrGateUntilKey = "qr_gate_until_utc";
     private readonly PoiRepository repo;
     private readonly TrackingService tracking;
 
     private double progress = 0;
-
-    // 🔥 quản lý animation lifecycle
     private CancellationTokenSource? animationCts;
 
     public LoadingPage(PoiRepository repo, TrackingService tracking)
@@ -26,7 +23,6 @@ public partial class LoadingPage : ContentPage
     {
         base.OnAppearing();
 
-        // 🔥 kill animation cũ
         animationCts?.Cancel();
         animationCts = new CancellationTokenSource();
 
@@ -42,8 +38,6 @@ public partial class LoadingPage : ContentPage
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
-
-        // 🔥 cực quan trọng để tránh UI bug
         animationCts?.Cancel();
     }
 
@@ -59,92 +53,69 @@ public partial class LoadingPage : ContentPage
             var heatmap = services?.GetService<HeatmapService>();
             var routeTracking = services?.GetService<RouteTrackingService>();
             var coordinator = services?.GetService<AudioCoordinator>();
+            var loc = services?.GetService<LocalizationService>();
 
             narration?.Reset();
             tracking.Stop();
 
-            // ── 🔥 Route session crash recovery — kiểm tra session cũ trước khi khởi động ──
             if (routeTracking != null)
-            {
                 await routeTracking.RecoverSessionOnStartupAsync();
-            }
 
-            await UpdateStatusAsync("Đang tải POI...", 0.25);
+            await UpdateStatusAsync(loc?.LoadingPoi ?? "Đang tải địa điểm...", 0.25);
 
             var pois = await repo.GetPois();
 
-            await UpdateStatusAsync("Khởi tạo TTS...", 0.5);
+            await UpdateStatusAsync(loc?.LoadingTts ?? "Khởi tạo TTS...", 0.5);
 
-            StatusLabel.Text = "Khởi tạo Tracking...";
+            StatusLabel.Text = loc?.LoadingTracking ?? "Khởi tạo Tracking...";
             await Task.Delay(300);
 
             await tracking.Start();
 
-            // ─── AUTO PLAY + HEATMAP APP_OPEN (chạy song song) ───
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    if (locationService == null || geo == null || narration == null)
-                        return;
+                    if (locationService == null || geo == null || narration == null) return;
 
-                    Location? loc = null;
-
-                    // 🔥 retry GPS
+                    Location? userLoc = null;
                     for (int i = 0; i < 5; i++)
                     {
-                        loc = await locationService.GetLocation();
-                        if (loc != null) break;
+                        userLoc = await locationService.GetLocation();
+                        if (userLoc != null) break;
                         await Task.Delay(1500);
                     }
 
-                    if (loc == null) return;
+                    if (userLoc == null) return;
 
-                    // ─── 🔥 HEATMAP APP_OPEN ───
                     if (heatmap != null)
-                    {
-                        await heatmap.CheckAppOpenAsync(loc, pois);
-                    }
+                        await heatmap.CheckAppOpenAsync(userLoc, pois);
 
-                    // ─── AUTO PLAY narration ───
-                    // Yêu cầu 1: Chỉ auto-play nếu cài đặt auto-play đang BẬT
-                    bool autoPlayEnabled = Preferences.Default.Get(
-                        SettingsPage.AutoPlayKey, true);
-
+                    bool autoPlayEnabled = Preferences.Default.Get(SettingsPage.AutoPlayKey, true);
                     if (!autoPlayEnabled)
                     {
-                        System.Diagnostics.Debug.WriteLine(
-                            "⛔ AUTO PLAY DISABLED — bỏ qua auto play khi mở app");
+                        System.Diagnostics.Debug.WriteLine("⛔ AUTO PLAY DISABLED");
                         return;
                     }
 
-                    var poi = geo.FindBestPoi(loc, pois);
+                    var poi = geo.FindBestPoi(userLoc, pois);
                     if (poi != null)
                     {
                         System.Diagnostics.Debug.WriteLine("🔥 AUTO PLAY: " + poi.Name);
-                        // 🔥 Auto-play KHÔNG trigger RouteTracking (truyền null location vào PlayManual)
-                        await narration.PlayManual(poi, loc);
-                    }
-                    else
-                    {
-                        System.Diagnostics.Debug.WriteLine("❌ No POI in radius");
+                        await narration.PlayManual(poi, userLoc);
                     }
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine("Auto play / heatmap error: " + ex.Message);
+                    System.Diagnostics.Debug.WriteLine("Auto play error: " + ex.Message);
                 }
             });
 
             await AnimateProgressTo(0.75);
-            await UpdateStatusAsync("Hoàn tất!", 1.0);
+            await UpdateStatusAsync(loc?.LoadingDone ?? "Hoàn tất!", 1.0);
 
             await this.FadeToAsync(0, 400);
-            // Nếu đã quét QR và còn hạn 7 ngày thì vào thẳng app.
-            if (IsQrGateStillValid())
-                Application.Current!.MainPage = new AppShell();
-            else
-                Application.Current!.MainPage = new QrGatePage();
+            Application.Current!.MainPage = new AppShell();
         }
         catch (Exception ex)
         {
@@ -164,19 +135,13 @@ public partial class LoadingPage : ContentPage
         while (progress < target)
         {
             progress += 0.01;
-
             await MainThread.InvokeOnMainThreadAsync(() =>
             {
                 ProgressBarContainer.WidthRequest = 300 * progress;
             });
-
             await Task.Delay(20);
         }
     }
-
-    // =========================
-    // 🔥 ANIMATION (ANTI BUG)
-    // =========================
 
     private async void StartLogoAnimation(CancellationToken token)
     {
@@ -185,17 +150,12 @@ public partial class LoadingPage : ContentPage
             while (!token.IsCancellationRequested)
             {
                 LogoBorder.Rotation = 0;
-
                 await Task.WhenAll(
                     LogoBorder.ScaleToAsync(1.0, 600, Easing.SinInOut),
-                    LogoBorder.RotateToAsync(360, 2000, Easing.Linear)
-                );
-
-                // 🔥 reset transform tránh lệch UI
+                    LogoBorder.RotateToAsync(360, 2000, Easing.Linear));
                 LogoBorder.Rotation = 0;
                 LogoBorder.TranslationX = 0;
                 LogoBorder.TranslationY = 0;
-
                 await LogoBorder.ScaleToAsync(0.9, 600, Easing.SinInOut);
             }
         }
@@ -207,10 +167,8 @@ public partial class LoadingPage : ContentPage
         Dispatcher.StartTimer(TimeSpan.FromMilliseconds(30), () =>
         {
             if (token.IsCancellationRequested) return false;
-
             double offset = (DateTime.Now.TimeOfDay.TotalMilliseconds % 1500) / 1500.0;
             ShineBox.TranslationX = 300 * offset - 60;
-
             return true;
         });
     }
@@ -230,33 +188,12 @@ public partial class LoadingPage : ContentPage
 
     private void ResetUI()
     {
-        // 🔥 reset transform tránh lệch sau reset app
         LogoBorder.Rotation = 0;
         LogoBorder.Scale = 1;
         LogoBorder.TranslationX = 0;
         LogoBorder.TranslationY = 0;
-
-        // progress
         progress = 0;
         ProgressBarContainer.WidthRequest = 0;
-
-        // text
         StatusLabel.Text = "Đang khởi động...";
-    }
-
-    private static bool IsQrGateStillValid()
-    {
-        try
-        {
-            var text = Preferences.Default.Get(QrGateUntilKey, string.Empty);
-            if (string.IsNullOrWhiteSpace(text)) return false;
-            if (!DateTime.TryParse(text, null, System.Globalization.DateTimeStyles.RoundtripKind, out var untilUtc))
-                return false;
-            return untilUtc > DateTime.UtcNow;
-        }
-        catch
-        {
-            return false;
-        }
     }
 }

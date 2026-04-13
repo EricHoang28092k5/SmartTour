@@ -2,47 +2,57 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="SmartTourApp.Pages.SettingsPage"
-             BackgroundColor="#F8F9FD"
+             BackgroundColor="#F7F8FC"
              Shell.NavBarIsVisible="False">
+
     <ScrollView>
         <VerticalStackLayout Spacing="0">
 
             <!-- ══════════════════════════════════ -->
-            <!-- HEADER -->
+            <!-- HEADER                             -->
             <!-- ══════════════════════════════════ -->
             <Grid BackgroundColor="White" Padding="20,54,20,20">
                 <BoxView VerticalOptions="End" HorizontalOptions="Fill"
-                         HeightRequest="1" BackgroundColor="#F0F0F5"/>
+                         HeightRequest="1" BackgroundColor="#EEEEF5"/>
                 <VerticalStackLayout Spacing="3">
-                    <Label Text="CÀI ĐẶT" FontSize="11" FontAttributes="Bold"
-                           TextColor="#1E88E5" CharacterSpacing="2.5"/>
-                    <Label Text="Settings" FontSize="28" FontAttributes="Bold"
+                    <Label x:Name="LblSettingsSubtitle"
+                           Text="CÀI ĐẶT"
+                           FontSize="11" FontAttributes="Bold"
+                           TextColor="#3461FF" CharacterSpacing="2.5"/>
+                    <Label x:Name="LblSettingsTitle"
+                           Text="Settings"
+                           FontSize="28" FontAttributes="Bold"
                            TextColor="#0D0D0D" CharacterSpacing="-0.5"/>
                 </VerticalStackLayout>
             </Grid>
 
             <!-- ══════════════════════════════════ -->
-            <!-- SECTION: Ngôn ngữ -->
+            <!-- SECTION: Ngôn ngữ                 -->
             <!-- ══════════════════════════════════ -->
-            <Label Text="NGÔN NGỮ" FontSize="11" FontAttributes="Bold"
+            <Label x:Name="LblLangSection"
+                   Text="NGÔN NGỮ"
+                   FontSize="11" FontAttributes="Bold"
                    TextColor="#999999" CharacterSpacing="2"
                    Margin="20,24,20,10"/>
+
             <Border BackgroundColor="White" StrokeThickness="0"
-                    StrokeShape="RoundRectangle 16" Margin="16,0">
+                    StrokeShape="RoundRectangle 18" Margin="16,0">
                 <Border.Shadow>
-                    <Shadow Brush="#000000" Offset="0,2" Radius="12" Opacity="0.05"/>
+                    <Shadow Brush="#000000" Offset="0,3" Radius="16" Opacity="0.05"/>
                 </Border.Shadow>
                 <Grid ColumnDefinitions="Auto,*" Padding="18,16" ColumnSpacing="14">
-                    <Border Grid.Column="0" WidthRequest="40" HeightRequest="40"
+                    <Border Grid.Column="0" WidthRequest="44" HeightRequest="44"
                             BackgroundColor="#EEF4FF" StrokeThickness="0"
-                            StrokeShape="RoundRectangle 12">
-                        <Label Text="🌐" FontSize="20"
+                            StrokeShape="RoundRectangle 13">
+                        <Label Text="🌐" FontSize="22"
                                HorizontalOptions="Center" VerticalOptions="Center"/>
                     </Border>
                     <VerticalStackLayout Grid.Column="1" Spacing="6" VerticalOptions="Center">
-                        <Label Text="Ngôn ngữ thuyết minh"
+                        <Label x:Name="LblNarrationLanguage"
+                               Text="Ngôn ngữ thuyết minh"
                                FontSize="14" FontAttributes="Bold" TextColor="#111111"/>
-                        <Picker x:Name="LangPicker" Title="Chọn ngôn ngữ"
+                        <Picker x:Name="LangPicker"
+                                Title="Chọn ngôn ngữ"
                                 FontSize="13" TextColor="#555555" TitleColor="#AAAAAA">
                             <Picker.Items>
                                 <x:String>vi</x:String>
@@ -57,41 +67,47 @@
             </Border>
 
             <!-- ══════════════════════════════════ -->
-            <!-- SECTION: Phát tự động -->
+            <!-- SECTION: Phát tự động             -->
             <!-- ══════════════════════════════════ -->
-            <Label Text="THUYẾT MINH TỰ ĐỘNG" FontSize="11" FontAttributes="Bold"
-                   TextColor="#999999" CharacterSpacing="2" Margin="20,28,20,10"/>
+            <Label x:Name="LblAutoSection"
+                   Text="THUYẾT MINH TỰ ĐỘNG"
+                   FontSize="11" FontAttributes="Bold"
+                   TextColor="#999999" CharacterSpacing="2"
+                   Margin="20,28,20,10"/>
+
             <Border BackgroundColor="White" StrokeThickness="0"
-                    StrokeShape="RoundRectangle 16" Margin="16,0">
+                    StrokeShape="RoundRectangle 18" Margin="16,0">
                 <Border.Shadow>
-                    <Shadow Brush="#000000" Offset="0,2" Radius="12" Opacity="0.05"/>
+                    <Shadow Brush="#000000" Offset="0,3" Radius="16" Opacity="0.05"/>
                 </Border.Shadow>
                 <Grid ColumnDefinitions="Auto,*,Auto" Padding="18,16" ColumnSpacing="14">
-                    <Border Grid.Column="0" WidthRequest="40" HeightRequest="40"
+                    <Border Grid.Column="0" WidthRequest="44" HeightRequest="44"
                             BackgroundColor="#FFF3E0" StrokeThickness="0"
-                            StrokeShape="RoundRectangle 12">
-                        <Label Text="🎧" FontSize="20"
+                            StrokeShape="RoundRectangle 13">
+                        <Label Text="🎧" FontSize="22"
                                HorizontalOptions="Center" VerticalOptions="Center"/>
                     </Border>
-                    <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
-                        <Label Text="Tự động phát thuyết minh"
+                    <VerticalStackLayout Grid.Column="1" Spacing="3" VerticalOptions="Center">
+                        <Label x:Name="LblAutoPlay"
+                               Text="Tự động phát thuyết minh"
                                FontSize="14" FontAttributes="Bold" TextColor="#111111"/>
-                        <Label Text="Tự động phát khi bước vào vùng điểm tham quan"
+                        <Label x:Name="LblAutoPlayDesc"
+                               Text="Tự động phát khi bước vào vùng điểm tham quan"
                                FontSize="12" TextColor="#888888" LineBreakMode="WordWrap"/>
                     </VerticalStackLayout>
                     <Switch x:Name="AutoPlaySwitch" Grid.Column="2"
-                            OnColor="#1E88E5" ThumbColor="White"
+                            OnColor="#3461FF" ThumbColor="White"
                             VerticalOptions="Center"
                             Toggled="OnAutoPlayToggled"/>
                 </Grid>
             </Border>
 
             <Border x:Name="AutoPlayInfoBorder"
-                    Margin="16,10,16,0" Padding="14,10"
+                    Margin="16,10,16,0" Padding="14,12"
                     StrokeThickness="1" Stroke="#E3F2FD"
-                    StrokeShape="RoundRectangle 12"
+                    StrokeShape="RoundRectangle 14"
                     BackgroundColor="#F0F7FF">
-                <HorizontalStackLayout Spacing="8">
+                <HorizontalStackLayout Spacing="10">
                     <Label x:Name="AutoPlayInfoIcon" Text="✅"
                            FontSize="14" VerticalOptions="Center"/>
                     <Label x:Name="AutoPlayInfoLabel"
@@ -102,52 +118,62 @@
             </Border>
 
             <!-- ══════════════════════════════════ -->
-            <!-- SECTION: Heatmap -->
+            <!-- SECTION: Heatmap                  -->
             <!-- ══════════════════════════════════ -->
-            <Label Text="THỐNG KÊ &amp; HEATMAP" FontSize="11" FontAttributes="Bold"
-                   TextColor="#999999" CharacterSpacing="2" Margin="20,28,20,10"/>
+            <Label x:Name="LblStatsSection"
+                   Text="THỐNG KÊ &amp; HEATMAP"
+                   FontSize="11" FontAttributes="Bold"
+                   TextColor="#999999" CharacterSpacing="2"
+                   Margin="20,28,20,10"/>
+
             <Border BackgroundColor="White" StrokeThickness="0"
-                    StrokeShape="RoundRectangle 16" Margin="16,0">
+                    StrokeShape="RoundRectangle 18" Margin="16,0">
                 <Border.Shadow>
-                    <Shadow Brush="#000000" Offset="0,2" Radius="12" Opacity="0.05"/>
+                    <Shadow Brush="#000000" Offset="0,3" Radius="16" Opacity="0.05"/>
                 </Border.Shadow>
                 <Grid ColumnDefinitions="Auto,*" Padding="18,16" ColumnSpacing="14">
-                    <Border Grid.Column="0" WidthRequest="40" HeightRequest="40"
+                    <Border Grid.Column="0" WidthRequest="44" HeightRequest="44"
                             BackgroundColor="#FFF8F0" StrokeThickness="0"
-                            StrokeShape="RoundRectangle 12">
-                        <Label Text="🔥" FontSize="20"
+                            StrokeShape="RoundRectangle 13">
+                        <Label Text="🔥" FontSize="22"
                                HorizontalOptions="Center" VerticalOptions="Center"/>
                     </Border>
-                    <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
-                        <Label Text="Dữ liệu heatmap"
+                    <VerticalStackLayout Grid.Column="1" Spacing="3" VerticalOptions="Center">
+                        <Label x:Name="LblHeatmapData"
+                               Text="Dữ liệu heatmap"
                                FontSize="14" FontAttributes="Bold" TextColor="#111111"/>
-                        <Label Text="Hệ thống luôn ghi nhận lượt vào vùng để thống kê, kể cả khi tắt tự động phát"
+                        <Label x:Name="LblHeatmapDesc"
+                               Text="Hệ thống luôn ghi nhận lượt vào vùng để thống kê, kể cả khi tắt tự động phát"
                                FontSize="12" TextColor="#888888" LineBreakMode="WordWrap"/>
                     </VerticalStackLayout>
                 </Grid>
             </Border>
 
-            <!-- ══════════════════════════════════════════════════ -->
-            <!-- 🔥 SECTION: Bản đồ ngoại tuyến (Offline Map)      -->
-            <!-- ══════════════════════════════════════════════════ -->
-            <Label Text="BẢN ĐỒ NGOẠI TUYẾN" FontSize="11" FontAttributes="Bold"
-                   TextColor="#999999" CharacterSpacing="2" Margin="20,28,20,10"/>
+            <!-- ══════════════════════════════════════════ -->
+            <!-- SECTION: Bản đồ ngoại tuyến               -->
+            <!-- ══════════════════════════════════════════ -->
+            <Label x:Name="LblOfflineMapSection"
+                   Text="BẢN ĐỒ NGOẠI TUYẾN"
+                   FontSize="11" FontAttributes="Bold"
+                   TextColor="#999999" CharacterSpacing="2"
+                   Margin="20,28,20,10"/>
 
             <!-- Cache info card -->
             <Border BackgroundColor="White" StrokeThickness="0"
-                    StrokeShape="RoundRectangle 16" Margin="16,0">
+                    StrokeShape="RoundRectangle 18" Margin="16,0">
                 <Border.Shadow>
-                    <Shadow Brush="#000000" Offset="0,2" Radius="12" Opacity="0.05"/>
+                    <Shadow Brush="#000000" Offset="0,3" Radius="16" Opacity="0.05"/>
                 </Border.Shadow>
                 <Grid ColumnDefinitions="Auto,*" Padding="18,16" ColumnSpacing="14">
-                    <Border Grid.Column="0" WidthRequest="40" HeightRequest="40"
+                    <Border Grid.Column="0" WidthRequest="44" HeightRequest="44"
                             BackgroundColor="#E8F5E9" StrokeThickness="0"
-                            StrokeShape="RoundRectangle 12">
-                        <Label Text="🗺️" FontSize="20"
+                            StrokeShape="RoundRectangle 13">
+                        <Label Text="🗺️" FontSize="22"
                                HorizontalOptions="Center" VerticalOptions="Center"/>
                     </Border>
                     <VerticalStackLayout Grid.Column="1" Spacing="4" VerticalOptions="Center">
-                        <Label Text="Bản đồ đã lưu"
+                        <Label x:Name="LblMapSaved"
+                               Text="Bản đồ đã lưu"
                                FontSize="14" FontAttributes="Bold" TextColor="#111111"/>
                         <Label x:Name="MapCacheTileLabel"
                                Text="Đang tải..."
@@ -159,89 +185,108 @@
                 </Grid>
             </Border>
 
-            <!-- Clear cache button -->
+            <!-- Clear map cache -->
             <Border Margin="16,12,16,0" StrokeThickness="1"
-                    Stroke="#FFCDD2" StrokeShape="RoundRectangle 16"
+                    Stroke="#FFCDD2" StrokeShape="RoundRectangle 18"
                     BackgroundColor="White">
+                <Border.Shadow>
+                    <Shadow Brush="#000000" Offset="0,3" Radius="16" Opacity="0.04"/>
+                </Border.Shadow>
                 <Border.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnClearMapCacheTapped"/>
                 </Border.GestureRecognizers>
                 <Grid ColumnDefinitions="Auto,*" Padding="18,14" ColumnSpacing="14">
-                    <Border Grid.Column="0" WidthRequest="40" HeightRequest="40"
+                    <Border Grid.Column="0" WidthRequest="44" HeightRequest="44"
                             BackgroundColor="#FFF0F0" StrokeThickness="0"
-                            StrokeShape="RoundRectangle 12">
-                        <Label Text="🗑️" FontSize="18"
+                            StrokeShape="RoundRectangle 13">
+                        <Label Text="🗑️" FontSize="20"
                                HorizontalOptions="Center" VerticalOptions="Center"/>
                     </Border>
-                    <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
-                        <Label Text="Xóa bản đồ offline"
+                    <VerticalStackLayout Grid.Column="1" Spacing="3" VerticalOptions="Center">
+                        <Label x:Name="LblClearMapCache"
+                               Text="Xóa bản đồ offline"
                                FontSize="14" FontAttributes="Bold"
                                TextColor="#D32F2F"/>
-                        <Label Text="Giải phóng bộ nhớ — tải lại khi cần"
+                        <Label x:Name="LblClearMapCacheDesc"
+                               Text="Giải phóng bộ nhớ — tải lại khi cần"
                                FontSize="12" TextColor="#888888"/>
                     </VerticalStackLayout>
                 </Grid>
             </Border>
 
             <!-- Info note -->
-            <Border Margin="16,10,16,0" Padding="14,10"
-                    StrokeThickness="0" StrokeShape="RoundRectangle 12"
+            <Border Margin="16,10,16,0" Padding="14,12"
+                    StrokeThickness="0" StrokeShape="RoundRectangle 14"
                     BackgroundColor="#F1F8E9">
-                <HorizontalStackLayout Spacing="8">
+                <HorizontalStackLayout Spacing="10">
                     <Label Text="ℹ️" FontSize="14" VerticalOptions="Center"/>
-                    <Label Text="Bản đồ tự động lưu khi bạn duyệt có kết nối mạng. Nhấn ⬇ trên bản đồ để tải toàn bộ khu vực trước chuyến đi."
+                    <Label x:Name="LblMapCacheInfo"
+                           Text="Bản đồ tự động lưu khi bạn duyệt có kết nối mạng."
                            FontSize="12" TextColor="#33691E"
                            LineBreakMode="WordWrap" VerticalOptions="Center"/>
                 </HorizontalStackLayout>
             </Border>
 
-            <!-- ══════════════════════════════════════════════════ -->
-            <!-- SECTION: Phiên quét QR -->
-            <!-- ══════════════════════════════════════════════════ -->
-            <Label Text="BẢO MẬT TRUY CẬP" FontSize="11" FontAttributes="Bold"
-                   TextColor="#999999" CharacterSpacing="2" Margin="20,28,20,10"/>
+            <!-- ══════════════════════════════════════ -->
+            <!-- SECTION: Bảo mật QR                   -->
+            <!-- ══════════════════════════════════════ -->
+            <Label x:Name="LblSecuritySection"
+                   Text="BẢO MẬT TRUY CẬP"
+                   FontSize="11" FontAttributes="Bold"
+                   TextColor="#999999" CharacterSpacing="2"
+                   Margin="20,28,20,10"/>
+
             <Border Margin="16,0,16,0" StrokeThickness="1"
-                    Stroke="#FFE0B2" StrokeShape="RoundRectangle 16"
+                    Stroke="#FFE0B2" StrokeShape="RoundRectangle 18"
                     BackgroundColor="White">
+                <Border.Shadow>
+                    <Shadow Brush="#000000" Offset="0,3" Radius="16" Opacity="0.04"/>
+                </Border.Shadow>
                 <Border.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnClearQrSessionTapped"/>
                 </Border.GestureRecognizers>
                 <Grid ColumnDefinitions="Auto,*" Padding="18,14" ColumnSpacing="14">
-                    <Border Grid.Column="0" WidthRequest="40" HeightRequest="40"
+                    <Border Grid.Column="0" WidthRequest="44" HeightRequest="44"
                             BackgroundColor="#FFF8E1" StrokeThickness="0"
-                            StrokeShape="RoundRectangle 12">
-                        <Label Text="🔐" FontSize="18"
+                            StrokeShape="RoundRectangle 13">
+                        <Label Text="🔐" FontSize="20"
                                HorizontalOptions="Center" VerticalOptions="Center"/>
                     </Border>
-                    <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
-                        <Label Text="Xóa phiên quét QR (7 ngày)"
+                    <VerticalStackLayout Grid.Column="1" Spacing="3" VerticalOptions="Center">
+                        <Label x:Name="LblClearQr"
+                               Text="Xóa phiên quét QR (7 ngày)"
                                FontSize="14" FontAttributes="Bold"
                                TextColor="#E65100"/>
-                        <Label Text="Buộc ứng dụng quét lại QR ở lần mở tiếp theo"
+                        <Label x:Name="LblClearQrDesc"
+                               Text="Buộc ứng dụng quét lại QR ở lần mở tiếp theo"
                                FontSize="12" TextColor="#888888"/>
                     </VerticalStackLayout>
                 </Grid>
             </Border>
 
             <!-- ══════════════════════════════════ -->
-            <!-- NÚT LƯU -->
+            <!-- SAVE BUTTON                        -->
             <!-- ══════════════════════════════════ -->
-            <Border Margin="16,32,16,0" StrokeThickness="0" StrokeShape="RoundRectangle 22">
+            <Border Margin="16,32,16,0" StrokeThickness="0" StrokeShape="RoundRectangle 24">
                 <Border.Background>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                        <GradientStop Color="#1565C0" Offset="0"/>
-                        <GradientStop Color="#42A5F5" Offset="1"/>
+                        <GradientStop Color="#3461FF" Offset="0"/>
+                        <GradientStop Color="#7C9FFF" Offset="1"/>
                     </LinearGradientBrush>
                 </Border.Background>
-                <Button Text="💾 Lưu cài đặt"
+                <Border.Shadow>
+                    <Shadow Brush="#3461FF" Offset="0,8" Radius="28" Opacity="0.28"/>
+                </Border.Shadow>
+                <Button x:Name="LblSaveSettings"
+                        Text="💾 Lưu cài đặt"
                         Clicked="Save"
                         BackgroundColor="Transparent"
                         TextColor="White"
                         FontSize="15" FontAttributes="Bold"
-                        HeightRequest="52" Padding="0"/>
+                        HeightRequest="56" Padding="0"/>
             </Border>
 
-            <BoxView HeightRequest="40" BackgroundColor="Transparent"/>
+            <BoxView HeightRequest="48" BackgroundColor="Transparent"/>
         </VerticalStackLayout>
     </ScrollView>
 </ContentPage>

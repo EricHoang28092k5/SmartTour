@@ -1,4 +1,5 @@
 ﻿using SmartTour.Shared.Models;
+using SmartTourApp.Services;
 
 public class TourViewModel : BindableObject
 {
@@ -18,6 +19,42 @@ public class TourViewModel : BindableObject
             OnPropertyChanged();
         }
     }
+
+    private TourOfflineStatus offlineStatus = TourOfflineStatus.NotDownloaded;
+    public TourOfflineStatus OfflineStatus
+    {
+        get => offlineStatus;
+        set
+        {
+            offlineStatus = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(OfflineStatusIcon));
+            OnPropertyChanged(nameof(OfflineStatusText));
+            OnPropertyChanged(nameof(IsDownloading));
+        }
+    }
+
+    /// <summary>Icon hiển thị trạng thái offline.</summary>
+    public string OfflineStatusIcon => OfflineStatus switch
+    {
+        TourOfflineStatus.Ready => "✅",
+        TourOfflineStatus.Downloading => "⏳",
+        TourOfflineStatus.Partial => "⚠️",
+        TourOfflineStatus.Error => "❌",
+        _ => "📥"
+    };
+
+    /// <summary>Text hiển thị trạng thái offline (ngắn gọn).</summary>
+    public string OfflineStatusText => OfflineStatus switch
+    {
+        TourOfflineStatus.Ready => "Offline",
+        TourOfflineStatus.Downloading => "...",
+        TourOfflineStatus.Partial => "Partial",
+        TourOfflineStatus.Error => "Error",
+        _ => "DL"
+    };
+
+    public bool IsDownloading => OfflineStatus == TourOfflineStatus.Downloading;
 }
 
 public class TourResponse
@@ -45,7 +82,6 @@ public class TourPoiDto
 
 /// <summary>
 /// Singleton lưu trạng thái tour map mode hiện tại.
-/// Dùng static để share giữa TourPage và MapPage mà không cần DI thêm.
 /// </summary>
 public static class TourSession
 {
@@ -56,34 +92,29 @@ public static class TourSession
     public static bool IsActive => _activeTour != null && _activeTour.Pois.Count > 1;
     public static int CurrentStepIndex => _currentStepIndex;
 
-    /// <summary>Khởi động tour mới — ghi đè tour cũ nếu có.</summary>
     public static void StartTour(TourViewModel tour)
     {
         _activeTour = tour;
         _currentStepIndex = 0;
     }
 
-    /// <summary>Advance sang step tiếp theo sau khi user bấm Đường đi tới poi[n].</summary>
     public static void AdvanceStep()
     {
         if (_activeTour == null) return;
         _currentStepIndex = Math.Min(_currentStepIndex + 1, _activeTour.Pois.Count - 1);
     }
 
-    /// <summary>Thoát tour mode — reset toàn bộ state.</summary>
     public static void EndTour()
     {
         _activeTour = null;
         _currentStepIndex = 0;
     }
 
-    /// <summary>Lấy POI hiện tại theo step index.</summary>
     public static TourPoiDto? CurrentPoi =>
         _activeTour != null && _currentStepIndex < _activeTour.Pois.Count
             ? _activeTour.Pois[_currentStepIndex]
             : null;
 
-    /// <summary>Lấy POI theo order index (1-based từ API, 0-based trong list).</summary>
     public static TourPoiDto? GetPoiAt(int zeroIndex) =>
         _activeTour != null && zeroIndex < _activeTour.Pois.Count
             ? _activeTour.Pois[zeroIndex]

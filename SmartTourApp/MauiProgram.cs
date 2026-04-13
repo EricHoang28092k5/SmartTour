@@ -35,12 +35,19 @@ public static class MauiProgram
         builder.Services.AddSingleton<AudioService>();
         builder.Services.AddSingleton<GeofencingEngine>();
 
+        // ── Language & Localization ──
+        builder.Services.AddSingleton<LanguageService>();
+        builder.Services.AddSingleton<LocalizationService>();
+
         // ── Offline Infrastructure (Yêu cầu 1, 4, 5) ──
         builder.Services.AddSingleton<OfflineDatabase>();
         builder.Services.AddSingleton<OfflineSyncService>();
 
         // 🔥 Offline Map Infrastructure
         builder.Services.AddSingleton<OfflineMapService>();
+
+        // 🔥 YC1: Tour Offline Manager
+        builder.Services.AddSingleton<TourOfflineManager>();
 
         // ── Audio Pipeline ──
         builder.Services.AddSingleton<AudioListenTracker>();
@@ -69,7 +76,6 @@ public static class MauiProgram
 
         // ── Misc ──
         builder.Services.AddSingleton<OfflineService>();
-        builder.Services.AddSingleton<LanguageService>();
 
         // ── PoiDetailAudioManager (tích hợp Offline + TTS fallback) ──
         builder.Services.AddSingleton<PoiDetailAudioManager>();
