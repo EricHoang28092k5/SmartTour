@@ -2,26 +2,15 @@
 using SmartTour.Shared.Models;
 using SmartTourApp.Services;
 using System.Collections.ObjectModel;
+
 namespace SmartTourApp.Pages;
 
-[QueryProperty(nameof(TargetTourId), "targetTour")]
 public partial class TourPage : ContentPage
 {
     private readonly ApiService api;
     private readonly NarrationEngine narration;
 
     private ObservableCollection<TourViewModel> tours = new();
-    private string? targetTourId;
-
-    public string? TargetTourId
-    {
-        get => targetTourId;
-        set
-        {
-            targetTourId = value;
-            ApplyTargetTour();
-        }
-    }
 
     public TourPage(ApiService api, NarrationEngine narration)
     {
@@ -60,24 +49,32 @@ public partial class TourPage : ContentPage
                 tours.Add(t);
 
             TourList.ItemsSource = tours;
-            ApplyTargetTour();
+            TourCountLabel.Text = $"{tours.Count} tour";
         }
         catch (Exception ex)
         {
-            await DisplayAlertAsync("Error Tour", ex.Message, "OK");
+            await DisplayAlert("Lỗi tải tour", ex.Message, "OK");
         }
     }
 
-    private void ApplyTargetTour()
+    // ── Expand / collapse detail timeline ──
+    private void OnExpandTapped(object sender, EventArgs e)
     {
-        if (string.IsNullOrWhiteSpace(TargetTourId)) return;
-        if (!int.TryParse(TargetTourId, out var id)) return;
-        if (tours.Count == 0) return;
+        TourViewModel? tour = null;
 
-        foreach (var t in tours)
-            t.IsExpanded = t.Id == id;
+        if (sender is Button btn && btn.CommandParameter is TourViewModel t1)
+            tour = t1;
+
+        if (tour == null) return;
+
+        tour.IsExpanded = !tour.IsExpanded;
+
+        // Cập nhật text nút
+        if (sender is Button b)
+            b.Text = tour.IsExpanded ? "Thu gọn ↑" : "Chi tiết ↓";
     }
 
+    // ── Giữ nguyên hàm OpenTour cũ để không break các file khác ──
     private void OpenTour(object sender, EventArgs e)
     {
         TourViewModel? tour = null;
@@ -91,6 +88,33 @@ public partial class TourPage : ContentPage
             tour.IsExpanded = !tour.IsExpanded;
     }
 
+    // ── Play tour trên bản đồ — logic mới ──
+    private async void StartTourOnMap(object sender, EventArgs e)
+    {
+        TourViewModel? tour = null;
+
+        if (sender is Button btn && btn.CommandParameter is TourViewModel t)
+            tour = t;
+
+        if (tour == null) return;
+
+        if (tour.Pois == null || tour.Pois.Count < 2)
+        {
+            await DisplayAlert(
+                "Không thể bắt đầu",
+                "Tour cần ít nhất 2 điểm dừng để hiển thị trên bản đồ.",
+                "OK");
+            return;
+        }
+
+        // Khởi tạo TourSession — ghi đè tour cũ nếu đang có
+        TourSession.StartTour(tour);
+
+        // Chuyển sang Map tab với tham số tourId
+        await Shell.Current.GoToAsync($"//map?tourId={tour.Id}");
+    }
+
+    // ── Giữ nguyên StartTour cũ (sequential audio play) để không break ──
     private async void StartTour(object sender, EventArgs e)
     {
         TourViewModel? tour = null;
