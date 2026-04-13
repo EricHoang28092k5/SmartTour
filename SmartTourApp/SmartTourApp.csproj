@@ -53,11 +53,13 @@
   <ItemGroup>
     <MauiImage Remove="Resources\Images\dotnet_bot.png" />
     <MauiImage Remove="Resources\Images\mappin.png" />
+    <MauiImage Remove="Resources\Images\resicon.png" />
   </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="Resources\Images\dotnet_bot.png" Resize="True" BaseSize="300,185" />
     <EmbeddedResource Include="Resources\Images\mappin.png" />
+    <EmbeddedResource Include="Resources\Images\resicon.png" />
   </ItemGroup>
 
   <ItemGroup>

@@ -24,7 +24,7 @@ public partial class MapPage : ContentPage
     private readonly PoiRepository repo;
     private readonly GeofencingEngine geo;
     private readonly ApiService api;
-    private readonly OfflineMapService offlineMapService;        // 🔥 NEW
+    private readonly OfflineMapService offlineMapService;
     private readonly MapViewModel vm = new();
     private List<Poi> pois = new();
     private bool mapInitialized = false;
@@ -48,7 +48,7 @@ public partial class MapPage : ContentPage
         PoiRepository repo,
         GeofencingEngine geo,
         ApiService api,
-        OfflineMapService offlineMapService)       // 🔥 inject
+        OfflineMapService offlineMapService)
     {
         InitializeComponent();
 
@@ -77,7 +77,6 @@ public partial class MapPage : ContentPage
         };
 
         // Track progress bar container width
-        var parent = DownloadProgressFill.Parent as Microsoft.Maui.Controls.View;
         DownloadProgressFill.SizeChanged += (s, e) =>
         {
             if (DownloadProgressFill.Parent is View p && p.Width > 0)
@@ -86,7 +85,7 @@ public partial class MapPage : ContentPage
     }
 
     // ══════════════════════════════════════════════════════════════════
-    // LIFECYCLE — giữ nguyên từ bản cũ
+    // LIFECYCLE
     // ══════════════════════════════════════════════════════════════════
 
     protected override async void OnAppearing()
@@ -149,7 +148,6 @@ public partial class MapPage : ContentPage
             vm.UpdateUser(TourMap.Map, loc, false);
         }
 
-        // 🔥 Update connectivity UI khi page appear
         UpdateConnectivityUI(OfflineMapService.IsConnected());
     }
 
@@ -160,7 +158,7 @@ public partial class MapPage : ContentPage
     }
 
     // ══════════════════════════════════════════════════════════════════
-    // MAP INIT — 🔥 dùng OfflineTileLayer thay vì OpenStreetMap.CreateTileLayer()
+    // MAP INIT
     // ══════════════════════════════════════════════════════════════════
 
     private async Task InitMap()
@@ -186,7 +184,6 @@ public partial class MapPage : ContentPage
 
             TourMap.Map.Info += OnMapInfo;
 
-            // 🔥 OFFLINE TILE LAYER — thay thế OpenStreetMap.CreateTileLayer()
             if (!TourMap.Map.Layers.OfType<TileLayer>().Any())
             {
                 var offlineTileLayer = OfflineOpenStreetMap.CreateOfflineTileLayer(
@@ -209,10 +206,9 @@ public partial class MapPage : ContentPage
             heatmapLoaded = true;
             _ = Task.Run(LoadPoiHeatmapAsync);
 
-            // 🔥 Auto pre-cache khu vực xung quanh sau khi map init (nếu có mạng)
             _ = Task.Run(async () =>
             {
-                await Task.Delay(3000); // đợi map render xong
+                await Task.Delay(3000);
                 await AutoCacheCurrentAreaAsync();
             });
         }
@@ -223,12 +219,9 @@ public partial class MapPage : ContentPage
     }
 
     // ══════════════════════════════════════════════════════════════════
-    // 🔥 OFFLINE MAP: DOWNLOAD HANDLERS
+    // OFFLINE MAP: DOWNLOAD HANDLERS
     // ══════════════════════════════════════════════════════════════════
 
-    /// <summary>
-    /// User nhấn nút download (⬇) trên map — show dialog xác nhận rồi tải.
-    /// </summary>
     private async void OnDownloadMapTapped(object sender, TappedEventArgs e)
     {
         if (offlineMapService.Downloader.IsDownloading)
@@ -244,7 +237,6 @@ public partial class MapPage : ContentPage
             return;
         }
 
-        // Lấy vị trí trung tâm hiện tại
         double centerLat, centerLng;
         if (currentLocation != null)
         {
@@ -259,7 +251,6 @@ public partial class MapPage : ContentPage
             centerLng = loc.Longitude;
         }
 
-        // Estimate trước
         var (newTiles, sizeMB, cached, desc) = offlineMapService.GetDownloadEstimate(
             centerLat, centerLng, 2.5);
 
@@ -270,7 +261,6 @@ public partial class MapPage : ContentPage
             return;
         }
 
-        // Confirm dialog
         bool confirm = await DisplayAlert(
             "Tải bản đồ offline",
             $"{desc}\n\nBán kính: 2.5km xung quanh vị trí hiện tại\nZoom: 14 - 18",
@@ -278,22 +268,15 @@ public partial class MapPage : ContentPage
 
         if (!confirm) return;
 
-        // Bắt đầu tải
         await StartDownloadAsync(centerLat, centerLng);
     }
 
-    /// <summary>
-    /// Nhấn nút "Tải bản đồ" trên offline banner.
-    /// </summary>
     private async void OnOfflineBannerDownloadTap(object sender, TappedEventArgs e)
     {
         if (currentLocation != null)
             await StartDownloadAsync(currentLocation.Latitude, currentLocation.Longitude);
     }
 
-    /// <summary>
-    /// Hủy download đang chạy.
-    /// </summary>
     private void OnCancelDownloadTap(object sender, TappedEventArgs e)
     {
         offlineMapService.CancelDownload();
@@ -309,13 +292,13 @@ public partial class MapPage : ContentPage
         }
         finally
         {
-            await Task.Delay(1500); // giữ UI progress hiện 1.5s sau khi xong
+            await Task.Delay(1500);
             HideDownloadProgress();
         }
     }
 
     // ══════════════════════════════════════════════════════════════════
-    // 🔥 OFFLINE MAP: AUTO-CACHE khu vực xung quanh (silent background)
+    // OFFLINE MAP: AUTO-CACHE
     // ══════════════════════════════════════════════════════════════════
 
     private async Task AutoCacheCurrentAreaAsync()
@@ -325,7 +308,6 @@ public partial class MapPage : ContentPage
 
         try
         {
-            // Tải zoom 14-16 tự động khi có mạng (nhẹ, ~50 tiles)
             await offlineMapService.Downloader.DownloadAreaAsync(
                 currentLocation.Latitude, currentLocation.Longitude,
                 radiusKm: 1.5,
@@ -335,13 +317,12 @@ public partial class MapPage : ContentPage
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[MapPage] Auto-cache error: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[MapPage] Auto-cache error: {ex.Message}");
         }
     }
 
     // ══════════════════════════════════════════════════════════════════
-    // 🔥 OFFLINE MAP: CONNECTIVITY EVENT HANDLERS
+    // OFFLINE MAP: CONNECTIVITY EVENT HANDLERS
     // ══════════════════════════════════════════════════════════════════
 
     private void OnConnectivityChanged(bool isOnline)
@@ -351,12 +332,10 @@ public partial class MapPage : ContentPage
 
     private void UpdateConnectivityUI(bool isOnline)
     {
-        // Update dot màu xanh/đỏ trên nút download
         ConnectivityDot.Fill = isOnline
             ? Color.FromArgb("#4CAF50")
             : Color.FromArgb("#F44336");
 
-        // Hiện/ẩn offline banner
         if (!isOnline)
             ShowOfflineBanner("Chế độ ngoại tuyến — bản đồ chỉ hiện vùng đã tải");
         else
@@ -373,10 +352,8 @@ public partial class MapPage : ContentPage
                 ? $"{progress.Done}/{progress.Total}"
                 : "";
 
-            // Animate progress bar fill
             if (_progressBarMaxWidth > 0)
-                DownloadProgressFill.WidthRequest =
-                    _progressBarMaxWidth * progress.Percent;
+                DownloadProgressFill.WidthRequest = _progressBarMaxWidth * progress.Percent;
 
             if (progress.IsComplete)
             {
@@ -387,7 +364,7 @@ public partial class MapPage : ContentPage
     }
 
     // ══════════════════════════════════════════════════════════════════
-    // 🔥 UI HELPERS: OFFLINE BANNER & DOWNLOAD PROGRESS
+    // UI HELPERS: OFFLINE BANNER & DOWNLOAD PROGRESS
     // ══════════════════════════════════════════════════════════════════
 
     private async void ShowOfflineBanner(string message)
@@ -422,7 +399,7 @@ public partial class MapPage : ContentPage
     }
 
     // ══════════════════════════════════════════════════════════════════
-    // HEATMAP — giữ nguyên từ bản cũ
+    // HEATMAP
     // ══════════════════════════════════════════════════════════════════
 
     private async Task LoadPoiHeatmapAsync()
@@ -436,8 +413,7 @@ public partial class MapPage : ContentPage
                 //if (TourMap?.Map != null)
                 //    vm.LoadPoiHeatmap(TourMap.Map, resp.Data);
             });
-            System.Diagnostics.Debug.WriteLine(
-                $"🔥 HEATMAP loaded: {resp.Data.Count} POIs");
+            System.Diagnostics.Debug.WriteLine($"🔥 HEATMAP loaded: {resp.Data.Count} POIs");
         }
         catch (Exception ex)
         {
@@ -446,7 +422,7 @@ public partial class MapPage : ContentPage
     }
 
     // ══════════════════════════════════════════════════════════════════
-    // MAP TAP → giữ nguyên từ bản cũ
+    // MAP TAP — detect POI tap, swap icon
     // ══════════════════════════════════════════════════════════════════
 
     private void OnMapInfo(object? sender, MapInfoEventArgs e)
@@ -456,6 +432,7 @@ public partial class MapPage : ContentPage
         const double tapThresholdMeters = 300;
         Poi? tapped = null;
         double minDist = double.MaxValue;
+
         foreach (var poi in pois)
         {
             var dist = Location.CalculateDistance(
@@ -468,6 +445,7 @@ public partial class MapPage : ContentPage
                 tapped = poi;
             }
         }
+
         if (tapped != null)
         {
             MainThread.BeginInvokeOnMainThread(() =>
@@ -479,11 +457,18 @@ public partial class MapPage : ContentPage
         }
     }
 
+    /// <summary>
+    /// Select POI: swap icon sang mappin + show card.
+    /// </summary>
     private void SelectPoi(Poi poi)
     {
         selectedPoi = poi;
         currentNearest = poi;
         cardManuallyClosed = false;
+
+        // 🔥 Swap icon sang mappin
+        vm.SelectPoiIcon(poi.Id);
+
         ShowCardForPoi(poi);
         vm.HighlightPoi(TourMap.Map, poi.Lat, poi.Lng);
     }
@@ -573,7 +558,7 @@ public partial class MapPage : ContentPage
     }
 
     // ══════════════════════════════════════════════════════════════════
-    // ZOOM / LOCATE — giữ nguyên từ bản cũ
+    // ZOOM / LOCATE
     // ══════════════════════════════════════════════════════════════════
 
     private void ZoomIn_Clicked(object sender, EventArgs e)
@@ -607,7 +592,7 @@ public partial class MapPage : ContentPage
     }
 
     // ══════════════════════════════════════════════════════════════════
-    // POI CARD ACTIONS — giữ nguyên từ bản cũ
+    // POI CARD ACTIONS
     // ══════════════════════════════════════════════════════════════════
 
     private async void PoiCard_Tapped(object sender, TappedEventArgs e)
@@ -636,6 +621,10 @@ public partial class MapPage : ContentPage
     {
         _isActionButtonTapped = true;
         cardManuallyClosed = true;
+
+        // 🔥 Reset icon poi về resicon khi đóng card
+        vm.DeselectPoiIcon();
+
         selectedPoi = null;
         vm.ClearRoute();
         await PoiCard.TranslateTo(0, 60, 200, Easing.CubicIn);

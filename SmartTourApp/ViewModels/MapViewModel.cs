@@ -18,13 +18,14 @@ namespace SmartTourApp.ViewModels;
 
 public class MapViewModel
 {
+    // ── highlight feature (SymbolStyle cũ — giữ để không break các caller khác) ──
     private PointFeature? highlightFeature;
 
     public MemoryLayer UserLayer = new();
     public MemoryLayer PoiLayer = new();
-    public MemoryLayer HeatLayer = new();  // user location heat (lịch sử di chuyển)
+    public MemoryLayer HeatLayer = new();
     public MemoryLayer RouteLayer = new();
-    public MemoryLayer HeatmapLayer = new();  // 🔥 POI visit-count heatmap bubbles
+    public MemoryLayer HeatmapLayer = new();
 
     private PointFeature? userFeature;
     private PointFeature? pulseFeature;
@@ -32,33 +33,49 @@ public class MapViewModel
 
     private readonly List<PointFeature> poiFeatures = new();
 
+    // ── Map poiId → PointFeature để swap icon chính xác ──
+    private readonly Dictionary<int, PointFeature> _poiFeatureMap = new();
+
+    // ── Track poiId đang được select (để deselect khi cần) ──
+    private int? _selectedPoiId = null;
+
     private Location? lastLocation;
 
     private double pulseScale = 1.0;
     private bool pulseGrowing = true;
 
-    private static readonly ImageStyle poiIconStyle = new ImageStyle
+    // ── Styles — khởi tạo 1 lần, dùng lại để tránh tạo object thừa ──
+    private static readonly ImageStyle _normalIconStyle = new ImageStyle
+    {
+        Image = "embedded://SmartTourApp.Resources.Images.resicon.png",
+        SymbolScale = 0.6,
+        Offset = new Offset(0, 20)
+    };
+
+    private static readonly ImageStyle _selectedIconStyle = new ImageStyle
     {
         Image = "embedded://SmartTourApp.Resources.Images.mappin.png",
         SymbolScale = 0.6,
         Offset = new Offset(0, 20)
     };
 
+    // Giữ alias để LoadPois không bị break nếu code ngoài ref tới
+    private static readonly ImageStyle poiIconStyle = _normalIconStyle;
+
     public MapViewModel()
     {
         StartPulseAnimation();
     }
 
-    // =============================
+    // ═══════════════════════════════════════════════════════════════
     // USER LOCATION
-    // =============================
+    // ═══════════════════════════════════════════════════════════════
     public void UpdateUser(Map map, Location loc, bool centerMap = false)
     {
         if (lastLocation != null)
         {
             var distance = Location.CalculateDistance(
                 lastLocation, loc, DistanceUnits.Kilometers);
-
             if (distance < 0.003) return;
         }
 
@@ -71,7 +88,8 @@ public class MapViewModel
         {
             accuracyFeature = new PointFeature(newPoint)
             {
-                Styles = {
+                Styles =
+                {
                     new SymbolStyle
                     {
                         SymbolScale = 2.0,
@@ -82,7 +100,8 @@ public class MapViewModel
 
             pulseFeature = new PointFeature(newPoint)
             {
-                Styles = {
+                Styles =
+                {
                     new SymbolStyle
                     {
                         SymbolScale = 1.2,
@@ -93,7 +112,8 @@ public class MapViewModel
 
             userFeature = new PointFeature(newPoint)
             {
-                Styles = {
+                Styles =
+                {
                     new SymbolStyle
                     {
                         SymbolScale = 0.35,
@@ -124,9 +144,9 @@ public class MapViewModel
         }
     }
 
-    // =============================
+    // ═══════════════════════════════════════════════════════════════
     // ROUTE DRAW — blue line
-    // =============================
+    // ═══════════════════════════════════════════════════════════════
     public async Task DrawRoute(Map map, Location from, Poi to)
     {
         var points = await GetRoutePoints(from, to);
@@ -136,7 +156,6 @@ public class MapViewModel
             points.Select(p => new NtsGeometry.Coordinate(p.X, p.Y)).ToArray());
 
         var feature = new GeometryFeature { Geometry = line };
-
         feature.Styles.Add(new VectorStyle { Line = new Pen(Color.White, 10) });
         feature.Styles.Add(new VectorStyle { Line = new Pen(new Color(30, 136, 229), 6) });
 
@@ -160,28 +179,98 @@ public class MapViewModel
         RouteLayer.DataHasChanged();
     }
 
-    // =============================
-    // POI
-    // =============================
+    // ═══════════════════════════════════════════════════════════════
+    // POI — Load với dict mapping poiId → feature
+    // ═══════════════════════════════════════════════════════════════
     public void LoadPois(Map map, List<Poi> pois)
     {
         poiFeatures.Clear();
+        _poiFeatureMap.Clear();
+        _selectedPoiId = null;
         PoiLayer.Style = null;
 
         foreach (var poi in pois)
         {
             var spherical = SphericalMercator.FromLonLat(poi.Lng, poi.Lat);
+
+            // Mỗi feature có ImageStyle riêng (instance riêng) để swap độc lập
             var feature = new PointFeature(new MPoint(spherical.x, spherical.y))
             {
-                Styles = { poiIconStyle }
+                Styles =
+                {
+                    new ImageStyle
+                    {
+                        Image       = "embedded://SmartTourApp.Resources.Images.resicon.png",
+                        SymbolScale = 0.6,
+                        Offset      = new Offset(0, 20)
+                    }
+                }
             };
+
             poiFeatures.Add(feature);
+            _poiFeatureMap[poi.Id] = feature;
         }
 
         PoiLayer.Features = poiFeatures;
         PoiLayer.DataHasChanged();
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    // 🔥 SELECT POI ICON — đổi sang mappin, reset poi cũ về resicon
+    // ═══════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Swap icon của POI được chọn sang mappin.png,
+    /// đồng thời reset POI trước đó về resicon.png.
+    /// Gọi khi user tap vào POI icon hoặc tap card.
+    /// </summary>
+    public void SelectPoiIcon(int poiId)
+    {
+        // Deselect poi cũ nếu khác
+        if (_selectedPoiId.HasValue && _selectedPoiId.Value != poiId)
+            ResetPoiIcon(_selectedPoiId.Value);
+
+        // Set selected icon
+        if (_poiFeatureMap.TryGetValue(poiId, out var feature))
+        {
+            SetPoiIconImage(feature, "embedded://SmartTourApp.Resources.Images.mappin.png");
+        }
+
+        _selectedPoiId = poiId;
+        PoiLayer.DataHasChanged();
+    }
+
+    /// <summary>
+    /// Reset icon POI về resicon.png (normal state).
+    /// Gọi khi user bấm X trên bottom card.
+    /// </summary>
+    public void DeselectPoiIcon()
+    {
+        if (_selectedPoiId.HasValue)
+        {
+            ResetPoiIcon(_selectedPoiId.Value);
+            _selectedPoiId = null;
+            PoiLayer.DataHasChanged();
+        }
+    }
+
+    // ── Internal helper: reset 1 POI về normal icon ──
+    private void ResetPoiIcon(int poiId)
+    {
+        if (_poiFeatureMap.TryGetValue(poiId, out var feature))
+            SetPoiIconImage(feature, "embedded://SmartTourApp.Resources.Images.resicon.png");
+    }
+
+    // ── Internal helper: thay Image string trên ImageStyle của feature ──
+    private static void SetPoiIconImage(PointFeature feature, string imageUri)
+    {
+        if (feature.Styles.FirstOrDefault() is ImageStyle imgStyle)
+            imgStyle.Image = imageUri;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // HIGHLIGHT POI (giữ nguyên — dùng SymbolStyle overlay riêng)
+    // ═══════════════════════════════════════════════════════════════
     public void HighlightPoi(Map map, double lat, double lng)
     {
         var spherical = SphericalMercator.FromLonLat(lng, lat);
@@ -191,7 +280,8 @@ public class MapViewModel
         {
             highlightFeature = new PointFeature(newPoint)
             {
-                Styles = {
+                Styles =
+                {
                     new SymbolStyle
                     {
                         SymbolScale = 1.3,
@@ -210,9 +300,9 @@ public class MapViewModel
         PoiLayer.DataHasChanged();
     }
 
-    // =============================
+    // ═══════════════════════════════════════════════════════════════
     // LOCATION HISTORY HEAT MAP
-    // =============================
+    // ═══════════════════════════════════════════════════════════════
     public void LoadHeatMap(Map map, List<UserLocationLog> logs)
     {
         var features = new List<PointFeature>();
@@ -224,7 +314,8 @@ public class MapViewModel
 
             var f = new PointFeature(new MPoint(spherical.x, spherical.y))
             {
-                Styles = {
+                Styles =
+                {
                     new SymbolStyle
                     {
                         SymbolScale = 0.6,
@@ -242,17 +333,9 @@ public class MapViewModel
             map.Layers.Add(HeatLayer);
     }
 
-    // ══════════════════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════
     // 🔥 POI VISIT-COUNT HEATMAP BUBBLES
-    // Render hình tròn bán kính/opacity tỉ lệ với số lần user bước vào
-    // ══════════════════════════════════════════════════════════════════
-
-    /// <summary>
-    /// Render heatmap bubbles lên map dựa trên API data.
-    /// Scale: bubble lớn hơn + đậm hơn khi sum cao hơn.
-    /// Dùng SymbolStyle vì Mapsui 5.0.2 không hỗ trợ true circle radius theo meters —
-    /// scale tương đối đủ cho UX heatmap visualization.
-    /// </summary>
+    // ═══════════════════════════════════════════════════════════════
     public void LoadPoiHeatmap(Map map, List<HeatmapPoiData> data)
     {
         if (data == null || data.Count == 0) return;
@@ -267,17 +350,14 @@ public class MapViewModel
             var spherical = SphericalMercator.FromLonLat(item.Lng, item.Lat);
             var pt = new MPoint(spherical.x, spherical.y);
 
-            // Normalize sum → scale [0.4 .. 3.0]
             double norm = maxSum > 0 ? (double)item.Sum / maxSum : 0.1;
             double scale = 0.4 + norm * 2.6;
-
-            // Opacity: 40 → 160 (alpha 0..255)
             int alpha = (int)(40 + norm * 120);
 
-            // Outer glow — lớn, mờ
             var glowFeature = new PointFeature(new MPoint(pt.X, pt.Y))
             {
-                Styles = {
+                Styles =
+                {
                     new SymbolStyle
                     {
                         SymbolScale = scale * 1.8,
@@ -287,10 +367,10 @@ public class MapViewModel
                 }
             };
 
-            // Core bubble — nhỏ hơn, đậm hơn
             var coreFeature = new PointFeature(new MPoint(pt.X, pt.Y))
             {
-                Styles = {
+                Styles =
+                {
                     new SymbolStyle
                     {
                         SymbolScale = scale,
@@ -308,19 +388,18 @@ public class MapViewModel
         HeatmapLayer.DataHasChanged();
 
         if (!map.Layers.Contains(HeatmapLayer))
-            map.Layers.Insert(0, HeatmapLayer);  // Insert below POI markers
+            map.Layers.Insert(0, HeatmapLayer);
     }
 
-    /// <summary>Xoá toàn bộ POI heatmap bubbles.</summary>
     public void ClearPoiHeatmap()
     {
         HeatmapLayer.Features = Array.Empty<IFeature>();
         HeatmapLayer.DataHasChanged();
     }
 
-    // =============================
+    // ═══════════════════════════════════════════════════════════════
     // PULSE ANIMATION
-    // =============================
+    // ═══════════════════════════════════════════════════════════════
     private void StartPulseAnimation()
     {
         var dispatcher = Application.Current?.Dispatcher;
@@ -347,9 +426,9 @@ public class MapViewModel
         });
     }
 
-    // =============================
+    // ═══════════════════════════════════════════════════════════════
     // ROUTE CALCULATION (OSRM)
-    // =============================
+    // ═══════════════════════════════════════════════════════════════
     public async Task<List<MPoint>> GetRoutePoints(Location from, Poi to)
     {
         var url =
