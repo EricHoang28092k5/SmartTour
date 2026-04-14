@@ -53,6 +53,9 @@ public class TrackingService
         // Đọc trạng thái ban đầu để so sánh chu kỳ đầu tiên
         _prevAutoPlayEnabled = Preferences.Default.Get(SettingsPage.AutoPlayKey, true);
 
+        // Reset adaptive accuracy khi start mới
+        location.ResetAdaptiveState();
+
         _ = Task.Run(async () =>
         {
             while (!token.IsCancellationRequested)
@@ -70,54 +73,43 @@ public class TrackingService
                     logger.Log(loc);
                     OnLocationChanged?.Invoke(loc);
 
+                    // ── Adaptive interval: kết hợp khoảng cách + accuracy hiện tại ──
                     AdjustInterval(loc);
 
                     // ─────────────────────────────────────────────────────────
-                    // Yêu cầu 2: Đọc trạng thái auto-play mỗi chu kỳ
+                    // Đọc trạng thái auto-play mỗi chu kỳ
                     // → cập nhật ngay lập tức khi người dùng gạt switch trong Settings
-                    // Mặc định true nếu chưa được set (người dùng mới)
                     // ─────────────────────────────────────────────────────────
                     bool autoPlayEnabled = Preferences.Default.Get(
                         SettingsPage.AutoPlayKey, true);
 
-                    // ── Yêu cầu 1: Detect auto-play VỪA được bật lại ──
-                    // Reset GeofencingEngine để lần đầu vào radius trigger ngay,
-                    // không bị block bởi cooldown/activeZones của phiên trước.
+                    // ── Detect auto-play VỪA được bật lại ──
                     if (autoPlayEnabled && !_prevAutoPlayEnabled)
                     {
                         System.Diagnostics.Debug.WriteLine(
-                            "🔄 Auto-play re-enabled → Reset GeofencingEngine state");
+                            "🔄 Auto-play re-enabled → Reset GeofencingEngine + LocationService state");
                         geo.Reset();
+                        location.ResetAdaptiveState();
                     }
 
                     _prevAutoPlayEnabled = autoPlayEnabled;
 
                     if (autoPlayEnabled)
                     {
-                        // ─── AUTO PLAY: chỉ gọi narration khi auto-play BẬT ───
-                        // Narration.Play sẽ ghi Play Log (DurationListened) thông qua AudioListenTracker
                         var poi = geo.FindBestPoi(loc, pois);
                         if (poi != null)
                             await narration.Play(poi, loc);
                     }
                     else
                     {
-                        // ─── AUTO PLAY TẮT: KHÔNG gọi narration, KHÔNG ghi Play Log ───
-                        // Nhưng vẫn phải cập nhật state machine geofencing
-                        // để FindBestPoi hoạt động đúng khi bật lại
-                        geo.FindBestPoi(loc, pois); // chỉ update state, bỏ qua kết quả
+                        // Chỉ update state, bỏ qua kết quả
+                        geo.FindBestPoi(loc, pois);
                     }
 
-                    // ─────────────────────────────────────────────────────────
-                    // Yêu cầu 2: Heatmap luôn được ghi nhận
-                    // KHÔNG phụ thuộc vào auto-play để đảm bảo thống kê chính xác
-                    // ─────────────────────────────────────────────────────────
+                    // Heatmap luôn ghi nhận bất kể auto-play
                     await heatmap.OnLocationUpdatedAsync(loc, pois);
 
-                    // ─────────────────────────────────────────────────────────
-                    // Route Tracking: cập nhật dwell timer và kiểm tra timeout
-                    // Chạy độc lập, không phụ thuộc auto-play hay heatmap
-                    // ─────────────────────────────────────────────────────────
+                    // Route tracking độc lập
                     await routeTracking.OnLocationUpdatedAsync(loc, pois);
 
                     await Task.Delay(interval * 1000, token);
@@ -140,26 +132,52 @@ public class TrackingService
         cts = null;
     }
 
+    /// <summary>
+    /// Adaptive interval dựa trên khoảng cách DI CHUYỂN + accuracy hiện tại.
+    ///
+    /// Logic 2 tầng:
+    ///   1. Khoảng cách → tốc độ di chuyển thô
+    ///   2. Accuracy hiện tại (từ LocationService) → fine-tune interval
+    ///
+    /// Kết quả: đứng yên + Low accuracy = 20s interval (pin tiết kiệm tối đa)
+    ///          đi bộ + Medium = 8s, chạy + Best = 3s
+    /// </summary>
     private void AdjustInterval(Location loc)
     {
         if (lastLocation == null)
         {
             lastLocation = loc;
+            interval = 3;
             return;
         }
 
         var dist = Location.CalculateDistance(
-            lastLocation,
-            loc,
-            DistanceUnits.Kilometers);
-
-        if (dist < 0.01)
-            interval = 15;
-        else if (dist < 0.05)
-            interval = 10;
-        else
-            interval = 5;
+            lastLocation, loc, DistanceUnits.Kilometers) * 1000.0; // in meters
 
         lastLocation = loc;
+
+        // Tầng 1: khoảng cách
+        int baseInterval;
+        if (dist < 3)           // <3m — đứng yên
+            baseInterval = 15;
+        else if (dist < 15)     // 3-15m — đứng vẫy
+            baseInterval = 10;
+        else if (dist < 50)     // 15-50m — đi bộ
+            baseInterval = 5;
+        else                    // >50m — đi nhanh
+            baseInterval = 3;
+
+        // Tầng 2: điều chỉnh theo accuracy hiện tại của LocationService
+        // Khi đang dùng Low accuracy (đứng yên lâu), tăng interval thêm
+        var accuracy = location.CurrentAccuracy;
+        interval = accuracy switch
+        {
+            GeolocationAccuracy.Low => Math.Max(baseInterval, 20),    // tối thiểu 20s
+            GeolocationAccuracy.Medium => Math.Max(baseInterval, 8),  // tối thiểu 8s
+            _ => baseInterval                                          // Best: theo dist
+        };
+
+        System.Diagnostics.Debug.WriteLine(
+            $"[Tracking] dist={dist:F0}m, accuracy={accuracy}, interval={interval}s");
     }
 }

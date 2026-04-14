@@ -19,22 +19,27 @@ namespace SmartTourApp.ViewModels;
 
 public class MapViewModel
 {
-    // GIỮ field để không break caller — nhưng KHÔNG bao giờ add vào poiFeatures nữa
+    // GIỮ field để không break caller
     private PointFeature? highlightFeature;
 
     public MemoryLayer UserLayer = new();
     public MemoryLayer PoiLayer = new();
     public MemoryLayer HeatLayer = new();
     public MemoryLayer RouteLayer = new() { Name = "Route" };
+
+    // HeatmapLayer giữ field để không break code gọi — nhưng KHÔNG add vào map
     public MemoryLayer HeatmapLayer = new();
+
     public MemoryLayer TourPoiLayer = new() { Name = "TourPoi" };
     public MemoryLayer TourRouteLayer = new() { Name = "TourRoute" };
+
+    // ── Nearest POI highlight layer — vòng tròn nhấp nháy màu cam/vàng ──
+    public MemoryLayer NearestHighlightLayer = new() { Name = "NearestHighlight" };
 
     private PointFeature? userFeature;
     private PointFeature? pulseFeature;
     private PointFeature? accuracyFeature;
 
-    // CHỈ chứa POI ImageStyle features — KHÔNG có SymbolStyle feature nào
     private readonly List<PointFeature> poiFeatures = new();
     private readonly Dictionary<int, PointFeature> _poiFeatureMap = new();
     private int? _selectedPoiId = null;
@@ -43,7 +48,15 @@ public class MapViewModel
     private double pulseScale = 1.0;
     private bool pulseGrowing = true;
 
-    // Alias giữ để không break nếu code ngoài ref
+    // ── Nearest highlight state ──
+    private int? _nearestPoiId = null;
+    private PointFeature? _nearestPulse1;
+    private PointFeature? _nearestPulse2;
+    private PointFeature? _nearestCore;
+    private double _nearestPulseScale1 = 1.0;
+    private double _nearestPulseScale2 = 1.3;
+    private bool _nearestPulseGrowing = true;
+
     private static readonly ImageStyle _normalIconStyle = new ImageStyle
     {
         Image = "embedded://SmartTourApp.Resources.Images.resicon.png",
@@ -61,6 +74,7 @@ public class MapViewModel
     public MapViewModel()
     {
         StartPulseAnimation();
+        StartNearestHighlightAnimation();
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -108,7 +122,162 @@ public class MapViewModel
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // ROUTE DRAW — blue line, luôn overlay lên TourRouteLayer
+    // NEAREST POI HIGHLIGHT (YC3 — thực sự vẽ vòng nhấp nháy)
+    // ═══════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Highlight POI gần nhất bằng vòng tròn nhấp nháy màu cam/vàng.
+    /// Dùng 2 vòng pulse lệch pha nhau để tạo hiệu ứng "ripple" sống động.
+    /// Mapsui 5.0.2: Dùng SymbolStyle trực tiếp KHÔNG dùng ImageStyle để tránh white circle bug.
+    /// </summary>
+    public void HighlightPoi(Map map, double lat, double lng)
+    {
+        var s = SphericalMercator.FromLonLat(lng, lat);
+        var pt = new MPoint(s.x, s.y);
+
+        // Outer pulse ring 1 — cam nhạt, to hơn, nhấp nháy chậm
+        _nearestPulse1 = new PointFeature(new MPoint(pt.X, pt.Y))
+        {
+            Styles =
+            {
+                new SymbolStyle
+                {
+                    SymbolScale = 1.8,
+                    Fill = new Brush(new Color(255, 165, 0, 55)),  // cam nhạt
+                    Outline = new Pen(new Color(255, 165, 0, 120), 2.5)
+                }
+            }
+        };
+
+        // Outer pulse ring 2 — vàng, lệch pha 180°
+        _nearestPulse2 = new PointFeature(new MPoint(pt.X, pt.Y))
+        {
+            Styles =
+            {
+                new SymbolStyle
+                {
+                    SymbolScale = 1.3,
+                    Fill = new Brush(new Color(255, 200, 0, 80)),  // vàng trong
+                    Outline = new Pen(new Color(255, 200, 0, 180), 2.0)
+                }
+            }
+        };
+
+        // Core dot — cam đậm, không nhấp nháy — làm "tâm"
+        _nearestCore = new PointFeature(new MPoint(pt.X, pt.Y))
+        {
+            Styles =
+            {
+                new SymbolStyle
+                {
+                    SymbolScale = 0.5,
+                    Fill = new Brush(new Color(255, 120, 0, 220)),  // cam đậm
+                    Outline = new Pen(new Color(255, 255, 255, 200), 3.0)
+                }
+            }
+        };
+
+        NearestHighlightLayer.Features = new[] { _nearestPulse1, _nearestPulse2, _nearestCore };
+        NearestHighlightLayer.DataHasChanged();
+
+        // Đảm bảo layer đã add vào map (dưới POI layer để không che icon)
+        if (!map.Layers.Contains(NearestHighlightLayer))
+        {
+            var layers = map.Layers.ToList();
+            int poiIdx = layers.IndexOf(PoiLayer);
+            if (poiIdx >= 0)
+                map.Layers.Insert(poiIdx, NearestHighlightLayer);
+            else
+                map.Layers.Add(NearestHighlightLayer);
+        }
+
+        System.Diagnostics.Debug.WriteLine(
+            $"[MapVM] HighlightPoi: lat={lat:F4}, lng={lng:F4}");
+    }
+
+    /// <summary>
+    /// Đặt POI gần nhất và vẽ highlight — API mới rõ ràng hơn.
+    /// MapPage gọi hàm này khi nearest POI thay đổi.
+    /// </summary>
+    public void SetNearestPoi(Map map, Poi poi)
+    {
+        if (_nearestPoiId == poi.Id) return; // Không re-render nếu cùng POI
+
+        _nearestPoiId = poi.Id;
+        HighlightPoi(map, poi.Lat, poi.Lng);
+    }
+
+    /// <summary>
+    /// Xóa highlight nearest POI (khi user đã chọn POI cụ thể hoặc ra khỏi vùng).
+    /// </summary>
+    public void ClearNearestHighlight()
+    {
+        _nearestPoiId = null;
+        _nearestPulse1 = null;
+        _nearestPulse2 = null;
+        _nearestCore = null;
+
+        NearestHighlightLayer.Features = Array.Empty<IFeature>();
+        NearestHighlightLayer.DataHasChanged();
+    }
+
+    /// <summary>
+    /// Animation loop cho vòng tròn nhấp nháy nearest POI.
+    /// Hai vòng lệch pha 180° tạo hiệu ứng ripple đẹp mắt.
+    /// </summary>
+    private void StartNearestHighlightAnimation()
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher == null) return;
+
+        dispatcher.StartTimer(TimeSpan.FromMilliseconds(50), () =>
+        {
+            if (_nearestPulse1 == null || _nearestPulse2 == null) return true;
+
+            try
+            {
+                // Pulse 1: 1.2 → 2.2 → 1.2 (chậm)
+                _nearestPulseScale1 = _nearestPulseGrowing
+                    ? _nearestPulseScale1 + 0.025
+                    : _nearestPulseScale1 - 0.025;
+
+                if (_nearestPulseScale1 > 2.2) _nearestPulseGrowing = false;
+                if (_nearestPulseScale1 < 1.2) _nearestPulseGrowing = true;
+
+                // Pulse 2: lệch pha — khi 1 to thì 2 nhỏ lại
+                _nearestPulseScale2 = 3.4 - _nearestPulseScale1;
+                _nearestPulseScale2 = Math.Clamp(_nearestPulseScale2, 1.0, 2.2);
+
+                // Alpha thay đổi theo scale: to hơn → trong hơn (fade out effect)
+                int alpha1 = (int)(200 - (_nearestPulseScale1 - 1.2) / 1.0 * 150);
+                int alpha2 = (int)(200 - (_nearestPulseScale2 - 1.0) / 1.2 * 150);
+                alpha1 = Math.Clamp(alpha1, 30, 200);
+                alpha2 = Math.Clamp(alpha2, 30, 200);
+
+                if (_nearestPulse1.Styles.FirstOrDefault() is SymbolStyle s1)
+                {
+                    s1.SymbolScale = _nearestPulseScale1;
+                    s1.Fill = new Brush(new Color(255, 165, 0, alpha1 / 3));
+                    s1.Outline = new Pen(new Color(255, 165, 0, alpha1), 2.5);
+                }
+
+                if (_nearestPulse2.Styles.FirstOrDefault() is SymbolStyle s2)
+                {
+                    s2.SymbolScale = _nearestPulseScale2;
+                    s2.Fill = new Brush(new Color(255, 200, 0, alpha2 / 3));
+                    s2.Outline = new Pen(new Color(255, 200, 0, alpha2), 2.0);
+                }
+
+                NearestHighlightLayer.DataHasChanged();
+            }
+            catch { /* ignore animation errors */ }
+
+            return true;
+        });
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // ROUTE DRAW
     // ═══════════════════════════════════════════════════════════════
     public async Task DrawRoute(Map map, Location from, Poi to)
     {
@@ -182,33 +351,25 @@ public class MapViewModel
             var pt = new MPoint(s.x, s.y);
             routeCoords.Add(new NtsGeometry.Coordinate(pt.X, pt.Y));
 
-            // 1. Tạo Feature nhãn số
             var lf = new PointFeature(new MPoint(pt.X, pt.Y));
 
-            // 🔥 CHIÊU CUỐI: Dùng một ImageStyle NHƯNG cho nó tàng hình
-            // Để Mapsui thấy "À, có ảnh rồi" nên nó sẽ KHÔNG vẽ vòng tròn trắng mặc định nữa.
             lf.Styles.Add(new ImageStyle
             {
                 Image = "embedded://SmartTourApp.Resources.Images.resicon.png",
-                SymbolScale = 0.01, // Nhỏ đến mức mắt thường không thấy
-                Opacity = 0,        // Trong suốt hoàn toàn
-                Enabled = true      // Phải để True để nó ghi đè cái mặc định
+                SymbolScale = 0.01,
+                Opacity = 0,
+                Enabled = true
             });
 
-            // 2. Thêm số đỏ đè lên
             lf.Styles.Add(new LabelStyle
             {
                 Text = (i + 1).ToString(),
                 Font = new Font { Size = 11, Bold = true },
                 ForeColor = Color.White,
-                BackColor = new Brush(new Color(220, 38, 38)), // Nền đỏ rực
-
-                // Tắt mọi thứ liên quan đến màu trắng
+                BackColor = new Brush(new Color(220, 38, 38)),
                 Halo = new Pen(Color.Transparent, 0),
                 BorderThickness = 0,
                 BorderColor = Color.Transparent,
-
-                // Vị trí: Đẩy lên cao để lọt vào vòng tròn của mappin.png
                 Offset = new Offset(0, -28),
                 HorizontalAlignment = LabelStyle.HorizontalAlignmentEnum.Center,
                 VerticalAlignment = LabelStyle.VerticalAlignmentEnum.Center,
@@ -276,13 +437,7 @@ public class MapViewModel
         _tourPoiIds.Clear();
 
         PoiLayer.Style = null;
-
         highlightFeature = null;
-
-        // FIX YC1: null highlightFeature — nó không còn trong poiFeatures nên sẽ
-        // không được render. Mapsui 5.0.2 cache feature references nên phải null rõ ràng.
-        highlightFeature = null;
-
         PoiLayer.Style = null;
 
         foreach (var poi in pois)
@@ -304,7 +459,6 @@ public class MapViewModel
             _poiFeatureMap[poi.Id] = feature;
         }
 
-        // Chỉ set poiFeatures — KHÔNG add highlightFeature
         PoiLayer.Features = poiFeatures;
         PoiLayer.DataHasChanged();
     }
@@ -339,10 +493,6 @@ public class MapViewModel
         }
     }
 
-    /// <summary>
-    /// Force reset icon về resicon bất kể tour state.
-    /// Dùng khi bấm X trên POI ngoài tour trong tour mode.
-    /// </summary>
     public void ForceDeselectPoiIcon(int poiId)
     {
         ResetPoiIcon(poiId);
@@ -363,70 +513,34 @@ public class MapViewModel
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // HIGHLIGHT POI — GIỮ signature, NOP hoàn toàn
-    // Mapsui 5.0.2: SymbolStyle mặc định = vòng tròn trắng
-    // SelectPoiIcon (mappin.png) đã đủ để visual highlight
-    // ═══════════════════════════════════════════════════════════════
-    public void HighlightPoi(Map map, double lat, double lng)
-    {
-        // NOP — intentionally empty
-        // DO NOT add SymbolStyle features here — causes white circle bug in Mapsui 5.0.2
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    // HEAT MAPS
+    // HEATMAP — GIỮ signature, không render lên map
+    // Heatmap chỉ hiển thị qua CMS dashboard, không phải trên mobile map
     // ═══════════════════════════════════════════════════════════════
     public void LoadHeatMap(Map map, List<UserLocationLog> logs)
     {
-        var features = logs.Select(l =>
-        {
-            var s = SphericalMercator.FromLonLat((double)l.Longitude, (double)l.Latitude);
-            var f = new PointFeature(new MPoint(s.x, s.y));
-            f.Styles.Add(new SymbolStyle { SymbolScale = 0.6, Fill = new Brush(new Color(255, 80, 80, 60)) });
-            return f;
-        }).ToList();
-
-        HeatLayer.Features = features;
-        HeatLayer.DataHasChanged();
-        if (!map.Layers.Contains(HeatLayer)) map.Layers.Add(HeatLayer);
+        // INTENTIONALLY NOT RENDERED ON MAP
+        // Heatmap visualization is handled by the CMS dashboard (web)
+        // Keeping method signature for backward compatibility
+        System.Diagnostics.Debug.WriteLine(
+            $"[MapVM] LoadHeatMap: {logs.Count} logs — not rendered on map (CMS only)");
     }
 
     public void LoadPoiHeatmap(Map map, List<HeatmapPoiData> data)
     {
-        if (data == null || data.Count == 0) return;
-
-        var maxSum = data.Max(d => d.Sum);
-        var features = new List<PointFeature>();
-
-        foreach (var item in data)
-        {
-            if (item.Lat == 0 && item.Lng == 0) continue;
-            var s = SphericalMercator.FromLonLat(item.Lng, item.Lat);
-            var pt = new MPoint(s.x, s.y);
-            double norm = maxSum > 0 ? (double)item.Sum / maxSum : 0.1;
-            double scale = 0.4 + norm * 2.6;
-            int alpha = (int)(40 + norm * 120);
-
-            var glow = new PointFeature(new MPoint(pt.X, pt.Y));
-            glow.Styles.Add(new SymbolStyle { SymbolScale = scale * 1.8, Fill = new Brush(new Color(255, 100, 30, alpha / 3)), Outline = new Pen(Color.Transparent, 0) });
-            var core = new PointFeature(new MPoint(pt.X, pt.Y));
-            core.Styles.Add(new SymbolStyle { SymbolScale = scale, Fill = new Brush(new Color(255, 80, 0, alpha)), Outline = new Pen(new Color(255, 120, 40, 180), 1.5) });
-            features.Add(glow); features.Add(core);
-        }
-
-        HeatmapLayer.Features = features;
-        HeatmapLayer.DataHasChanged();
-        if (!map.Layers.Contains(HeatmapLayer)) map.Layers.Insert(0, HeatmapLayer);
+        // INTENTIONALLY NOT RENDERED ON MAP
+        // Heatmap visualization is handled by the CMS dashboard (web)
+        System.Diagnostics.Debug.WriteLine(
+            $"[MapVM] LoadPoiHeatmap: {data?.Count ?? 0} entries — not rendered on map (CMS only)");
     }
 
     public void ClearPoiHeatmap()
     {
+        // NOP — heatmap không được render trên map
         HeatmapLayer.Features = Array.Empty<IFeature>();
-        HeatmapLayer.DataHasChanged();
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // PULSE ANIMATION
+    // PULSE ANIMATION (user dot)
     // ═══════════════════════════════════════════════════════════════
     private void StartPulseAnimation()
     {

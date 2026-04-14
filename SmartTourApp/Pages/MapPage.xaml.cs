@@ -54,6 +54,18 @@ public partial class MapPage : ContentPage
     /// <summary>YC7: Track xem có card mở khi rời page không.</summary>
     private bool _hadOpenCardWhenLeaving = false;
 
+    // ── YC4 Tour: Track radius arrival để advance card ──
+    /// <summary>
+    /// Lưu POI index đang hiển thị card (0-based).
+    /// Chỉ advance sang index+1 khi user thực sự vào radius của POI [index].
+    /// </summary>
+    private int _displayedTourPoiIndex = 0;
+
+    /// <summary>
+    /// Set các tourPoiId mà user đã "chạm vào" radius (để không re-trigger).
+    /// </summary>
+    private readonly HashSet<int> _tourRadiusReached = new();
+
     public MapPage(
         TrackingService tracking,
         PoiRepository repo,
@@ -108,11 +120,8 @@ public partial class MapPage : ContentPage
             trackingStarted = true;
         }
 
-        if (!heatmapLoaded && mapInitialized)
-        {
-            heatmapLoaded = true;
-            _ = Task.Run(LoadPoiHeatmapAsync);
-        }
+        // Heatmap không được hiển thị trên map (handled by CMS)
+        heatmapLoaded = true;
 
         var loc = await Geolocation.GetLastKnownLocationAsync();
         if (loc == null)
@@ -129,7 +138,7 @@ public partial class MapPage : ContentPage
             return;
         }
 
-        // ── YC5: Navigate đến POI cụ thể (ưu tiên cao nhất) ──
+        // ── YC5: Navigate đến POI cụ thể ──
         if (!string.IsNullOrEmpty(TargetPoiId))
         {
             if (pois.Count == 0) await Task.Delay(300);
@@ -151,17 +160,15 @@ public partial class MapPage : ContentPage
         // ── Tour mode đang duy trì ──
         if (TourSession.IsActive && _isTourMode)
         {
-            // YC7: Chỉ center + hiện card POI#1 khi không có card mở lúc rời trang
             if (!_hadOpenCardWhenLeaving)
             {
                 if (pois.Count == 0) await Task.Delay(300);
                 CenterOnTour(TourSession.ActiveTour!);
                 await Task.Delay(400);
-                ShowTourPoiCard(0);
+                ShowTourPoiCard(_displayedTourPoiIndex);
             }
             else
             {
-                // Restore trạng thái cũ
                 ShowTourBanner(TourSession.ActiveTour!);
                 if (selectedPoi != null && !cardManuallyClosed)
                     ShowCardForPoi(selectedPoi);
@@ -177,7 +184,7 @@ public partial class MapPage : ContentPage
         else if (cardManuallyClosed)
             PoiCard.IsVisible = false;
 
-        // YC2: Center về user location khi vào map bình thường
+        // Center về user location
         if (loc != null)
         {
             followUser = true;
@@ -195,7 +202,6 @@ public partial class MapPage : ContentPage
     {
         base.OnDisappearing();
         tracking.OnLocationChanged -= UpdateLocation;
-        // YC7: Ghi nhận trạng thái card khi rời trang
         _hadOpenCardWhenLeaving = PoiCard.IsVisible && !cardManuallyClosed;
     }
 
@@ -215,6 +221,8 @@ public partial class MapPage : ContentPage
 
         _isTourMode = true;
         _tourCurrentCardIndex = 0;
+        _displayedTourPoiIndex = 0;
+        _tourRadiusReached.Clear();
         followUser = false;
         openedFromRoute = false;
         selectedPoi = null;
@@ -267,6 +275,10 @@ public partial class MapPage : ContentPage
         TourModeBanner.IsVisible = false;
     }
 
+    /// <summary>
+    /// Hiển thị card cho POI tại index trong tour.
+    /// Luôn hiển thị không điều kiện — việc ADVANCE card mới có điều kiện radius.
+    /// </summary>
     private void ShowTourPoiCard(int index)
     {
         if (!TourSession.IsActive || TourSession.ActiveTour == null) return;
@@ -274,6 +286,7 @@ public partial class MapPage : ContentPage
         if (index < 0 || index >= tourPois.Count) return;
 
         _tourCurrentCardIndex = index;
+        _displayedTourPoiIndex = index;
         var dto = tourPois[index];
 
         var poi = pois.FirstOrDefault(p => p.Id == dto.PoiId) ?? new Poi
@@ -295,6 +308,82 @@ public partial class MapPage : ContentPage
         vm.SelectPoiIcon(dto.PoiId);
     }
 
+    /// <summary>
+    /// YC4: Kiểm tra xem user có vào radius của POI đang hiển thị không.
+    /// Nếu có → advance card sang POI tiếp theo trong tour.
+    /// Gọi từ UpdateLocation mỗi khi vị trí thay đổi.
+    /// </summary>
+    private void CheckTourRadiusAdvance(Location userLoc)
+    {
+        if (!_isTourMode || !TourSession.IsActive || TourSession.ActiveTour == null)
+            return;
+
+        var tourPois = TourSession.ActiveTour.Pois;
+        if (_displayedTourPoiIndex >= tourPois.Count) return;
+
+        var currentDto = tourPois[_displayedTourPoiIndex];
+
+        // Đã từng đến POI này rồi → không check lại
+        if (_tourRadiusReached.Contains(currentDto.PoiId)) return;
+
+        // Tìm POI đầy đủ trong danh sách pois
+        var currentPoi = pois.FirstOrDefault(p => p.Id == currentDto.PoiId);
+        if (currentPoi == null)
+        {
+            // Fallback: tạo Poi tạm từ dto với radius mặc định
+            currentPoi = new Poi
+            {
+                Id = currentDto.PoiId,
+                Name = currentDto.Name,
+                Lat = currentDto.Lat,
+                Lng = currentDto.Lng,
+                Radius = 50 // mặc định 50m nếu không có data
+            };
+        }
+
+        // Tính khoảng cách
+        var distanceMeters = Location.CalculateDistance(
+            userLoc,
+            new Location(currentPoi.Lat, currentPoi.Lng),
+            DistanceUnits.Kilometers) * 1000.0;
+
+        var radiusThreshold = Math.Max(currentPoi.Radius, 30); // tối thiểu 30m
+
+        if (distanceMeters <= radiusThreshold)
+        {
+            // User đã vào radius của POI đang hiển thị
+            _tourRadiusReached.Add(currentDto.PoiId);
+
+            System.Diagnostics.Debug.WriteLine(
+                $"[TourAdvance] ✅ Reached POI #{_displayedTourPoiIndex + 1} " +
+                $"({currentPoi.Name}) dist={distanceMeters:F0}m");
+
+            // Advance sang POI tiếp theo (nếu còn)
+            int nextIndex = _displayedTourPoiIndex + 1;
+            if (nextIndex < tourPois.Count)
+            {
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    ShowTourPoiCard(nextIndex);
+
+                    // Center map về POI tiếp theo
+                    var nextDto = tourPois[nextIndex];
+                    var m = SphericalMercator.FromLonLat(nextDto.Lng, nextDto.Lat);
+                    TourMap.Map?.Navigator?.CenterOn(new MPoint(m.x, m.y));
+                });
+            }
+            else
+            {
+                // Đã đến POI cuối cùng trong tour
+                System.Diagnostics.Debug.WriteLine("[TourAdvance] 🏁 Last POI reached!");
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    TourStepLabel.Text = $"🏁 Điểm cuối — hoàn thành tour!";
+                });
+            }
+        }
+    }
+
     private async void OnExitTourTapped(object sender, TappedEventArgs e)
     {
         await ExitTourModeAsync();
@@ -304,6 +393,8 @@ public partial class MapPage : ContentPage
     {
         _isTourMode = false;
         _tourCurrentCardIndex = 0;
+        _displayedTourPoiIndex = 0;
+        _tourRadiusReached.Clear();
         _hadOpenCardWhenLeaving = false;
 
         if (TourMap?.Map != null) vm.ClearTourOverlay(TourMap.Map);
@@ -337,8 +428,9 @@ public partial class MapPage : ContentPage
     {
         try
         {
-            var db = Application.Current?.Handler?.MauiContext?.Services.GetService<Database>();
-            if (db != null) vm.LoadHeatMap(TourMap.Map, db.GetLocations());
+            // Không load heatmap từ DB vào map — handled by CMS
+            // var db = Application.Current?.Handler?.MauiContext?.Services.GetService<Database>();
+            // if (db != null) vm.LoadHeatMap(TourMap.Map, db.GetLocations()); // REMOVED
 
             if (TourMap.Map == null)
             {
@@ -364,11 +456,15 @@ public partial class MapPage : ContentPage
             if (!TourMap.Map.Layers.Contains(vm.PoiLayer)) TourMap.Map.Layers.Add(vm.PoiLayer);
             if (!TourMap.Map.Layers.Contains(vm.UserLayer)) TourMap.Map.Layers.Add(vm.UserLayer);
 
+            // Thêm NearestHighlightLayer vào map (dưới PoiLayer)
+            // Layer này sẽ được populate khi UpdateLocation detect nearest POI
+            // (không add ngay vì vm.HighlightPoi sẽ tự add khi có dữ liệu)
+
             TourMap?.Refresh();
             MainThread.BeginInvokeOnMainThread(RemoveLoggingWidget);
 
             heatmapLoaded = true;
-            _ = Task.Run(LoadPoiHeatmapAsync);
+            // Không gọi LoadPoiHeatmapAsync — heatmap chỉ hiển thị trên CMS
             _ = Task.Run(async () => { await Task.Delay(3000); await AutoCacheCurrentAreaAsync(); });
         }
         catch (Exception ex)
@@ -409,6 +505,8 @@ public partial class MapPage : ContentPage
                     SelectPoi(tapped);
                     cardManuallyClosed = false;
                     vm.ClearRoute();
+                    // Clear nearest highlight khi user tap chọn POI cụ thể
+                    vm.ClearNearestHighlight();
                 }
             });
         }
@@ -441,7 +539,6 @@ public partial class MapPage : ContentPage
         }
     }
 
-    // Dummy dict để không break ref
     private readonly Dictionary<int, object> _poiFeatureMapRef = new();
 
     private void SelectPoi(Poi poi)
@@ -452,7 +549,6 @@ public partial class MapPage : ContentPage
         TourStepIndicator.IsVisible = false;
         vm.SelectPoiIcon(poi.Id);
         ShowCardForPoi(poi);
-        // YC1: KHÔNG gọi vm.HighlightPoi — đã là NOP nhưng không gọi cho sạch
     }
 
     private void ShowCardForPoi(Poi poi)
@@ -490,7 +586,6 @@ public partial class MapPage : ContentPage
             var target = selectedPoi ?? currentNearest;
             if (target == null) return;
 
-            // YC6: POI ngoài tour → vẽ route xanh bình thường
             if (!vm.IsPoiInTour(target.Id))
             {
                 await ExecuteBlueRouteAsync(target);
@@ -507,7 +602,6 @@ public partial class MapPage : ContentPage
         }
     }
 
-    /// <summary>Vẽ route xanh từ user đến bất kỳ POI nào.</summary>
     private async Task ExecuteBlueRouteAsync(Poi target)
     {
         if (currentLocation == null) return;
@@ -600,21 +694,17 @@ public partial class MapPage : ContentPage
             if (selectedPoi != null)
             {
                 if (!vm.IsPoiInTour(selectedPoi.Id))
-                {
-                    // YC3: POI ngoài tour → reset icon về resicon
                     vm.ForceDeselectPoiIcon(selectedPoi.Id);
-                }
-                // YC6 + Tour route: LUÔN xóa route xanh khi bấm X trong tour mode
-                // (cả khi là poi trong tour đã bấm "Đường đi" lẫn poi ngoài tour)
                 vm.ClearRoute();
             }
             TourStepIndicator.IsVisible = false;
-            // Không reset icon của POI trong tour
         }
         else
         {
             vm.DeselectPoiIcon();
             vm.ClearRoute();
+            // Khi đóng card trong normal mode → xóa highlight nearest
+            vm.ClearNearestHighlight();
         }
 
         selectedPoi = null;
@@ -644,6 +734,7 @@ public partial class MapPage : ContentPage
 
             if (pois.Count == 0) return;
 
+            // ── Tìm POI gần nhất ──
             Poi? nearest = null;
             double minDist = double.MaxValue;
             foreach (var p in pois)
@@ -658,15 +749,26 @@ public partial class MapPage : ContentPage
             {
                 if (nearest != null && selectedPoi == null && !cardManuallyClosed)
                 {
+                    bool nearestChanged = currentNearest?.Id != nearest.Id;
                     currentNearest = nearest;
                     ShowCardForPoi(nearest);
-                    // YC1: KHÔNG gọi HighlightPoi
+
+                    // Highlight vòng nhấp nháy quanh POI gần nhất
+                    if (nearestChanged && TourMap?.Map != null)
+                        vm.SetNearestPoi(TourMap.Map, nearest);
                 }
                 else if (nearest == null && selectedPoi == null)
                 {
                     currentNearest = null;
                     if (!cardManuallyClosed) PoiCard.IsVisible = false;
+                    vm.ClearNearestHighlight();
                 }
+            }
+            else
+            {
+                // Tour mode: kiểm tra xem user có vào radius POI hiện tại không
+                // → tự động advance card nếu đúng điều kiện
+                CheckTourRadiusAdvance(loc);
             }
 
             if (selectedPoi != null && currentLocation != null && !cardManuallyClosed)
@@ -680,11 +782,9 @@ public partial class MapPage : ContentPage
 
     // ══════════════════════════════════════════════════════════════════
     // BUTTONS
-    // YC2: Pin luôn center về user location
     // ══════════════════════════════════════════════════════════════════
     private async void LocateUser_Clicked(object sender, EventArgs e)
     {
-        // YC2: LUÔN center về user — kể cả trong tour mode
         var loc = await Geolocation.GetLastKnownLocationAsync();
         if (loc == null)
             loc = await Geolocation.GetLocationAsync(
@@ -835,20 +935,13 @@ public partial class MapPage : ContentPage
     }
 
     // ══════════════════════════════════════════════════════════════════
-    // HEATMAP
+    // HEATMAP — không load trên map (CMS only)
     // ══════════════════════════════════════════════════════════════════
     private async Task LoadPoiHeatmapAsync()
     {
-        try
-        {
-            var resp = await api.GetHeatmap();
-            if (resp?.Data == null || resp.Data.Count == 0) return;
-            System.Diagnostics.Debug.WriteLine($"🔥 HEATMAP loaded: {resp.Data.Count} POIs");
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Heatmap load error: {ex.Message}");
-        }
+        // Heatmap chỉ hiển thị trên CMS dashboard — không render trên mobile map
+        System.Diagnostics.Debug.WriteLine("[MapPage] Heatmap rendering skipped — CMS only");
+        await Task.CompletedTask;
     }
 
     // ══════════════════════════════════════════════════════════════════
