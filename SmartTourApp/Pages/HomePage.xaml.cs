@@ -53,7 +53,6 @@ public partial class HomePage : ContentPage
         HeroPlayBtn.Text = isPlaying ? loc.NowPlaying : loc.ListenNow;
         LblPlaces.Text = loc.Places;
         LblJourneys.Text = loc.Journeys;
-        LblRating.Text = loc.Rating;
         LblNearbyTitle.Text = loc.NearbyPlaces;
         LblNearbySubtitle.Text = loc.ExploreAround;
         LblViewAll.Text = loc.ViewAll;

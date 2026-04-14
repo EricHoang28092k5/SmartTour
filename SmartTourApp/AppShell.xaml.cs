@@ -1,4 +1,5 @@
 ﻿using SmartTourApp.Pages;
+using SmartTourApp.Services;
 
 namespace SmartTourApp;
 
@@ -11,24 +12,45 @@ public partial class AppShell : Shell
         Routing.RegisterRoute(nameof(PoiDetailPage), typeof(PoiDetailPage));
         Routing.RegisterRoute(nameof(MapPage), typeof(MapPage));
 
-        // 🔥 When user taps a tab, navigate to its root so any pushed pages (like PoiDetail) are popped
+        // 1. Đăng ký nhận thông báo đổi ngôn ngữ
+        // Lấy LocalizationService thông qua Handler của App
+        var loc = App.Current?.Handler?.MauiContext?.Services.GetService<LocalizationService>();
+        if (loc != null)
+        {
+            loc.LanguageChanged += () => MainThread.BeginInvokeOnMainThread(ApplyTabLocalization);
+        }
+
+        // 2. Chạy lần đầu khi mở app
+        ApplyTabLocalization();
+
         Navigating += OnShellNavigating;
+    }
+
+    private void ApplyTabLocalization()
+    {
+        // Lấy Service để đọc các chuỗi chữ
+        var loc = App.Current?.Handler?.MauiContext?.Services.GetService<LocalizationService>();
+        if (loc == null) return;
+
+        // Gán chữ cho các ShellContent thông qua x:Name đã đặt bên XAML
+        ContentHome.Title = loc.HomeTab;
+        ContentMap.Title = loc.MapTab;
+        ContentTour.Title = loc.TourTab;
+        ContentSettings.Title = loc.SettingsTab;
     }
 
     private async void OnShellNavigating(object? sender, ShellNavigatingEventArgs e)
     {
-        // Only handle tab (absolute) navigation
+        // Giữ nguyên logic PopToRoot cũ của bác
         if (e.Source != ShellNavigationSource.ShellSectionChanged &&
             e.Source != ShellNavigationSource.ShellItemChanged)
             return;
 
-        // Pop to root of the current section before switching
         try
         {
             var current = Current?.CurrentItem?.CurrentItem as ShellSection;
             if (current?.Navigation?.NavigationStack?.Count > 1)
             {
-                // Don't block — pop async after navigation begins
                 _ = Task.Run(async () =>
                 {
                     await MainThread.InvokeOnMainThreadAsync(async () =>

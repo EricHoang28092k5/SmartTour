@@ -112,17 +112,6 @@
                                     HeightRequest="48"
                                     Padding="0"/>
                         </Border>
-
-                        <Border Grid.Column="1"
-                                WidthRequest="48" HeightRequest="48"
-                                BackgroundColor="#1EFFFFFF"
-                                StrokeThickness="1"
-                                Stroke="#44FFFFFF"
-                                StrokeShape="RoundRectangle 24">
-                            <Label Text="🗺️" FontSize="20"
-                                   HorizontalOptions="Center"
-                                   VerticalOptions="Center"/>
-                        </Border>
                     </Grid>
                 </VerticalStackLayout>
             </Grid>
@@ -130,38 +119,41 @@
             <!-- ══════════════════════════════════════ -->
             <!--  QUICK STATS BAR                       -->
             <!-- ══════════════════════════════════════ -->
-            <Grid ColumnDefinitions="*,1,*,1,*"
-                  BackgroundColor="#F7F8FC"
-                  Padding="0,18">
+            <Grid ColumnDefinitions="*,1,*" 
+                  BackgroundColor="#F7F8FC" 
+                  Padding="0,18"
+                  Margin="0">       
 
-                <VerticalStackLayout Grid.Column="0" HorizontalOptions="Center" Spacing="3">
-                    <Label Text="12" FontSize="22" FontAttributes="Bold"
-                           TextColor="#111" HorizontalOptions="Center"/>
-                    <Label x:Name="LblPlaces"
-                           Text="Địa điểm" FontSize="11" TextColor="#888"
-                           HorizontalOptions="Center"/>
+                <VerticalStackLayout Grid.Column="0" Spacing="3" VerticalOptions="Center">
+                    <Label Text="12" 
+               FontSize="22" 
+               FontAttributes="Bold" 
+               TextColor="#111111" 
+               HorizontalOptions="Center"/>
+                    <Label x:Name="LblPlaces" 
+               Text="Địa điểm" 
+               FontSize="11" 
+               TextColor="#888888" 
+               HorizontalOptions="Center"/>
                 </VerticalStackLayout>
 
-                <BoxView Grid.Column="1" BackgroundColor="#E8E8E8"
-                         WidthRequest="1" VerticalOptions="Fill"/>
+                <BoxView Grid.Column="1" 
+             BackgroundColor="#E8E8E8" 
+             WidthRequest="1" 
+             HeightRequest="30"
+             VerticalOptions="Center"/>
 
-                <VerticalStackLayout Grid.Column="2" HorizontalOptions="Center" Spacing="3">
-                    <Label Text="3" FontSize="22" FontAttributes="Bold"
-                           TextColor="#111" HorizontalOptions="Center"/>
-                    <Label x:Name="LblJourneys"
-                           Text="Hành trình" FontSize="11" TextColor="#888"
-                           HorizontalOptions="Center"/>
-                </VerticalStackLayout>
-
-                <BoxView Grid.Column="3" BackgroundColor="#E8E8E8"
-                         WidthRequest="1" VerticalOptions="Fill"/>
-
-                <VerticalStackLayout Grid.Column="4" HorizontalOptions="Center" Spacing="3">
-                    <Label Text="⭐ 4.8" FontSize="22" FontAttributes="Bold"
-                           TextColor="#111" HorizontalOptions="Center"/>
-                    <Label x:Name="LblRating"
-                           Text="Đánh giá" FontSize="11" TextColor="#888"
-                           HorizontalOptions="Center"/>
+                <VerticalStackLayout Grid.Column="2" Spacing="3" VerticalOptions="Center">
+                    <Label Text="3" 
+               FontSize="22" 
+               FontAttributes="Bold" 
+               TextColor="#111111" 
+               HorizontalOptions="Center"/>
+                    <Label x:Name="LblJourneys" 
+               Text="Hành trình" 
+               FontSize="11" 
+               TextColor="#888888" 
+               HorizontalOptions="Center"/>
                 </VerticalStackLayout>
             </Grid>
 
@@ -252,19 +244,6 @@
                                     <Grid Grid.Row="1"
                                           ColumnDefinitions="*,Auto,Auto"
                                           ColumnSpacing="8">
-
-                                        <!-- Rating badge -->
-                                        <Border BackgroundColor="#FFF8E8"
-                                                StrokeThickness="0"
-                                                StrokeShape="RoundRectangle 8"
-                                                Padding="7,4"
-                                                VerticalOptions="Center"
-                                                HorizontalOptions="Start">
-                                            <Label Text="⭐ 4.8"
-                                                   FontSize="10"
-                                                   FontAttributes="Bold"
-                                                   TextColor="#E6A817"/>
-                                        </Border>
 
                                         <!-- Play -->
                                         <Border Grid.Column="1"

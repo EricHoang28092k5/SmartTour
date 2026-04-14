@@ -6,26 +6,24 @@
     xmlns:pages="clr-namespace:SmartTourApp.Pages">
 
     <TabBar>
+        <ShellContent
+        x:Name="ContentHome"
+        Route="home"
+        ContentTemplate="{DataTemplate pages:HomePage}" />
 
         <ShellContent
-            Title="Home"
-            Route="home"
-            ContentTemplate="{DataTemplate pages:HomePage}" />
+        x:Name="ContentMap"
+        Route="map"
+        ContentTemplate="{DataTemplate pages:MapPage}" />
 
         <ShellContent
-            Title="Map"
-            Route="map"
-            ContentTemplate="{DataTemplate pages:MapPage}" />
+        x:Name="ContentTour"
+        Route="tour"
+        ContentTemplate="{DataTemplate pages:TourPage}" />
 
         <ShellContent
-            Title="Tour"
-            Route="tour"
-            ContentTemplate="{DataTemplate pages:TourPage}" />
-
-        <ShellContent
-            Title="Settings"
-            Route="settings"
-            ContentTemplate="{DataTemplate pages:SettingsPage}" />
-
+        x:Name="ContentSettings"
+        Route="settings"
+        ContentTemplate="{DataTemplate pages:SettingsPage}" />
     </TabBar>
 </Shell>

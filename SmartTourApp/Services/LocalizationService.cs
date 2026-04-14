@@ -35,6 +35,14 @@ public class LocalizationService
     public string Online => T("Trực tuyến", "Online", "オンライン", "在线", "온라인");
 
     // ══════════════════════════════════════════════════════════════
+    // BOTTOM TABS
+    // ══════════════════════════════════════════════════════════════
+    public string HomeTab => T("Trang chủ", "Home", "ホーム", "首页", "홈");
+    public string MapTab => T("Bản đồ", "Map", "地図", "地图", "지도");
+    public string TourTab => T("Hành trình", "Tour", "ツアー", "行程", "투어");
+    public string SettingsTab => T("Cài đặt", "Settings", "設定", "设置", "설정");
+
+    // ══════════════════════════════════════════════════════════════
     // LOADING PAGE
     // ══════════════════════════════════════════════════════════════
     public string LoadingStarting => T("Đang khởi động...", "Starting...", "起動中...", "启动中...", "시작 중...");
