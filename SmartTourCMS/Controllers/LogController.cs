@@ -19,51 +19,55 @@ namespace SmartTourCMS.Controllers
         }
 
         // --- 1. Xem lịch sử di chuyển (Locations) ---
-        public async Task<IActionResult> Locations()
+        public IActionResult Locations()
         {
-            var user = await _userManager.GetUserAsync(User);
-            if (user == null) return RedirectToAction("Login", "Account");
-
-            var isAdmin = await _userManager.IsInRoleAsync(user, "Admin");
-
-            // BẢO MẬT: Lịch sử di chuyển GPS là dữ liệu nhạy cảm của hệ thống.
-            // Vendor không có quyền xem cái này, chỉ Admin mới được thấy.
-            if (!isAdmin)
-            {
-                TempData["Error"] = "Bác là Vendor, không có quyền xem nhật ký di chuyển tổng của hệ thống đâu nhé!";
-                return RedirectToAction("Index", "Home"); // Đá về trang chủ
-            }
-
-            var logs = await _context.UserLocationLogs
-                .OrderByDescending(l => l.Timestamp)
-                .Take(100) // Lấy 100 bản ghi mới nhất cho đỡ nặng máy
-                .ToListAsync();
-
-            return View(logs);
+            TempData["Error"] = "Chức năng lịch sử di chuyển đã được tắt theo cấu hình hệ thống.";
+            return RedirectToAction(nameof(Plays));
         }
 
         // --- 2. Xem lịch sử nghe Audio (Plays) ---
-        public async Task<IActionResult> Plays()
+        public async Task<IActionResult> Plays(int page = 1, int pageSize = 20)
         {
+            if (page < 1) page = 1;
+            if (pageSize <= 0) pageSize = 20;
+            pageSize = Math.Min(pageSize, 100);
+
             var user = await _userManager.GetUserAsync(User);
             if (user == null) return RedirectToAction("Login", "Account");
 
             var isAdmin = await _userManager.IsInRoleAsync(user, "Admin");
+            var isVendor = await _userManager.IsInRoleAsync(user, "Vendor");
 
             // Khởi tạo câu truy vấn cơ bản
             var query = _context.PlayLog.Include(l => l.Poi).AsQueryable();
 
-            if (!isAdmin)
+            // Nếu user có role Vendor (kể cả lỡ gán thêm Admin), vẫn chỉ xem log POI của vendor đó.
+            // Chỉ Admin thuần mới được xem toàn bộ.
+            if (isVendor || !isAdmin)
             {
-                // PHÂN QUYỀN VENDOR: 
-                // Chỉ lấy những lượt nghe nhạc diễn ra tại các Địa điểm (POI) do chính tay ông Vendor này tạo ra.
-                query = query.Where(l => l.Poi.VendorId == user.Id);
+                query = query.Where(l =>
+                    l.Poi != null &&
+                    (l.Poi.VendorId == user.Id ||
+                     l.Poi.CreatedBy == user.Id ||
+                     l.Poi.CreatedBy == user.Email ||
+                     l.Poi.CreatedBy == user.UserName));
             }
+
+            var totalItems = await query.CountAsync();
+            var totalPages = (int)Math.Ceiling(totalItems / (double)pageSize);
+            if (totalPages == 0) totalPages = 1;
+            if (page > totalPages) page = totalPages;
 
             var logs = await query
                 .OrderByDescending(l => l.Time)
-                .Take(100)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
                 .ToListAsync();
+
+            ViewBag.CurrentPage = page;
+            ViewBag.PageSize = pageSize;
+            ViewBag.TotalPages = totalPages;
+            ViewBag.TotalItems = totalItems;
 
             return View(logs);
         }

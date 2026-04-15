@@ -69,6 +69,21 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
 
+// Tắt cứng một số module theo cấu hình rút gọn chức năng.
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path.Value ?? string.Empty;
+    if (path.StartsWith("/Tour", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWith("/Category", StringComparison.OrdinalIgnoreCase) ||
+        path.Equals("/Log/Locations", StringComparison.OrdinalIgnoreCase))
+    {
+        context.Response.Redirect("/Home/Index");
+        return;
+    }
+
+    await next();
+});
+
 // THỨ TỰ SINH TỬ: Authentication phải đứng TRƯỚC Authorization
 app.UseAuthentication();
 app.UseAuthorization();

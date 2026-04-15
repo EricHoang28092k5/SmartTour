@@ -20,9 +20,22 @@ namespace SmartTourCMS.Controllers
 
         // --- 1. DANH SÁCH NGƯỜI DÙNG ---
         // --- 1. DANH SÁCH NGƯỜI DÙNG (Bản nâng cấp) ---
-        public async Task<IActionResult> Index()
+        public async Task<IActionResult> Index(int page = 1, int pageSize = 10)
         {
-            var users = await _userManager.Users.ToListAsync();
+            if (page < 1) page = 1;
+            if (pageSize <= 0) pageSize = 10;
+            pageSize = Math.Min(pageSize, 50);
+
+            var totalUsers = await _userManager.Users.CountAsync();
+            var totalPages = (int)Math.Ceiling(totalUsers / (double)pageSize);
+            if (totalPages == 0) totalPages = 1;
+            if (page > totalPages) page = totalPages;
+
+            var users = await _userManager.Users
+                .OrderBy(u => u.Email)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
             var userRolesList = new List<UserWithRoleViewModel>();
 
             // Lặp qua từng ông để kiểm tra xem đang cầm thẻ bài gì
@@ -44,6 +57,11 @@ namespace SmartTourCMS.Controllers
                 });
             }
 
+            ViewBag.CurrentPage = page;
+            ViewBag.PageSize = pageSize;
+            ViewBag.TotalPages = totalPages;
+            ViewBag.TotalItems = totalUsers;
+
             return View(userRolesList);
         }
         // --- 2. TẠO VENDOR MỚI (GET) ---
@@ -51,8 +69,8 @@ namespace SmartTourCMS.Controllers
         [HttpGet]
         public IActionResult CreateVendor() // (Bác có thể đổi tên hàm thành CreateUser)
         {
-            // Truyền danh sách các chức vụ ra ngoài View
-            ViewBag.Roles = new List<string> { "Admin", "Vendor", "User" };
+            // Chỉ cho phép tạo 2 nhóm tài khoản vận hành.
+            ViewBag.Roles = new List<string> { "Admin", "Vendor" };
             return View();
         }
 
@@ -63,7 +81,19 @@ namespace SmartTourCMS.Controllers
         {
             if (!ModelState.IsValid)
             {
-                ViewBag.Roles = new List<string> { "Admin", "Vendor", "User" }; // Lỗi thì vẫn phải truyền lại danh sách Role
+                ViewBag.Roles = new List<string> { "Admin", "Vendor" };
+                return View(model);
+            }
+
+            var allowedRoles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "Admin",
+                "Vendor"
+            };
+            if (string.IsNullOrWhiteSpace(model.Role) || !allowedRoles.Contains(model.Role))
+            {
+                ModelState.AddModelError(nameof(model.Role), "Chỉ được tạo tài khoản Admin hoặc Vendor.");
+                ViewBag.Roles = new List<string> { "Admin", "Vendor" };
                 return View(model);
             }
 
@@ -99,7 +129,7 @@ namespace SmartTourCMS.Controllers
                 ModelState.AddModelError(string.Empty, error.Description);
             }
 
-            ViewBag.Roles = new List<string> { "Admin", "Vendor", "User" };
+            ViewBag.Roles = new List<string> { "Admin", "Vendor" };
             return View(model);
         }
 

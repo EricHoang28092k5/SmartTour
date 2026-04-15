@@ -12,6 +12,12 @@ public partial class QrGatePage : ContentPage
     public QrGatePage()
     {
         InitializeComponent();
+        QrReader.Options = new BarcodeReaderOptions
+        {
+            Formats = BarcodeFormat.QrCode,
+            AutoRotate = false,
+            Multiple = false
+        };
     }
 
     protected override async void OnAppearing()

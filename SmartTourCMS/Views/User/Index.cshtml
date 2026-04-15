@@ -1,4 +1,11 @@
-﻿<div class="container-fluid mt-4 mb-5">
+﻿@{
+    var currentPage = (int)(ViewBag.CurrentPage ?? 1);
+    var totalPages = (int)(ViewBag.TotalPages ?? 1);
+    var pageSize = (int)(ViewBag.PageSize ?? 10);
+    var totalItems = (int)(ViewBag.TotalItems ?? 0);
+}
+
+<div class="container-fluid mt-4 mb-5">
     <div class="card shadow-lg border-0 rounded-3">
         
         <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center py-3">
@@ -78,6 +85,24 @@
                 </table>
             </div>
         </div>
-        
+        <div class="card-footer d-flex justify-content-between align-items-center">
+            <small class="text-muted">Tổng tài khoản: @totalItems</small>
+            <nav aria-label="User pagination">
+                <ul class="pagination pagination-sm mb-0">
+                    <li class="page-item @(currentPage <= 1 ? "disabled" : "")">
+                        <a class="page-link" asp-action="Index" asp-route-page="@(currentPage - 1)" asp-route-pageSize="@pageSize">Trước</a>
+                    </li>
+                    @for (int i = 1; i <= totalPages; i++)
+                    {
+                        <li class="page-item @(i == currentPage ? "active" : "")">
+                            <a class="page-link" asp-action="Index" asp-route-page="@i" asp-route-pageSize="@pageSize">@i</a>
+                        </li>
+                    }
+                    <li class="page-item @(currentPage >= totalPages ? "disabled" : "")">
+                        <a class="page-link" asp-action="Index" asp-route-page="@(currentPage + 1)" asp-route-pageSize="@pageSize">Sau</a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
     </div>
 </div>

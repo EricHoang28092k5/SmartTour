@@ -1,4 +1,10 @@
 ﻿@model IEnumerable<SmartTour.Shared.Models.PlayLog>
+@{
+    var currentPage = (int)(ViewBag.CurrentPage ?? 1);
+    var totalPages = (int)(ViewBag.TotalPages ?? 1);
+    var pageSize = (int)(ViewBag.PageSize ?? 20);
+    var totalItems = (int)(ViewBag.TotalItems ?? 0);
+}
 
 <div class="container-fluid">
     <div class="card shadow">
@@ -26,6 +32,25 @@
                     }
                 </tbody>
             </table>
+        </div>
+        <div class="card-footer d-flex justify-content-between align-items-center">
+            <small class="text-muted">Tổng lượt nghe: @totalItems</small>
+            <nav aria-label="Plays pagination">
+                <ul class="pagination pagination-sm mb-0">
+                    <li class="page-item @(currentPage <= 1 ? "disabled" : "")">
+                        <a class="page-link" asp-action="Plays" asp-route-page="@(currentPage - 1)" asp-route-pageSize="@pageSize">Trước</a>
+                    </li>
+                    @for (int i = 1; i <= totalPages; i++)
+                    {
+                        <li class="page-item @(i == currentPage ? "active" : "")">
+                            <a class="page-link" asp-action="Plays" asp-route-page="@i" asp-route-pageSize="@pageSize">@i</a>
+                        </li>
+                    }
+                    <li class="page-item @(currentPage >= totalPages ? "disabled" : "")">
+                        <a class="page-link" asp-action="Plays" asp-route-page="@(currentPage + 1)" asp-route-pageSize="@pageSize">Sau</a>
+                    </li>
+                </ul>
+            </nav>
         </div>
     </div>
 </div>

@@ -68,11 +68,6 @@
                 </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link @(ViewContext.RouteData.Values["Controller"]?.ToString() == "Tour" ? "active" : "")" asp-controller="Tour" asp-action="Index">
-                    <i class="fa-solid fa-route me-2"></i> Quản lý Tour
-                </a>
-            </li>
-            <li class="nav-item">
                 <a class="nav-link @(ViewContext.RouteData.Values["Controller"]?.ToString() == "Food" ? "active" : "")" asp-controller="Food" asp-action="Index">
                     <i class="fa-solid fa-utensils me-2"></i> Quản lý Thực đơn
                 </a>
@@ -80,11 +75,6 @@
 
             <hr>
 
-            <li class="nav-item">
-                <a class="nav-link @(ViewContext.RouteData.Values["Action"]?.ToString() == "Locations" ? "active" : "")" asp-controller="Log" asp-action="Locations">
-                    <i class="fa-solid fa-shoe-prints me-2"></i> Lịch sử di chuyển
-                </a>
-            </li>
             <li class="nav-item">
                 <a class="nav-link @(ViewContext.RouteData.Values["Action"]?.ToString() == "Plays" ? "active" : "")" asp-controller="Log" asp-action="Plays">
                     <i class="fa-solid fa-play me-2"></i> Lịch sử nghe
@@ -95,20 +85,15 @@
             {
                 <hr>
                 <li class="nav-item">
-                    <a class="nav-link @(ViewContext.RouteData.Values["Controller"]?.ToString() == "Category" ? "active" : "")" asp-controller="Category" asp-action="Index">
-                        <i class="fa-solid fa-layer-group me-2"></i> Quản lý Phân loại
-                    </a>
-                </li>
-                <li class="nav-item">
                     <a class="nav-link @(ViewContext.RouteData.Values["Controller"]?.ToString() == "User" ? "active" : "")" asp-controller="User" asp-action="Index">
                         <i class="fa-solid fa-users-gear me-2"></i> Quản lý tài khoản
                     </a>
                 </li>
                 <li class="nav-item">
-    <a class="nav-link @(ViewContext.RouteData.Values["Controller"]?.ToString() == "Heatmap" ? "active" : "")" asp-controller="Heatmap" asp-action="Index">
-        <i class="fa-solid fa-fire me-2" style="color: #e74c3c;"></i> Bản đồ nhiệt (Heatmap)
-    </a>
-</li>
+                    <a class="nav-link @(ViewContext.RouteData.Values["Controller"]?.ToString() == "Heatmap" ? "active" : "")" asp-controller="Heatmap" asp-action="Index">
+                        <i class="fa-solid fa-fire me-2" style="color: #e74c3c;"></i> Bản đồ nhiệt (Heatmap)
+                    </a>
+                </li>
             }
         </ul>
 

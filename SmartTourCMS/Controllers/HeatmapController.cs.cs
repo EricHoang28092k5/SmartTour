@@ -1,9 +1,11 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SmartTourBackend.Data; // Tự sửa namespace nếu của mày khác
 
 namespace SmartTourCMS.Controllers
 {
+    [Authorize(Roles = "Admin")]
     public class HeatmapController : Controller
     {
         private readonly AppDbContext _context;

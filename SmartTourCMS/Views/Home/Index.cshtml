@@ -29,20 +29,20 @@
         <div class="col-lg-3 col-6">
             <div class="small-box bg-primary p-3 rounded shadow-sm text-white mb-4">
                 <div class="inner">
-                    <h3 id="stat-sessions">0</h3>
-                    <p>Tổng phiên hành trình</p>
+                    <h3>@ViewBag.TotalVisits</h3>
+                    <p>Tổng lượt nghe audio</p>
                 </div>
-                <div class="icon"><i class="fa-solid fa-shoe-prints fa-2x"></i></div>
+                <div class="icon"><i class="fa-solid fa-headphones fa-2x"></i></div>
             </div>
         </div>
 
         <div class="col-lg-3 col-6">
             <div class="small-box bg-warning p-3 rounded shadow-sm text-white mb-4">
                 <div class="inner">
-                    <h3 id="stat-stops">0</h3>
-                    <p>Trạm dừng trung bình</p>
+                    <h3>@ViewBag.ActivePoisWithPlays</h3>
+                    <p>POI đã có lượt nghe</p>
                 </div>
-                <div class="icon"><i class="fa-solid fa-street-view fa-2x"></i></div>
+                <div class="icon"><i class="fa-solid fa-wave-square fa-2x"></i></div>
             </div>
         </div>
     </div>
@@ -62,13 +62,6 @@
         </div>
 
         <div class="col-md-4">
-            <div class="card shadow-sm border-0 mb-4 bg-gradient-light">
-                <div class="card-body text-center">
-                    <div class="text-xs font-weight-bold text-uppercase mb-1">Thời gian di chuyển trung bình</div>
-                    <div id="stat-duration" class="h2 mb-0 font-weight-bold text-primary">0 phút</div>
-                </div>
-            </div>
-
             <div class="card shadow-sm border-0">
                 <div class="card-header bg-white fw-bold">
                     <i class="fa-solid fa-bolt text-warning"></i> Thao tác nhanh
@@ -77,12 +70,12 @@
                     <a href="/Poi/Create" class="btn btn-outline-primary w-100 mb-2 text-start">
                         <i class="fa-solid fa-plus"></i> Thêm địa điểm mới
                     </a>
-                    <a href="/Audio/Upload" class="btn btn-outline-success w-100 mb-2 text-start">
-                        <i class="fa-solid fa-microphone"></i> Quản lý âm thanh
-                    </a>
-                    <a href="/Heatmap/Index" class="btn btn-outline-danger w-100 mb-2 text-start">
-                        <i class="fa-solid fa-fire"></i> Xem Bản đồ nhiệt (Heatmap)
-                    </a>
+                    @if (User.IsInRole("Admin"))
+                    {
+                        <a href="/Heatmap/Index" class="btn btn-outline-danger w-100 mb-2 text-start">
+                            <i class="fa-solid fa-fire"></i> Xem Bản đồ nhiệt (Heatmap)
+                        </a>
+                    }
                 </div>
             </div>
         </div>
@@ -91,12 +84,8 @@
 
 <script>
 document.addEventListener("DOMContentLoaded", function () {
-    // Gọi API lấy thống kê thật
-    Promise.all([
-        fetch('/api/pois/stats').then(r => r.json()),
-        fetch('/api/routes/stats').then(r => r.json())
-    ])
-    .then(([poiStats, routeStats]) => {
+    fetch('/api/cms-dashboard/poi-stats').then(r => r.json())
+    .then((poiStats) => {
         // 1. Đổ dữ liệu vào Biểu đồ Audio
         if (poiStats.success && poiStats.data.length > 0) {
             new Chart(document.getElementById('poiAudioChart'), {
@@ -116,13 +105,6 @@ document.addEventListener("DOMContentLoaded", function () {
                     scales: { y: { beginAtZero: true } }
                 }
             });
-        }
-
-        // 2. Đổ dữ liệu vào các ô chỉ số
-        if (routeStats.success) {
-            document.getElementById('stat-sessions').innerText = routeStats.totalSessions;
-            document.getElementById('stat-stops').innerText = routeStats.avgStops;
-            document.getElementById('stat-duration').innerText = routeStats.avgDurationMinutes + " phút";
         }
     })
     .catch(err => console.error("Lỗi Dashboard:", err));

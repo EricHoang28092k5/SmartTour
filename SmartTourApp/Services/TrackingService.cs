@@ -70,7 +70,6 @@ public class TrackingService
                         continue;
                     }
 
-                    logger.Log(loc);
                     OnLocationChanged?.Invoke(loc);
 
                     // ── Adaptive interval: kết hợp khoảng cách + accuracy hiện tại ──
@@ -106,11 +105,7 @@ public class TrackingService
                         geo.FindBestPoi(loc, pois);
                     }
 
-                    // Heatmap luôn ghi nhận bất kể auto-play
-                    await heatmap.OnLocationUpdatedAsync(loc, pois);
-
-                    // Route tracking độc lập
-                    await routeTracking.OnLocationUpdatedAsync(loc, pois);
+                    // Tắt ghi nhận lịch sử di chuyển theo cấu hình rút gọn chức năng.
 
                     await Task.Delay(interval * 1000, token);
                 }
