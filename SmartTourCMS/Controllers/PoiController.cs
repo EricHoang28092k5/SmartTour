@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SmartTour.Shared.Models;
 using SmartTourBackend.Data;
-using SmartTourBackend.Services; // Đảm bảo namespace này khớp với folder Services của mày
+using SmartTourBackend.Services;
 using System.Text;
 using System.Text.Json;
 using X.PagedList.Extensions;
@@ -77,6 +77,7 @@ namespace SmartTourCMS.Controllers
 
         [HttpGet]
         public IActionResult Create() => View();
+
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Create(Poi poi, IFormFile imageFile, List<IFormFile> galleryFiles)
@@ -91,33 +92,22 @@ namespace SmartTourCMS.Controllers
                 poi.ImageUrl = res.SecureUrl.ToString();
             }
 
-            // 2. AI viết kịch bản nếu mày lười không nhập
+            // 2. AI viết kịch bản nếu lười
             if (string.IsNullOrWhiteSpace(poi.Description))
             {
                 poi.Description = await GenerateScriptWithAI(poi.Name);
             }
-            // Nếu chưa nhập script riêng thì dùng luôn mô tả làm script gốc.
             poi.TtsScript = string.IsNullOrWhiteSpace(poi.TtsScript) ? poi.Description : poi.TtsScript;
 
             _context.Pois.Add(poi);
             await _context.SaveChangesAsync();
 
-            // 3. Dịch đa ngôn ngữ và TẠO AUDIO — theo từng dòng trong bảng Languages (Code = langcode)
-            var languages = await GetOrderedLanguagesAsync();
-            var sourceLang = ResolveSourceLanguageCode(languages);
-            var baseScript = poi.TtsScript!;
-            var translationTasks = languages
-                .Select(lang => BuildPoiTranslationAsync(poi, baseScript, sourceLang, lang))
-                .ToList();
-            var translatedItems = await Task.WhenAll(translationTasks);
+            // 3. Dịch đa ngôn ngữ và TẠO AUDIO (Đã tối ưu, gộp vào hàm helper ở dưới)
+            var missingAudio = await CreateTranslationsAndAudio(poi);
 
-            var missingAudio = translatedItems.Count(t => string.IsNullOrWhiteSpace(t.AudioUrl));
-            _context.PoiTranslations.AddRange(translatedItems);
-            await _context.SaveChangesAsync();
             if (missingAudio > 0)
             {
-                TempData["AudioWarning"] =
-                    $"Không tạo được audio cho {missingAudio} bản dịch. Kiểm tra: (1) AZURE_SPEECH_KEY/AZURE_SPEECH_REGION, (2) dịch vụ Azure Speech đã active, (3) Cloudinary trong .env.";
+                TempData["AudioWarning"] = $"Không tạo được audio cho {missingAudio} bản dịch. Kiểm tra: (1) AZURE_SPEECH_KEY/AZURE_SPEECH_REGION, (2) dịch vụ Azure Speech đã active, (3) Cloudinary trong .env.";
             }
             return RedirectToAction(nameof(Index));
         }
@@ -136,7 +126,6 @@ namespace SmartTourCMS.Controllers
             return View(poi);
         }
 
-        // --- CHỈNH SỬA POI (CẬP NHẬT AUDIO NẾU SCRIPT ĐỔI) ---
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Edit(int id, Poi poi, IFormFile? imageFile, List<IFormFile>? newGalleryFiles)
@@ -163,7 +152,7 @@ namespace SmartTourCMS.Controllers
                 poi.VendorId = existing.VendorId;
                 _context.Update(poi);
 
-                // Nếu Description thay đổi, xóa sạch Translation cũ để AI dịch và tạo Audio lại
+                // Nếu Description thay đổi, xóa sạch Translation cũ để AI dịch lại
                 if (poi.Description != existing.Description)
                 {
                     var oldTrans = _context.PoiTranslations.Where(t => t.PoiId == id);
@@ -171,8 +160,7 @@ namespace SmartTourCMS.Controllers
                     var missing = await CreateTranslationsAndAudio(poi);
                     if (missing > 0)
                     {
-                        TempData["AudioWarning"] =
-                            $"Không tạo được audio cho {missing} bản dịch. Kiểm tra AZURE_SPEECH_KEY/AZURE_SPEECH_REGION và Cloudinary.";
+                        TempData["AudioWarning"] = $"Không tạo được audio cho {missing} bản dịch. Kiểm tra AZURE_SPEECH_KEY/AZURE_SPEECH_REGION và Cloudinary.";
                     }
                 }
 
@@ -182,9 +170,6 @@ namespace SmartTourCMS.Controllers
             return RedirectToAction(nameof(Index));
         }
 
-        /// <summary>
-        /// Tạo lại audio cho mọi bản dịch của POI (khi trước đó Azure TTS/Cloudinary lỗi).
-        /// </summary>
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> RegenerateTranslationAudios(int poiId)
@@ -242,16 +227,32 @@ namespace SmartTourCMS.Controllers
 
         // --- HELPER METHODS ---
 
-        /// <returns>Số bản dịch không tạo được audio (URL rỗng).</returns>
         private async Task<int> CreateTranslationsAndAudio(Poi poi)
         {
             var languages = await GetOrderedLanguagesAsync();
+
+            // --- KIỂM TRA TIẾNG ANH: NẾU CHƯA CÓ THÌ TỰ THÊM VÀO ---
+            if (!languages.Any(l => NormalizeTranslateLanguageCode(l.Code) == "en"))
+            {
+                var enLang = new Language { Name = "English", Code = "en" };
+                _context.Languages.Add(enLang);
+                await _context.SaveChangesAsync();
+                languages.Add(enLang);
+            }
+
             var baseScript = string.IsNullOrWhiteSpace(poi.TtsScript) ? poi.Description : poi.TtsScript!;
             var sourceLang = ResolveSourceLanguageCode(languages);
-            var translationTasks = languages
-                .Select(lang => BuildPoiTranslationAsync(poi, baseScript, sourceLang, lang))
-                .ToList();
-            var translatedItems = await Task.WhenAll(translationTasks);
+
+            // --- SỬA LỖI 429 TOO MANY REQUESTS: Chạy từ từ từng ngôn ngữ ---
+            var translatedItems = new List<PoiTranslation>();
+            foreach (var lang in languages)
+            {
+                var item = await BuildPoiTranslationAsync(poi, baseScript, sourceLang, lang);
+                translatedItems.Add(item);
+
+                // Nghỉ 500ms (nửa giây) trước khi dịch ngôn ngữ tiếp theo để Google không block
+                await Task.Delay(500);
+            }
 
             var missingAudio = translatedItems.Count(t => string.IsNullOrWhiteSpace(t.AudioUrl));
             _context.PoiTranslations.AddRange(translatedItems);
@@ -285,9 +286,6 @@ namespace SmartTourCMS.Controllers
                 .ToListAsync();
         }
 
-        /// <summary>
-        /// Ngôn ngữ nguồn cho nội dung POI: ưu tiên mã "vi" nếu có trong bảng Languages, không thì lấy bản ghi Id nhỏ nhất.
-        /// </summary>
         private static string ResolveSourceLanguageCode(IReadOnlyList<Language> languages)
         {
             if (languages.Count == 0) return "vi";
@@ -304,9 +302,6 @@ namespace SmartTourCMS.Controllers
             return dashIndex > 0 ? normalized[..dashIndex] : normalized;
         }
 
-        /// <summary>
-        /// Chuẩn hóa mã ngôn ngữ theo BCP-47 (vd: vi-VN) để gửi qua service TTS.
-        /// </summary>
         private static string ResolveTtsVoiceLanguageCode(string? languageCode)
         {
             if (string.IsNullOrWhiteSpace(languageCode)) return "en-US";
