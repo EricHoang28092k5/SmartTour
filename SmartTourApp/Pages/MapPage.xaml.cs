@@ -19,6 +19,9 @@ namespace SmartTourApp.Pages;
 [QueryProperty(nameof(TargetPoiId), "targetPoi")]
 public partial class MapPage : ContentPage
 {
+    private const string OfflineCenterLatKey = "map_offline_center_lat";
+    private const string OfflineCenterLngKey = "map_offline_center_lng";
+
     private bool followUser = true;
     private readonly TrackingService tracking;
     private readonly PoiRepository repo;
@@ -171,6 +174,15 @@ public partial class MapPage : ContentPage
                 else
                     FindAndShowNearestCard(loc);
             }
+            else if (TryGetOfflineCenter(out var cachedLat, out var cachedLng))
+            {
+                // Khi mở app từ trạng thái offline, vẫn center vào vùng đã cache để tránh map trắng
+                followUser = false;
+                openedFromRoute = false;
+                var mercator = SphericalMercator.FromLonLat(cachedLng, cachedLat);
+                TourMap.Map.Navigator.CenterOnAndZoomTo(
+                    new MPoint(mercator.x, mercator.y), 0.7, 600, Mapsui.Animations.Easing.CubicOut);
+            }
         }
 
         UpdateConnectivityUI(OfflineMapService.IsConnected());
@@ -237,6 +249,24 @@ public partial class MapPage : ContentPage
             vm.LoadPois(TourMap.Map, pois);
             if (!TourMap.Map.Layers.Contains(vm.PoiLayer)) TourMap.Map.Layers.Add(vm.PoiLayer);
             if (!TourMap.Map.Layers.Contains(vm.UserLayer)) TourMap.Map.Layers.Add(vm.UserLayer);
+
+            // Offline startup fallback: nếu chưa có GPS, center map về vị trí cache hoặc POI đầu tiên
+            if (currentLocation == null && TourMap?.Map?.Navigator != null)
+            {
+                if (TryGetOfflineCenter(out var cachedLat, out var cachedLng))
+                {
+                    var center = SphericalMercator.FromLonLat(cachedLng, cachedLat);
+                    TourMap.Map.Navigator.CenterOnAndZoomTo(
+                        new MPoint(center.x, center.y), 0.7, 500, Mapsui.Animations.Easing.CubicOut);
+                }
+                else if (pois.Count > 0)
+                {
+                    var firstPoi = pois[0];
+                    var center = SphericalMercator.FromLonLat(firstPoi.Lng, firstPoi.Lat);
+                    TourMap.Map.Navigator.CenterOnAndZoomTo(
+                        new MPoint(center.x, center.y), 0.7, 500, Mapsui.Animations.Easing.CubicOut);
+                }
+            }
 
             TourMap?.Refresh();
             MainThread.BeginInvokeOnMainThread(RemoveLoggingWidget);
@@ -541,9 +571,41 @@ public partial class MapPage : ContentPage
 
     private async Task StartDownloadAsync(double lat, double lng, double radiusKm = 2.5)
     {
+        // Lưu tâm khu vực tải để lần mở app offline vẫn hiển thị đúng vùng đã cache
+        SaveOfflineCenter(lat, lng);
         ShowDownloadProgress();
         try { await offlineMapService.DownloadAreaForTourAsync(lat, lng, radiusKm); }
         finally { await Task.Delay(1500); HideDownloadProgress(); }
+    }
+
+    private static void SaveOfflineCenter(double lat, double lng)
+    {
+        try
+        {
+            Preferences.Default.Set(OfflineCenterLatKey, lat);
+            Preferences.Default.Set(OfflineCenterLngKey, lng);
+        }
+        catch { }
+    }
+
+    private static bool TryGetOfflineCenter(out double lat, out double lng)
+    {
+        lat = 0;
+        lng = 0;
+        try
+        {
+            if (!Preferences.Default.ContainsKey(OfflineCenterLatKey) ||
+                !Preferences.Default.ContainsKey(OfflineCenterLngKey))
+                return false;
+
+            lat = Preferences.Default.Get(OfflineCenterLatKey, 0d);
+            lng = Preferences.Default.Get(OfflineCenterLngKey, 0d);
+            return Math.Abs(lat) > 0.000001 || Math.Abs(lng) > 0.000001;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private async Task AutoCacheCurrentAreaAsync()

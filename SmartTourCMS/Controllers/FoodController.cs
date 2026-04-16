@@ -3,15 +3,17 @@ using CloudinaryDotNet.Actions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Rendering; // Dùng cho cái Dropdown chọn Quán
+using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
 using SmartTour.Shared.Models;
 using SmartTourBackend.Data;
+using System.Globalization; // Bắt buộc phải có để lột dấu
+using System.Text; // Bắt buộc phải có cho StringBuilder
 using System.Text.Json;
 using X.PagedList.Extensions;
+
 namespace SmartTourCMS.Controllers
 {
-    // Bắt buộc phải đăng nhập và có quyền Admin hoặc Vendor mới được vào
     [Authorize(Roles = "Admin,Vendor")]
     public class FoodController : Controller
     {
@@ -27,17 +29,15 @@ namespace SmartTourCMS.Controllers
             _userManager = userManager;
         }
 
-        // --- 1. DANH SÁCH MÓN ĂN ---
+        // --- 1. DANH SÁCH MÓN ĂN (ĐÃ SỬA TÌM KIẾM KHÔNG DẤU) ---
         public async Task<IActionResult> Index(string? search, int? poiId, int? page)
         {
             var user = await _userManager.GetUserAsync(User);
-
-            // Thêm dòng này để chống lỗi văng app nếu rớt phiên đăng nhập
             if (user == null) return RedirectToAction("Login", "Account");
 
             var isAdmin = await _userManager.IsInRoleAsync(user, "Admin");
 
-            // Dọn orphan records: món ăn trỏ tới POI đã bị xóa từ các phiên bản cũ.
+            // Dọn orphan records
             var orphanFoodIds = await _context.Food
                 .Where(f => !_context.Pois.Any(p => p.Id == f.PoiId))
                 .Select(f => f.Id)
@@ -51,40 +51,38 @@ namespace SmartTourCMS.Controllers
                 await _context.SaveChangesAsync();
             }
 
-            // Kéo danh sách món ăn, lôi luôn thằng Bố (Poi) lên để lấy tên Quán
             var query = _context.Food.Include(f => f.Poi).AsQueryable();
 
             if (!isAdmin)
             {
-                // LƯỚI BẢO MẬT: Vendor nào chỉ nhìn thấy Menu của Vendor đó
                 query = query.Where(f => f.Poi != null && f.Poi.VendorId == user.Id);
             }
 
-            // Tìm kiếm theo tên món
-            if (!string.IsNullOrWhiteSpace(search))
-            {
-                var keyword = search.Trim();
-                query = query.Where(f =>
-                    EF.Functions.ILike(f.Name, $"%{keyword}%") ||
-                    EF.Functions.ILike(f.Description, $"%{keyword}%"));
-            }
-
-            // Lọc theo POI
+            // Lọc theo POI TRƯỚC khi kéo về RAM cho nhẹ
             if (poiId.HasValue && poiId.Value > 0)
             {
                 query = query.Where(f => f.PoiId == poiId.Value);
             }
 
-            // --- PHẦN CODE THÊM VÀO ĐỂ PHÂN TRANG ---
-            // 1. Sắp xếp dữ liệu (Ví dụ: Id giảm dần để món ăn mới thêm nằm trên cùng)
-            query = query.OrderByDescending(f => f.Id);
+            // Ép nó lấy dữ liệu ra List trước (để C# so sánh không dấu)
+            var foodList = await query.OrderByDescending(f => f.Id).ToListAsync();
 
-            // 2. Cấu hình trang
-            int pageSize = 10; // Số món ăn hiển thị trên 1 trang
-            int pageNumber = page ?? 1; // Mặc định là trang 1
+            // --- XỬ LÝ TÌM KIẾM KHÔNG DẤU BẰNG C# ---
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var keyword = RemoveDiacritics(search.Trim()).ToLower();
 
-            // 3. Cắt trang bằng ToPagedList thay vì ToListAsync()
-            var pagedFoods = query.ToPagedList(pageNumber, pageSize);
+                foodList = foodList.Where(f =>
+                    (f.Name != null && RemoveDiacritics(f.Name).ToLower().Contains(keyword)) ||
+                    (f.Description != null && RemoveDiacritics(f.Description).ToLower().Contains(keyword))
+                ).ToList();
+            }
+
+            int pageSize = 10;
+            int pageNumber = page ?? 1;
+
+            // Cắt trang trên cái list đã lột dấu
+            var pagedFoods = foodList.ToPagedList(pageNumber, pageSize);
 
             // Dropdown POI cho bộ lọc
             var poiQuery = _context.Pois.AsQueryable();
@@ -98,7 +96,6 @@ namespace SmartTourCMS.Controllers
             ViewBag.CurrentSearch = search;
             ViewBag.CurrentPoiId = poiId;
 
-            // Trả về pagedFoods
             return View(pagedFoods);
         }
 
@@ -108,12 +105,10 @@ namespace SmartTourCMS.Controllers
             var user = await _userManager.GetUserAsync(User);
             var isAdmin = await _userManager.IsInRoleAsync(user, "Admin");
 
-            // Lấy danh sách các Quán (Poi) của ông Vendor này để đưa vào danh sách xổ xuống (Dropdown)
-            var pois = isAdmin 
-                ? await _context.Pois.ToListAsync() 
+            var pois = isAdmin
+                ? await _context.Pois.ToListAsync()
                 : await _context.Pois.Where(p => p.VendorId == user.Id).ToListAsync();
 
-            // Đẩy danh sách này sang View qua ViewBag
             ViewBag.PoiList = new SelectList(pois, "Id", "Name");
             return View();
         }
@@ -126,30 +121,26 @@ namespace SmartTourCMS.Controllers
             var user = await _userManager.GetUserAsync(User);
             var isAdmin = await _userManager.IsInRoleAsync(user, "Admin");
 
-            // KIỂM TRA BẢO MẬT KÉP: Chặn việc ông Vendor A F12 hack web để thêm món vào Quán của ông Vendor B
             var poi = await _context.Pois.FindAsync(food.PoiId);
             if (poi == null || (!isAdmin && poi.VendorId != user.Id))
             {
-                return Forbid(); // Sai chủ là đuổi cổ ngay
+                return Forbid();
             }
 
-            // Upload 1 ảnh duy nhất lên Cloudinary
             if (imageFile != null && imageFile.Length > 0)
             {
                 var uploadParams = new ImageUploadParams()
                 {
                     File = new FileDescription(imageFile.FileName, imageFile.OpenReadStream()),
-                    Folder = "SmartTour/Foods" // Lưu vào thư mục riêng cho gọn
+                    Folder = "SmartTour/Foods"
                 };
                 var uploadResult = await _cloudinary.UploadAsync(uploadParams);
                 food.ImageUrl = uploadResult.SecureUrl.ToString();
             }
 
-            // Lưu vào Database
             _context.Food.Add(food);
             await _context.SaveChangesAsync();
 
-            // Tạo bản dịch tên + mô tả cho tất cả ngôn ngữ hệ thống
             await UpsertFoodTranslationsAsync(food);
 
             TempData["success"] = "Thêm món ăn thành công!";
@@ -161,14 +152,12 @@ namespace SmartTourCMS.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Delete(int id)
         {
-            // Tìm món ăn kèm thông tin Quán
             var food = await _context.Food.Include(f => f.Poi).FirstOrDefaultAsync(f => f.Id == id);
             if (food == null) return NotFound();
 
             var user = await _userManager.GetUserAsync(User);
             var isAdmin = await _userManager.IsInRoleAsync(user, "Admin");
 
-            // LƯỚI BẢO MẬT: Không phải Admin và không phải chủ quán thì cấm xóa
             if (!isAdmin && (food.Poi == null || food.Poi.VendorId != user.Id))
             {
                 return Forbid();
@@ -178,7 +167,7 @@ namespace SmartTourCMS.Controllers
             _context.FoodTranslations.RemoveRange(trans);
             _context.Food.Remove(food);
             await _context.SaveChangesAsync();
-            
+
             TempData["success"] = "Đã xóa món ăn khỏi Menu!";
             return RedirectToAction(nameof(Index));
         }
@@ -216,10 +205,8 @@ namespace SmartTourCMS.Controllers
             var user = await _userManager.GetUserAsync(User);
             var isAdmin = await _userManager.IsInRoleAsync(user, "Admin");
 
-            // Bảo mật: Vendor chỉ được sửa món của quán mình
             if (!isAdmin && food.Poi.VendorId != user.Id) return Forbid();
 
-            // Đổ lại danh sách Quán cho Dropdown
             var pois = isAdmin
                 ? await _context.Pois.ToListAsync()
                 : await _context.Pois.Where(p => p.VendorId == user.Id).ToListAsync();
@@ -244,7 +231,6 @@ namespace SmartTourCMS.Controllers
 
             if (!isAdmin && existingFood.Poi.VendorId != user.Id) return Forbid();
 
-            // Xử lý nếu người dùng up ảnh mới
             if (imageFile != null && imageFile.Length > 0)
             {
                 var uploadParams = new ImageUploadParams()
@@ -257,7 +243,6 @@ namespace SmartTourCMS.Controllers
             }
             else
             {
-                // Nếu không chọn ảnh mới thì giữ nguyên ảnh cũ
                 food.ImageUrl = existingFood.ImageUrl;
             }
 
@@ -278,6 +263,8 @@ namespace SmartTourCMS.Controllers
             await ApplyManualTranslationOverridesAsync(food.Id, form);
             return RedirectToAction(nameof(Index));
         }
+
+        // --- HELPER METHODS ---
 
         private async Task PopulateFoodTranslationViewBag(int foodId)
         {
@@ -374,7 +361,7 @@ namespace SmartTourCMS.Controllers
                     row.UpdatedAt = DateTime.UtcNow;
                 }
 
-                await Task.Delay(250);
+                await Task.Delay(250); // Chống block Google Translate
             }
 
             await _context.SaveChangesAsync();
@@ -419,6 +406,27 @@ namespace SmartTourCMS.Controllers
             {
                 return text;
             }
+        }
+
+        // --- HÀM LỘT DẤU TIẾNG VIỆT ---
+        private static string RemoveDiacritics(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return text;
+
+            var normalizedString = text.Normalize(NormalizationForm.FormD);
+            var stringBuilder = new StringBuilder();
+
+            foreach (var c in normalizedString)
+            {
+                var unicodeCategory = CharUnicodeInfo.GetUnicodeCategory(c);
+                if (unicodeCategory != UnicodeCategory.NonSpacingMark)
+                {
+                    stringBuilder.Append(c);
+                }
+            }
+
+            return stringBuilder.ToString().Normalize(NormalizationForm.FormC)
+                .Replace("đ", "d").Replace("Đ", "D");
         }
     }
 }

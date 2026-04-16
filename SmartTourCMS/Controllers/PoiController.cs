@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using SmartTour.Shared.Models;
 using SmartTourBackend.Data;
 using SmartTourBackend.Services;
+using System.Globalization; // Bắt buộc phải có cho vụ lột dấu tiếng Việt
 using System.Text;
 using System.Text.Json;
 using X.PagedList.Extensions;
@@ -34,7 +35,7 @@ namespace SmartTourCMS.Controllers
             _voiceService = voiceService;
         }
 
-        // --- DANH SÁCH POI ---
+        // --- DANH SÁCH POI VÀ TÌM KIẾM KHÔNG DẤU ---
         public async Task<IActionResult> Index(string? search, int? page)
         {
             var user = await _userManager.GetUserAsync(User);
@@ -48,22 +49,26 @@ namespace SmartTourCMS.Controllers
 
             if (!isAdmin) query = query.Where(p => p.VendorId == user.Id);
 
+            // Ép nó lấy dữ liệu ra List trước (để C# so sánh không dấu)
+            var poiList = await query.OrderByDescending(p => p.Id).ToListAsync();
+
             if (!string.IsNullOrWhiteSpace(search))
             {
-                var keyword = search.Trim();
-                query = query.Where(p =>
-                    EF.Functions.ILike(p.Name, $"%{keyword}%") ||
-                    EF.Functions.ILike(p.Description, $"%{keyword}%"));
-            }
+                var keyword = RemoveDiacritics(search.Trim().ToLower());
 
-            query = query.OrderByDescending(p => p.Id);
+                poiList = poiList.Where(p =>
+                    RemoveDiacritics(p.Name.ToLower()).Contains(keyword) ||
+                    (p.Description != null && RemoveDiacritics(p.Description.ToLower()).Contains(keyword))
+                ).ToList();
+            }
 
             const int pageSize = 10;
             var pageNumber = page ?? 1;
-            var pagedList = query.ToPagedList(pageNumber, pageSize);
-            ViewBag.CurrentSearch = search;
+            var pagedList = poiList.ToPagedList(pageNumber, pageSize);
 
+            ViewBag.CurrentSearch = search;
             ViewBag.IsAdmin = isAdmin;
+
             if (isAdmin)
             {
                 var vendorIds = pagedList
@@ -111,7 +116,7 @@ namespace SmartTourCMS.Controllers
             _context.Pois.Add(poi);
             await _context.SaveChangesAsync();
 
-            // 3. Dịch đa ngôn ngữ và TẠO AUDIO (Đã tối ưu, gộp vào hàm helper ở dưới)
+            // 3. Dịch đa ngôn ngữ và TẠO AUDIO (Có Delay chống Block)
             var missingAudio = await CreateTranslationsAndAudio(poi);
 
             if (missingAudio > 0)
@@ -169,7 +174,7 @@ namespace SmartTourCMS.Controllers
                     var missing = await CreateTranslationsAndAudio(poi);
                     if (missing > 0)
                     {
-                        TempData["AudioWarning"] = $"Không tạo được audio cho {missing} bản dịch. Kiểm tra AZURE_SPEECH_KEY/AZURE_SPEECH_REGION và Cloudinary.";
+                        TempData["AudioWarning"] = $"Không tạo được audio cho {missing} bản dịch. Kiểm tra AZURE_SPEECH_KEY và Cloudinary.";
                     }
                 }
 
@@ -204,7 +209,6 @@ namespace SmartTourCMS.Controllers
             var skipped = 0;
             foreach (var t in translations)
             {
-                // Chỉ tạo lại những audio đang thiếu.
                 if (!string.IsNullOrWhiteSpace(t.AudioUrl))
                 {
                     skipped++;
@@ -250,25 +254,21 @@ namespace SmartTourCMS.Controllers
 
             try
             {
-                // Dọn dữ liệu liên quan để tránh POI đã xóa nhưng dữ liệu con còn treo trong API.
+                // Dọn dữ liệu liên quan (ĐÃ XÓA TOUR VÀ ROUTE THEO YÊU CẦU CỦA MÀY)
                 var poiTranslations = _context.PoiTranslations.Where(x => x.PoiId == id);
                 var poiImages = _context.PoiImages.Where(x => x.PoiId == id);
                 var foods = _context.Food.Where(x => x.PoiId == id);
                 var foodIds = await foods.Select(f => f.Id).ToListAsync();
                 var foodTranslations = _context.FoodTranslations.Where(x => foodIds.Contains(x.FoodId));
-                var tourPois = _context.TourPois.Where(x => x.PoiId == id);
                 var playLogs = _context.PlayLog.Where(x => x.PoiId == id);
                 var heatmapEntries = _context.HeatmapEntries.Where(x => x.PoiId == id);
-                var routeSessionPois = _context.RouteSessionPois.Where(x => x.PoiId == id);
 
                 _context.FoodTranslations.RemoveRange(foodTranslations);
                 _context.Food.RemoveRange(foods);
-                _context.TourPois.RemoveRange(tourPois);
                 _context.PoiTranslations.RemoveRange(poiTranslations);
                 _context.PoiImages.RemoveRange(poiImages);
                 _context.PlayLog.RemoveRange(playLogs);
                 _context.HeatmapEntries.RemoveRange(heatmapEntries);
-                _context.RouteSessionPois.RemoveRange(routeSessionPois);
                 _context.Pois.Remove(poi);
 
                 await _context.SaveChangesAsync();
@@ -287,7 +287,6 @@ namespace SmartTourCMS.Controllers
         {
             var languages = await GetOrderedLanguagesAsync();
 
-            // --- KIỂM TRA TIẾNG ANH: NẾU CHƯA CÓ THÌ TỰ THÊM VÀO ---
             if (!languages.Any(l => NormalizeTranslateLanguageCode(l.Code) == "en"))
             {
                 var enLang = new Language { Name = "English", Code = "en" };
@@ -299,14 +298,13 @@ namespace SmartTourCMS.Controllers
             var baseScript = string.IsNullOrWhiteSpace(poi.TtsScript) ? poi.Description : poi.TtsScript!;
             var sourceLang = ResolveSourceLanguageCode(languages);
 
-            // --- SỬA LỖI 429 TOO MANY REQUESTS: Chạy từ từ từng ngôn ngữ ---
             var translatedItems = new List<PoiTranslation>();
             foreach (var lang in languages)
             {
                 var item = await BuildPoiTranslationAsync(poi, baseScript, sourceLang, lang);
                 translatedItems.Add(item);
 
-                // Nghỉ 500ms (nửa giây) trước khi dịch ngôn ngữ tiếp theo để Google không block
+                // Nghỉ 500ms chống Google block
                 await Task.Delay(500);
             }
 
@@ -337,9 +335,7 @@ namespace SmartTourCMS.Controllers
 
         private async Task<List<Language>> GetOrderedLanguagesAsync()
         {
-            return await _context.Languages
-                .OrderBy(l => l.Id)
-                .ToListAsync();
+            return await _context.Languages.OrderBy(l => l.Id).ToListAsync();
         }
 
         private static string ResolveSourceLanguageCode(IReadOnlyList<Language> languages)
@@ -423,6 +419,27 @@ namespace SmartTourCMS.Controllers
             }
             catch { }
             return $"Chào mừng bạn đến với {poiName}.";
+        }
+
+        // HÀM LỘT DẤU TIẾNG VIỆT
+        private static string RemoveDiacritics(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return text;
+
+            var normalizedString = text.Normalize(NormalizationForm.FormD);
+            var stringBuilder = new StringBuilder();
+
+            foreach (var c in normalizedString)
+            {
+                var unicodeCategory = CharUnicodeInfo.GetUnicodeCategory(c);
+                if (unicodeCategory != UnicodeCategory.NonSpacingMark)
+                {
+                    stringBuilder.Append(c);
+                }
+            }
+
+            return stringBuilder.ToString().Normalize(NormalizationForm.FormC)
+                .Replace("đ", "d").Replace("Đ", "D");
         }
     }
 }

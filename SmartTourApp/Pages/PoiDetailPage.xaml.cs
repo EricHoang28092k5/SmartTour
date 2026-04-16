@@ -28,6 +28,9 @@ public partial class PoiDetailPage : ContentPage
     // YC1: cache description theo ngôn ngữ
     private string? _cachedDescriptionLang = null;
 
+    // Cache tên POI theo ngôn ngữ để tránh gọi API lặp
+    private string? _cachedPoiNameLang = null;
+
     // YC4: cache food language
     private string? _cachedFoodLang = null;
 
@@ -107,6 +110,9 @@ public partial class PoiDetailPage : ContentPage
 
         ProgressFillContainer.SizeChanged += OnProgressContainerSizeChanged;
 
+        // Refresh tên POI theo ngôn ngữ hiện tại (fix title không đổi ngôn ngữ)
+        _ = LoadPoiNameTranslationAsync();
+
         // YC1: Load description từ TtsScript (offline-first)
         _ = LoadDescriptionFromTtsAsync();
 
@@ -147,9 +153,55 @@ public partial class PoiDetailPage : ContentPage
 
         // Reset cache để force reload khi POI thay đổi
         _cachedDescriptionLang = null;
+        _cachedPoiNameLang = null;
         _cachedFoodLang = null;
 
         // YC4: Không set FoodList.ItemsSource ở đây, sẽ load trong LoadFoodTranslationsAsync
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // LOAD POI NAME TRANSLATION (online/localized endpoint)
+    // ══════════════════════════════════════════════════════════════
+
+    private async Task LoadPoiNameTranslationAsync()
+    {
+        if (poi == null) return;
+
+        var currentLang = (langService.Current ?? "en").Trim().ToLowerInvariant();
+        if (_cachedPoiNameLang == currentLang &&
+            !string.IsNullOrWhiteSpace(PoiName.Text))
+            return;
+
+        try
+        {
+            // API /api/pois?lang=xx đã trả tên POI theo ngôn ngữ đã chọn
+            var localizedPois = await api.GetPois();
+            var localizedPoi = localizedPois.FirstOrDefault(p => p.Id == poi.Id);
+            if (localizedPoi != null)
+            {
+                poi.Name = localizedPoi.Name;
+                if (!string.IsNullOrWhiteSpace(localizedPoi.Description))
+                    poi.Description = localizedPoi.Description;
+
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    PoiName.Text = string.IsNullOrWhiteSpace(localizedPoi.Name)
+                        ? poi.Name
+                        : localizedPoi.Name;
+                });
+            }
+            else
+            {
+                MainThread.BeginInvokeOnMainThread(() => { PoiName.Text = poi.Name; });
+            }
+
+            _cachedPoiNameLang = currentLang;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[PoiDetail] LoadPoiNameTranslation error: {ex.Message}");
+            MainThread.BeginInvokeOnMainThread(() => { PoiName.Text = poi.Name; });
+        }
     }
 
     // ══════════════════════════════════════════════════════════════
