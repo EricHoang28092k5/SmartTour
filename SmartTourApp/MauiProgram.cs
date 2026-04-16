@@ -36,6 +36,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<GeofencingEngine>();
 
         // ── Language & Localization ──
+        // YC5: LanguageService defaults to English on first install
         builder.Services.AddSingleton<LanguageService>();
         builder.Services.AddSingleton<LocalizationService>();
 
@@ -78,6 +79,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<PoiDetailAudioManager>();
 
         // ── Pages ──
+        // YC3: HomePage and MapPage now take LanguageService + ApiService for translated names
         builder.Services.AddSingleton<SettingsPage>();
         builder.Services.AddSingleton<HomePage>();
         builder.Services.AddSingleton<MapPage>();

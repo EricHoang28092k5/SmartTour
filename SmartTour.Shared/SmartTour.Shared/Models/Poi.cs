@@ -20,6 +20,20 @@ namespace SmartTour.Shared.Models
 
         [Ignore]
         public bool IsNearest { get; set; }
+
+        /// <summary>
+        /// YC3: Tên hiển thị đã được dịch theo ngôn ngữ hiện tại.
+        /// Được set bởi HomePage và MapPage sau khi fetch TTS scripts.
+        /// Mặc định là Name nếu chưa có translation.
+        /// </summary>
+        [Ignore]
+        public string DisplayName
+        {
+            get => string.IsNullOrWhiteSpace(_displayName) ? Name : _displayName;
+            set => _displayName = value;
+        }
+        private string _displayName = "";
+
         public string? CreatedBy { get; set; }
         public string? VendorId { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

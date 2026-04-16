@@ -7,14 +7,33 @@ public class LanguageService
     private readonly Database db;
     private string current;
 
-    // Mặc định "en" cho app mới
+    /// <summary>
+    /// YC5: Default language is English for fresh installs.
+    /// Preference key to track whether user has explicitly set language.
+    /// </summary>
     private const string DefaultLang = "en";
+    private const string FirstLaunchKey = "lang_first_launch_done";
 
     public LanguageService(Database db)
     {
         this.db = db;
-        // Lấy từ DB — nếu chưa có thì dùng "en" (YC2: default en)
-        current = db.GetSetting("lang") ?? DefaultLang;
+
+        // YC5: On very first launch, always set English regardless of DB state.
+        // After user changes language in Settings, we persist their choice.
+        bool firstLaunchDone = Preferences.Default.Get(FirstLaunchKey, false);
+
+        if (!firstLaunchDone)
+        {
+            // First install: force English, save to DB and mark done
+            current = DefaultLang;
+            db.SaveSetting("lang", DefaultLang);
+            Preferences.Default.Set(FirstLaunchKey, true);
+        }
+        else
+        {
+            // Returning user: load their saved preference
+            current = db.GetSetting("lang") ?? DefaultLang;
+        }
     }
 
     public string Current

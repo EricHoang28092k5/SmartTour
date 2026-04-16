@@ -1,5 +1,7 @@
-﻿using SmartTourApp.Services;
+﻿using SmartTour.Services;
 using SmartTour.Shared.Models;
+using SmartTourApp.Services;
+using static SmartTour.Services.ApiService;
 
 namespace SmartTourApp.Pages;
 
@@ -10,10 +12,15 @@ public partial class HomePage : ContentPage
     private readonly LocationService locationService;
     private readonly RouteTrackingService routeTracking;
     private readonly LocalizationService loc;
+    private readonly LanguageService lang;
+    private readonly ApiService api;
 
     private List<Poi> pois = new();
     private Poi? nearest;
     private Location? userLoc;
+
+    // YC3: Cache translated names per poi id
+    private readonly Dictionary<int, string> _translatedNames = new();
 
     private bool isLoaded;
     private bool isPlaying;
@@ -25,7 +32,9 @@ public partial class HomePage : ContentPage
         NarrationEngine narration,
         LocationService locationService,
         RouteTrackingService routeTracking,
-        LocalizationService loc)
+        LocalizationService loc,
+        LanguageService lang,
+        ApiService api)
     {
         InitializeComponent();
         this.repo = repo;
@@ -33,16 +42,42 @@ public partial class HomePage : ContentPage
         this.locationService = locationService;
         this.routeTracking = routeTracking;
         this.loc = loc;
+        this.lang = lang;
+        this.api = api;
+
+        // YC3: Re-fetch names when language changes
+        this.lang.OnLanguageChanged += async _ =>
+        {
+            _translatedNames.Clear();
+            if (pois.Count > 0)
+            {
+                await LoadTranslatedNamesAsync(pois);
+                ApplyTranslatedNames();
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    ApplyLocalization();
+                    PoiList.ItemsSource = null;
+                    PoiList.ItemsSource = pois;
+                    UpdateHeroTitle();
+                });
+            }
+        };
     }
 
     protected override void OnAppearing()
     {
         base.OnAppearing();
-
         ApplyLocalization();
 
         if (!isLoaded)
             _ = LoadAsync();
+        else
+        {
+            // Refresh display names when returning to page
+            PoiList.ItemsSource = null;
+            PoiList.ItemsSource = pois;
+            UpdateHeroTitle();
+        }
     }
 
     private void ApplyLocalization()
@@ -69,15 +104,74 @@ public partial class HomePage : ContentPage
         };
     }
 
+    private void UpdateHeroTitle()
+    {
+        if (nearest == null) return;
+        if (_translatedNames.TryGetValue(nearest.Id, out var tName))
+            HeroTitle.Text = tName;
+        else
+            HeroTitle.Text = nearest.Name;
+    }
+
     private async Task LoadAsync()
     {
         isLoaded = true;
         HeroTitle.Text = loc.Loading;
 
         pois = repo.GetCachedPois() ?? await repo.GetPois();
+
+        // YC3: Load translated names
+        await LoadTranslatedNamesAsync(pois);
+        ApplyTranslatedNames();
+
         PoiList.ItemsSource = pois;
 
         await LoadLocationAsync();
+    }
+
+    // YC3: Fetch titles from API for all pois
+    private async Task LoadTranslatedNamesAsync(List<Poi> poiList)
+    {
+        var currentLang = lang.Current;
+        var tasks = poiList.Select(async poi =>
+        {
+            try
+            {
+                var scripts = await api.GetTtsScripts(poi.Id);
+                if (scripts == null || scripts.Count == 0) return;
+
+                var selected = SelectTitle(scripts, currentLang);
+                if (selected != null && !string.IsNullOrWhiteSpace(selected.Title))
+                    _translatedNames[poi.Id] = selected.Title;
+            }
+            catch { /* fallback to poi.Name */ }
+        });
+
+        await Task.WhenAll(tasks);
+    }
+
+    // YC3: Apply translated names to poi.DisplayName
+    private void ApplyTranslatedNames()
+    {
+        foreach (var poi in pois)
+        {
+            if (_translatedNames.TryGetValue(poi.Id, out var name))
+                poi.DisplayName = name;
+            else
+                poi.DisplayName = poi.Name;
+        }
+    }
+
+    // YC3: Language selection logic: match → en → vi → first
+    private TtsDto? SelectTitle(List<TtsDto> scripts, string currentLang)
+    {
+        return scripts.FirstOrDefault(x =>
+                x.LanguageCode.StartsWith(currentLang, StringComparison.OrdinalIgnoreCase))
+            ?? scripts.FirstOrDefault(x =>
+                x.LanguageCode.StartsWith("en", StringComparison.OrdinalIgnoreCase))
+            ?? scripts.FirstOrDefault(x =>
+                x.LanguageCode.StartsWith("vi", StringComparison.OrdinalIgnoreCase))
+            ?? scripts.FirstOrDefault();
     }
 
     private async Task LoadLocationAsync()
@@ -104,7 +198,8 @@ public partial class HomePage : ContentPage
         foreach (var p in pois)
             p.IsNearest = p.Id == nearest.Id;
 
-        HeroTitle.Text = nearest.Name;
+        // YC3: Use translated name for hero
+        UpdateHeroTitle();
         HeroImage.Source = nearest.ImageUrl;
 
         await HeroImage.FadeToAsync(1, 400);
@@ -124,6 +219,9 @@ public partial class HomePage : ContentPage
             Location.CalculateDistance(
                 userLoc, new Location(p.Lat, p.Lng), DistanceUnits.Kilometers))
             .ToList();
+
+        // Re-apply translated names after sort
+        ApplyTranslatedNames();
         PoiList.ItemsSource = pois;
     }
 

@@ -78,6 +78,10 @@ public class LocalizationService
     public string DownloadingMap => T("Đang tải bản đồ...", "Downloading map...", "マップDL中...", "地图下载中...", "지도 다운로드 중...");
     public string CalculatingRoute => T("Đang tính đường đi...", "Calculating route...", "ルート計算中...", "路线计算中...", "경로 계산 중...");
     public string Directions => T("Đường đi", "Directions", "経路", "路线", "경로");
+
+    /// <summary>YC4: Localized label for the Google Maps directions button in bottom POI card.</summary>
+    public string DirectionsBtn => T("Chỉ đường", "Get Directions", "ルートを表示", "获取路线", "길 안내");
+
     public string Start => T("Bắt đầu", "Start", "開始", "开始", "시작");
     public string Call => T("Gọi", "Call", "電話", "拨打", "전화");
     public string SavePlace => T("Lưu", "Save", "保存", "收藏", "저장");
@@ -92,7 +96,6 @@ public class LocalizationService
     public string NoNetwork => T("Không có mạng", "No network", "ネットワークなし", "无网络", "네트워크 없음");
     public string NoNetworkMsg => T("Bạn đang offline. Kết nối mạng để tải bản đồ.", "You are offline. Connect to download map.", "オフライン中。マップDLにはネット接続が必要。", "您处于离线状态。连接网络以下载地图。", "오프라인 상태입니다. 지도를 다운로드하려면 네트워크에 연결하세요.");
     public string Downloading => T("Đang tải...", "Downloading...", "ダウンロード中...", "下载中...", "다운로드 중...");
-
 
     // ══════════════════════════════════════════════════════════════
     // POI DETAIL PAGE
