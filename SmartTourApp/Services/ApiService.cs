@@ -36,7 +36,8 @@ public class ApiService
         {
             var lang = (languageService.Current ?? "en").Trim().ToLowerInvariant();
             var tick = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            var res = await http.GetFromJsonAsync<FoodMenuResponse>($"api/foods/menu/{poiId}?lang={Uri.EscapeDataString(lang)}&t={tick}");
+            var res = await http.GetFromJsonAsync<FoodMenuResponse>(
+                $"api/foods/menu/{poiId}?lang={Uri.EscapeDataString(lang)}&t={tick}");
             if (res?.Success == true && res.Data != null)
                 return res.Data;
         }
@@ -44,20 +45,34 @@ public class ApiService
         {
             System.Diagnostics.Debug.WriteLine($"[FoodAPI] GetFoodsByPoi({poiId}) error: {ex.Message}");
         }
+        return new List<Food>();
+    }
 
+    /// <summary>
+    /// YC4: Lấy foods theo ngôn ngữ cụ thể (dùng khi pre-fetch offline).
+    /// </summary>
+    public async Task<List<Food>> GetFoodsByPoiAndLang(int poiId, string lang)
+    {
+        try
+        {
+            var tick = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var res = await http.GetFromJsonAsync<FoodMenuResponse>(
+                $"api/foods/menu/{poiId}?lang={Uri.EscapeDataString(lang)}&t={tick}");
+            if (res?.Success == true && res.Data != null)
+                return res.Data;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[FoodAPI] GetFoodsByPoiAndLang({poiId},{lang}) error: {ex.Message}");
+        }
         return new List<Food>();
     }
 
     // ══════════════════════════════════════════════════════════════════
-    // 🔥 AUDIO API MỚI — GET /api/audio/poi/{poiId}
-    // Trả về audioUrl (Cloudinary) + ttsScript cho từng ngôn ngữ
-    // Logic ưu tiên: audioUrl (wifi/online) → ttsScript (offline fallback)
+    // AUDIO API
     // ══════════════════════════════════════════════════════════════════
 
-    /// <summary>
-    /// Lấy danh sách audio tracks đầy đủ cho POI.
-    /// Mỗi track có cả <c>AudioUrl</c> (Cloudinary MP3) lẫn <c>TtsScript</c> để fallback.
-    /// </summary>
     public async Task<PoiAudioResponse?> GetPoiAudios(int poiId)
     {
         try
@@ -71,16 +86,6 @@ public class ApiService
         }
     }
 
-    // ══════════════════════════════════════════════════════════════════
-    // BACKWARD-COMPAT — giữ nguyên signature để không ảnh hưởng file khác
-    // Nội bộ đã gọi API mới và map sang TtsDto (có thêm AudioUrl)
-    // ══════════════════════════════════════════════════════════════════
-
-    /// <summary>
-    /// [Backward-compat] Giữ nguyên để NarrationEngine / PoiDetailAudioManager
-    /// không cần sửa signature. Nội bộ gọi <see cref="GetPoiAudios"/> mới.
-    /// TtsDto giờ có thêm <c>AudioUrl</c> — callers có thể dùng hoặc bỏ qua.
-    /// </summary>
     public async Task<List<TtsDto>> GetTtsScripts(int poiId)
     {
         try
@@ -102,14 +107,9 @@ public class ApiService
         {
             System.Diagnostics.Debug.WriteLine($"[AudioAPI] GetTtsScripts({poiId}) error: {ex.Message}");
         }
-
         return new List<TtsDto>();
     }
 
-    /// <summary>
-    /// Post a play log (listening duration) to the backend.
-    /// Fire-and-forget friendly — caller should catch exceptions.
-    /// </summary>
     public async Task PostPlayLog(PlayLog log)
     {
         await http.PostAsJsonAsync("api/pois/playlog", log);
@@ -121,10 +121,7 @@ public class ApiService
 
     public async Task PostHeatmapEntry(HeatmapEntryDto dto)
     {
-        try
-        {
-            await http.PostAsJsonAsync("api/heatmap/entry", dto);
-        }
+        try { await http.PostAsJsonAsync("api/heatmap/entry", dto); }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine("HEATMAP API ERROR: " + ex.Message);
@@ -133,10 +130,7 @@ public class ApiService
 
     public async Task<HeatmapResponse?> GetHeatmap()
     {
-        try
-        {
-            return await http.GetFromJsonAsync<HeatmapResponse>("api/heatmap");
-        }
+        try { return await http.GetFromJsonAsync<HeatmapResponse>("api/heatmap"); }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine("HEATMAP GET ERROR: " + ex.Message);
@@ -155,10 +149,7 @@ public class ApiService
 
     public async Task<RouteAnalyticsResponse?> GetPopularRoutes()
     {
-        try
-        {
-            return await http.GetFromJsonAsync<RouteAnalyticsResponse>("api/routes/popular");
-        }
+        try { return await http.GetFromJsonAsync<RouteAnalyticsResponse>("api/routes/popular"); }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine("ROUTE API ERROR: " + ex.Message);
@@ -170,7 +161,6 @@ public class ApiService
     // RESPONSE / DTO MODELS
     // ══════════════════════════════════════════════════════════════════
 
-    /// <summary>Response của GET /api/audio/poi/{id}</summary>
     public class PoiAudioResponse
     {
         public bool Success { get; set; }
@@ -180,7 +170,6 @@ public class ApiService
         public List<AudioTrackDto> Data { get; set; } = new();
     }
 
-    /// <summary>Một ngôn ngữ trong response audio mới.</summary>
     public class AudioTrackDto
     {
         public int TranslationId { get; set; }
@@ -188,20 +177,15 @@ public class ApiService
         public string LanguageName { get; set; } = "";
         public string Title { get; set; } = "";
         public string TtsScript { get; set; } = "";
-        /// <summary>Cloudinary URL — null nếu chưa generate server-side.</summary>
         public string? AudioUrl { get; set; }
     }
 
-    /// <summary>
-    /// TtsDto mở rộng — thêm <c>AudioUrl</c> nhưng vẫn backward-compatible.
-    /// </summary>
     public class TtsDto
     {
         public string LanguageCode { get; set; } = "";
         public string LanguageName { get; set; } = "";
         public string Title { get; set; } = "";
         public string TtsScript { get; set; } = "";
-        /// <summary>🔥 Mới: Cloudinary MP3 URL. Null nếu chưa có.</summary>
         public string? AudioUrl { get; set; }
     }
 

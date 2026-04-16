@@ -7,29 +7,13 @@ namespace SmartTourApp.Services
 {
     /// <summary>
     /// OfflineSyncService — Quản lý toàn bộ vòng đời đồng bộ dữ liệu offline.
-    ///
-    /// ╔══════════════════════════════════════════════════════════════════╗
-    /// ║  CHỨC NĂNG CHÍNH                                                ║
-    /// ║  1. PRE-FETCH: Tải trước toàn bộ script + audio metadata        ║
-    /// ║     vào SQLite khi App có mạng (trước khi tour bắt đầu).        ║
-    /// ║  2. VERSION CHECK: So sánh UpdatedAt server vs local để cập nhật║
-    /// ║  3. BACKGROUND SYNC: Đẩy PlayLog lên server khi có mạng lại.    ║
-    /// ║  4. CONNECTIVITY: Monitor mạng, trigger sync tự động.           ║
-    /// ╚══════════════════════════════════════════════════════════════════╝
+    /// YC1: Pre-fetch toàn bộ title + ttsScript + audioUrl + food translations khi lần đầu lấy POIs.
     /// </summary>
     public partial class OfflineSyncService
     {
-        // ══════════════════════════════════════════════════════════════
-        // DEPENDENCIES
-        // ══════════════════════════════════════════════════════════════
-
         private readonly ApiService _api;
         private readonly OfflineDatabase _offlineDb;
         private readonly Database _db;
-
-        // ══════════════════════════════════════════════════════════════
-        // STATE
-        // ══════════════════════════════════════════════════════════════
 
         private bool _isSyncing = false;
         private bool _isPrefetching = false;
@@ -39,15 +23,10 @@ namespace SmartTourApp.Services
         private const string SyncVersionKey = "offline_data_version";
         private const int BgSyncIntervalSeconds = 30;
 
-        // ── Track số lượng để báo cáo progress ──
         public event Action<SyncProgress>? OnProgress;
         public event Action<bool>? OnConnectivityChanged;
 
         private bool _lastConnectivityState = true;
-
-        // ══════════════════════════════════════════════════════════════
-        // CONSTRUCTOR
-        // ══════════════════════════════════════════════════════════════
 
         public OfflineSyncService(ApiService api, OfflineDatabase offlineDb, Database db)
         {
@@ -57,16 +36,13 @@ namespace SmartTourApp.Services
         }
 
         // ══════════════════════════════════════════════════════════════
-        // PUBLIC: PRE-FETCH (Yêu cầu 1)
-        // Gọi khi User nhấn "Bắt đầu" — tải trước toàn bộ script offline
+        // PUBLIC: PRE-FETCH (YC1) — Tải trước toàn bộ script + food
         // ══════════════════════════════════════════════════════════════
 
         /// <summary>
-        /// Tải trước toàn bộ TTS Script và Audio metadata của danh sách POI.
-        /// Lưu vào OfflineDatabase (SQLite) để dùng khi offline.
+        /// YC1: Tải trước toàn bộ TTS Script, Audio metadata và Food translations.
+        /// Gọi sau khi lấy POIs lần đầu từ API.
         /// </summary>
-        /// <param name="pois">Danh sách POI cần pre-fetch.</param>
-        /// <param name="token">Cancellation token — user có thể hủy.</param>
         public async Task PrefetchPoiDataAsync(List<Poi> pois, CancellationToken token = default)
         {
             if (_isPrefetching) return;
@@ -79,7 +55,6 @@ namespace SmartTourApp.Services
             {
                 ReportProgress(SyncPhase.Prefetch, done, total, "Đang kiểm tra kết nối...");
 
-                // Check connectivity trước
                 bool isOnline = await CheckConnectivityAsync();
                 if (!isOnline)
                 {
@@ -89,7 +64,7 @@ namespace SmartTourApp.Services
 
                 ReportProgress(SyncPhase.Prefetch, done, total, "Đang tải dữ liệu thuyết minh...");
 
-                // Batch fetch để tối ưu network
+                // Batch 5 POIs song song
                 var batches = pois
                     .Select((p, i) => new { p, i })
                     .GroupBy(x => x.i / 5)
@@ -108,7 +83,6 @@ namespace SmartTourApp.Services
                         $"Đã tải {done}/{total} địa điểm...");
                 }
 
-                // Lưu timestamp sync
                 Preferences.Default.Set(LastSyncKey, DateTime.UtcNow.ToString("O"));
 
                 ReportProgress(SyncPhase.Prefetch, done, total,
@@ -129,47 +103,32 @@ namespace SmartTourApp.Services
         }
 
         // ══════════════════════════════════════════════════════════════
-        // PUBLIC: VERSION CHECK (Yêu cầu 1)
-        // Kiểm tra dữ liệu SQLite có cũ hơn server không
+        // PUBLIC: VERSION CHECK
         // ══════════════════════════════════════════════════════════════
 
-        /// <summary>
-        /// So sánh version server vs local. Trả về danh sách POI cần cập nhật.
-        /// </summary>
         public async Task<List<int>> CheckStalePoiIdsAsync(List<Poi> serverPois)
         {
             var stale = new List<int>();
-
             try
             {
                 foreach (var serverPoi in serverPois)
                 {
                     var localVersion = _offlineDb.GetPoiVersion(serverPoi.Id);
-
-                    // Nếu chưa có data LOCAL hoặc server mới hơn → cần cập nhật
-                    if (localVersion == null ||
-                        serverPoi.UpdatedAt > localVersion.LastSyncedAt)
-                    {
+                    if (localVersion == null || serverPoi.UpdatedAt > localVersion.LastSyncedAt)
                         stale.Add(serverPoi.Id);
-                    }
                 }
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[OfflineSync] Version check error: {ex.Message}");
             }
-
             return stale;
         }
 
-        /// <summary>
-        /// Cập nhật dữ liệu cho các POI đã lỗi thời (stale).
-        /// </summary>
         public async Task RefreshStaleDataAsync(List<int> stalePoiIds, List<Poi> allPois,
             CancellationToken token = default)
         {
             if (stalePoiIds.Count == 0) return;
-
             bool isOnline = await CheckConnectivityAsync();
             if (!isOnline) return;
 
@@ -179,7 +138,6 @@ namespace SmartTourApp.Services
             foreach (var poi in stalePois)
             {
                 if (token.IsCancellationRequested) break;
-
                 bool ok = await FetchAndStoreSinglePoiAsync(poi, token);
                 if (ok) done++;
             }
@@ -189,125 +147,98 @@ namespace SmartTourApp.Services
         }
 
         // ══════════════════════════════════════════════════════════════
-        // PUBLIC: BACKGROUND SYNC (Yêu cầu 5)
-        // Đẩy PlayLog offline lên server khi có mạng
+        // PUBLIC: BACKGROUND SYNC
         // ══════════════════════════════════════════════════════════════
 
-        /// <summary>
-        /// Bắt đầu vòng lặp background sync.
-        /// Tự động phát hiện khi có mạng và đẩy log lên server.
-        /// </summary>
         public void StartBackgroundSync()
         {
             if (_bgSyncCts != null) return;
-
             _bgSyncCts = new CancellationTokenSource();
             var token = _bgSyncCts.Token;
 
             _ = Task.Run(async () =>
             {
                 System.Diagnostics.Debug.WriteLine("[OfflineSync] Background sync started");
-
                 while (!token.IsCancellationRequested)
                 {
                     try
                     {
                         bool isOnline = await CheckConnectivityAsync();
-
-                        // Notify nếu trạng thái mạng thay đổi
                         if (isOnline != _lastConnectivityState)
                         {
                             _lastConnectivityState = isOnline;
                             MainThread.BeginInvokeOnMainThread(() =>
                                 OnConnectivityChanged?.Invoke(isOnline));
-
                             if (isOnline)
-                            {
-                                System.Diagnostics.Debug.WriteLine(
-                                    "[OfflineSync] 🌐 Network restored — triggering sync");
-                            }
+                                System.Diagnostics.Debug.WriteLine("[OfflineSync] 🌐 Network restored");
                         }
-
                         if (isOnline && !_isSyncing)
-                        {
                             await SyncPendingLogsAsync(token);
-                        }
                     }
                     catch (Exception ex)
                     {
-                        System.Diagnostics.Debug.WriteLine(
-                            $"[OfflineSync] BG loop error: {ex.Message}");
+                        System.Diagnostics.Debug.WriteLine($"[OfflineSync] BG loop error: {ex.Message}");
                     }
-
-                    await Task.Delay(BgSyncIntervalSeconds * 1000, token)
-                        .ContinueWith(_ => { }); // swallow cancel
+                    await Task.Delay(BgSyncIntervalSeconds * 1000, token).ContinueWith(_ => { });
                 }
             }, token);
         }
 
-        /// <summary>
-        /// Dừng background sync loop.
-        /// </summary>
         public void StopBackgroundSync()
         {
             _bgSyncCts?.Cancel();
             _bgSyncCts = null;
         }
 
-        /// <summary>
-        /// Force sync ngay lập tức (gọi khi biết mạng vừa khôi phục).
-        /// </summary>
         public async Task ForceSyncNowAsync(CancellationToken token = default)
         {
             bool isOnline = await CheckConnectivityAsync();
             if (!isOnline) return;
-
             await SyncPendingLogsAsync(token);
         }
 
         // ══════════════════════════════════════════════════════════════
-        // INTERNAL: FETCH & STORE SINGLE POI
+        // INTERNAL: FETCH & STORE SINGLE POI (YC1 + YC4)
         // ══════════════════════════════════════════════════════════════
 
         private async Task<bool> FetchAndStoreSinglePoiAsync(Poi poi, CancellationToken token)
         {
             try
             {
-                // Lấy audio tracks từ API (có AudioUrl + TtsScript cho mọi ngôn ngữ)
+                // 1. Lấy audio tracks (title + ttsScript + audioUrl) cho tất cả ngôn ngữ
                 var response = await _api.GetPoiAudios(poi.Id);
-                if (response?.Data == null || response.Data.Count == 0)
-                    return false;
-
-                // Lưu từng track vào SQLite
-                foreach (var track in response.Data)
+                if (response?.Data != null && response.Data.Count > 0)
                 {
-                    if (token.IsCancellationRequested) break;
+                    foreach (var track in response.Data)
+                    {
+                        if (token.IsCancellationRequested) break;
+                        _offlineDb.UpsertPoiScript(new OfflinePoiScript
+                        {
+                            PoiId = poi.Id,
+                            LanguageCode = track.LanguageCode,
+                            LanguageName = track.LanguageName,
+                            Title = track.Title ?? "",
+                            TtsScript = track.TtsScript ?? "",
+                            AudioUrl = track.AudioUrl ?? "",
+                            LastSyncedAt = DateTime.UtcNow,
+                            ServerUpdatedAt = poi.UpdatedAt
+                        });
+                    }
 
-                    _offlineDb.UpsertPoiScript(new OfflinePoiScript
+                    _offlineDb.UpsertPoiVersion(new OfflinePoiVersion
                     {
                         PoiId = poi.Id,
-                        LanguageCode = track.LanguageCode,
-                        LanguageName = track.LanguageName,
-                        Title = track.Title,
-                        TtsScript = track.TtsScript ?? "",
-                        AudioUrl = track.AudioUrl ?? "",
                         LastSyncedAt = DateTime.UtcNow,
-                        ServerUpdatedAt = poi.UpdatedAt
+                        ServerUpdatedAt = poi.UpdatedAt,
+                        TrackCount = response.Data.Count
                     });
+
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[OfflineSync] ✅ POI {poi.Id}: {response.Data.Count} tracks cached");
                 }
 
-                // Cập nhật version record
-                _offlineDb.UpsertPoiVersion(new OfflinePoiVersion
-                {
-                    PoiId = poi.Id,
-                    LastSyncedAt = DateTime.UtcNow,
-                    ServerUpdatedAt = poi.UpdatedAt,
-                    TrackCount = response.Data.Count
-                });
-
-                System.Diagnostics.Debug.WriteLine(
-                    $"[OfflineSync] ✅ POI {poi.Id} ({poi.Name}): " +
-                    $"{response.Data.Count} tracks cached");
+                // 2. YC4: Lấy food translations cho tất cả ngôn ngữ
+                await FetchAndStoreFoodTranslationsAsync(poi.Id, token);
 
                 return true;
             }
@@ -320,32 +251,62 @@ namespace SmartTourApp.Services
         }
 
         // ══════════════════════════════════════════════════════════════
-        // INTERNAL: SYNC PENDING LOGS (Yêu cầu 5)
+        // YC4: FOOD TRANSLATIONS
+        // ══════════════════════════════════════════════════════════════
+
+        private async Task FetchAndStoreFoodTranslationsAsync(int poiId, CancellationToken token)
+        {
+            try
+            {
+                // Lấy foods cho tất cả ngôn ngữ hỗ trợ
+                var langs = new[] { "vi", "en", "ja", "zh", "ko" };
+                foreach (var lang in langs)
+                {
+                    if (token.IsCancellationRequested) break;
+                    try
+                    {
+                        var foods = await _api.GetFoodsByPoiAndLang(poiId, lang);
+                        if (foods != null && foods.Count > 0)
+                        {
+                            _offlineDb.UpsertFoodTranslations(poiId, lang, foods);
+                            System.Diagnostics.Debug.WriteLine(
+                                $"[OfflineSync] Food [{lang}] POI {poiId}: {foods.Count} items cached");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine(
+                            $"[OfflineSync] Food [{lang}] POI {poiId} error: {ex.Message}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[OfflineSync] FetchFoodTranslations error: {ex.Message}");
+            }
+        }
+
+        // ══════════════════════════════════════════════════════════════
+        // INTERNAL: SYNC PENDING LOGS
         // ══════════════════════════════════════════════════════════════
 
         private async Task SyncPendingLogsAsync(CancellationToken token)
         {
             if (_isSyncing) return;
             _isSyncing = true;
-
             try
             {
                 var pending = _offlineDb.GetPendingPlayLogs();
                 if (pending.Count == 0) return;
 
-                System.Diagnostics.Debug.WriteLine(
-                    $"[OfflineSync] Syncing {pending.Count} pending logs...");
+                System.Diagnostics.Debug.WriteLine($"[OfflineSync] Syncing {pending.Count} pending logs...");
+                ReportProgress(SyncPhase.LogSync, 0, pending.Count, $"Đang đồng bộ {pending.Count} nhật ký...");
 
-                ReportProgress(SyncPhase.LogSync, 0, pending.Count,
-                    $"Đang đồng bộ {pending.Count} nhật ký...");
-
-                int synced = 0;
-                int failed = 0;
-
+                int synced = 0, failed = 0;
                 foreach (var log in pending)
                 {
                     if (token.IsCancellationRequested) break;
-
                     try
                     {
                         await _api.PostPlayLog(new PlayLog
@@ -358,25 +319,19 @@ namespace SmartTourApp.Services
                             DeviceId = log.DeviceId,
                             UserId = log.UserId
                         });
-
-                        // Xóa log đã sync thành công
                         _offlineDb.DeleteOfflineLog(log.Id);
                         synced++;
                     }
                     catch
                     {
-                        // Tăng retry count — sẽ thử lại lần sau
                         _offlineDb.IncrementLogRetry(log.Id);
                         failed++;
                     }
                 }
 
-                System.Diagnostics.Debug.WriteLine(
-                    $"[OfflineSync] Log sync done: {synced} ok, {failed} failed");
-
+                System.Diagnostics.Debug.WriteLine($"[OfflineSync] Log sync done: {synced} ok, {failed} failed");
                 if (synced > 0)
-                    ReportProgress(SyncPhase.LogSync, synced, pending.Count,
-                        $"✅ Đã đồng bộ {synced} nhật ký");
+                    ReportProgress(SyncPhase.LogSync, synced, pending.Count, $"✅ Đã đồng bộ {synced} nhật ký");
             }
             finally
             {
@@ -385,12 +340,9 @@ namespace SmartTourApp.Services
         }
 
         // ══════════════════════════════════════════════════════════════
-        // PUBLIC: OFFLINE LOGGING (Yêu cầu 5)
+        // PUBLIC: OFFLINE LOGGING
         // ══════════════════════════════════════════════════════════════
 
-        /// <summary>
-        /// Ghi log khi offline — lưu vào SQLite để sync sau.
-        /// </summary>
         public void RecordOfflineLog(int poiId, double lat, double lng,
             int durationSec, string deviceId = "", string userId = "")
         {
@@ -410,63 +362,75 @@ namespace SmartTourApp.Services
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[OfflineSync] RecordOfflineLog error: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[OfflineSync] RecordOfflineLog error: {ex.Message}");
             }
         }
 
         // ══════════════════════════════════════════════════════════════
-        // PUBLIC: LOCAL SCRIPT LOOKUP (Yêu cầu 4)
+        // PUBLIC: LOCAL SCRIPT LOOKUP (YC1)
         // ══════════════════════════════════════════════════════════════
 
-        /// <summary>
-        /// Tìm TTS Script từ SQLite theo PoiId + LanguageCode.
-        /// Không gọi API — hoàn toàn offline.
-        /// </summary>
         public OfflinePoiScript? GetLocalScript(int poiId, string languageCode)
         {
             try
             {
-                // Tìm chính xác ngôn ngữ
                 var exact = _offlineDb.GetPoiScript(poiId, languageCode);
                 if (exact != null) return exact;
-
-                // Fallback: tìm ngôn ngữ có prefix tương tự (vi → vi-VN)
                 var prefix = languageCode.Split('-')[0];
                 var byPrefix = _offlineDb.GetPoiScriptByPrefix(poiId, prefix);
                 if (byPrefix != null) return byPrefix;
-
-                // Fallback cuối: bất kỳ ngôn ngữ nào có sẵn cho POI này
                 return _offlineDb.GetAnyScriptForPoi(poiId);
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[OfflineSync] GetLocalScript error: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[OfflineSync] GetLocalScript error: {ex.Message}");
                 return null;
             }
         }
 
-        /// <summary>
-        /// Lấy tất cả script của một POI từ SQLite (tất cả ngôn ngữ).
-        /// </summary>
         public List<OfflinePoiScript> GetAllLocalScripts(int poiId)
         {
-            try
-            {
-                return _offlineDb.GetAllScriptsForPoi(poiId);
-            }
-            catch
-            {
-                return new List<OfflinePoiScript>();
-            }
+            try { return _offlineDb.GetAllScriptsForPoi(poiId); }
+            catch { return new List<OfflinePoiScript>(); }
         }
 
         /// <summary>
-        /// Kiểm tra POI đã được cached offline chưa.
+        /// YC1: Lấy title đã được cache theo ngôn ngữ hiện tại.
         /// </summary>
-        public bool IsPoiCached(int poiId) =>
-            _offlineDb.GetPoiVersion(poiId) != null;
+        public string? GetLocalTitle(int poiId, string languageCode)
+        {
+            try
+            {
+                var script = GetLocalScript(poiId, languageCode);
+                if (script != null && !string.IsNullOrWhiteSpace(script.Title))
+                    return script.Title;
+                return null;
+            }
+            catch { return null; }
+        }
+
+        /// <summary>
+        /// YC4: Lấy food translations đã cache theo ngôn ngữ.
+        /// </summary>
+        public List<Food> GetLocalFoods(int poiId, string languageCode)
+        {
+            try
+            {
+                var foods = _offlineDb.GetFoodTranslations(poiId, languageCode);
+                if (foods.Count > 0) return foods;
+
+                // Fallback: tìm ngôn ngữ khác
+                var prefix = languageCode.Split('-')[0];
+                foods = _offlineDb.GetFoodTranslationsByPrefix(poiId, prefix);
+                if (foods.Count > 0) return foods;
+
+                // Fallback cuối: English
+                return _offlineDb.GetFoodTranslations(poiId, "en");
+            }
+            catch { return new List<Food>(); }
+        }
+
+        public bool IsPoiCached(int poiId) => _offlineDb.GetPoiVersion(poiId) != null;
 
         // ══════════════════════════════════════════════════════════════
         // HELPERS
@@ -477,13 +441,9 @@ namespace SmartTourApp.Services
             try
             {
                 var current = Connectivity.Current.NetworkAccess;
-                return current == NetworkAccess.Internet ||
-                       current == NetworkAccess.ConstrainedInternet;
+                return current == NetworkAccess.Internet || current == NetworkAccess.ConstrainedInternet;
             }
-            catch
-            {
-                return false;
-            }
+            catch { return false; }
         }
 
         private void ReportProgress(SyncPhase phase, int done, int total, string message)
@@ -505,19 +465,8 @@ namespace SmartTourApp.Services
             catch { }
         }
 
-        // ══════════════════════════════════════════════════════════════
-        // DISPOSAL
-        // ══════════════════════════════════════════════════════════════
-
-        public void Dispose()
-        {
-            StopBackgroundSync();
-        }
+        public void Dispose() => StopBackgroundSync();
     }
-
-    // ══════════════════════════════════════════════════════════════════
-    // DTOs / Models
-    // ══════════════════════════════════════════════════════════════════
 
     public enum SyncPhase { Prefetch, VersionCheck, LogSync }
 

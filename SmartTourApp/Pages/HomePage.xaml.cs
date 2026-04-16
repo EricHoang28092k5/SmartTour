@@ -14,18 +14,23 @@ public partial class HomePage : ContentPage
     private readonly LocalizationService loc;
     private readonly LanguageService lang;
     private readonly ApiService api;
+    private readonly OfflineSyncService offlineSync;
 
     private List<Poi> pois = new();
     private Poi? nearest;
     private Location? userLoc;
 
-    // YC3: Cache translated names per poi id
+    // YC1: Cache translated names per poi id — now loaded from SQLite offline cache first
     private readonly Dictionary<int, string> _translatedNames = new();
 
     private bool isLoaded;
     private bool isPlaying;
     private bool isItemPlaying = false;
     private Poi? currentPlayingPoi;
+
+    // YC5: Track nếu data đã load xong để tránh re-fetch khi quay lại
+    private bool _dataReady = false;
+    private string _dataLang = "";
 
     public HomePage(
         PoiRepository repo,
@@ -34,7 +39,8 @@ public partial class HomePage : ContentPage
         RouteTrackingService routeTracking,
         LocalizationService loc,
         LanguageService lang,
-        ApiService api)
+        ApiService api,
+        OfflineSyncService offlineSync)
     {
         InitializeComponent();
         this.repo = repo;
@@ -44,14 +50,18 @@ public partial class HomePage : ContentPage
         this.loc = loc;
         this.lang = lang;
         this.api = api;
+        this.offlineSync = offlineSync;
 
-        // YC3: Re-fetch names when language changes
-        this.lang.OnLanguageChanged += async _ =>
+        // YC1: Re-fetch names when language changes
+        this.lang.OnLanguageChanged += async __ =>
         {
             _translatedNames.Clear();
+            _dataReady = false;
+            _dataLang = "";
+
             if (pois.Count > 0)
             {
-                await LoadTranslatedNamesAsync(pois);
+                LoadTranslatedNamesFromCache(pois);
                 ApplyTranslatedNames();
                 MainThread.BeginInvokeOnMainThread(() =>
                 {
@@ -60,6 +70,9 @@ public partial class HomePage : ContentPage
                     PoiList.ItemsSource = pois;
                     UpdateHeroTitle();
                 });
+
+                // Background: update từ API nếu online
+                _ = RefreshTranslatedNamesFromApiAsync(pois);
             }
         };
     }
@@ -69,14 +82,31 @@ public partial class HomePage : ContentPage
         base.OnAppearing();
         ApplyLocalization();
 
+        var currentLang = lang.Current;
+
         if (!isLoaded)
-            _ = LoadAsync();
-        else
         {
-            // Refresh display names when returning to page
+            _ = LoadAsync();
+        }
+        else if (!_dataReady || !string.Equals(_dataLang, currentLang, StringComparison.OrdinalIgnoreCase))
+        {
+            // YC5: Ngôn ngữ đổi, cần refresh names — dùng cache trước, không re-fetch toàn bộ
+            LoadTranslatedNamesFromCache(pois);
+            ApplyTranslatedNames();
             PoiList.ItemsSource = null;
             PoiList.ItemsSource = pois;
             UpdateHeroTitle();
+            _dataLang = currentLang;
+            _dataReady = true;
+
+            // Background refresh
+            _ = RefreshTranslatedNamesFromApiAsync(pois);
+        }
+        else
+        {
+            // YC5: Data đã ready, chỉ update UI tối thiểu — không delay
+            UpdateGreeting();
+            UpdateHeroPlayBtn();
         }
     }
 
@@ -85,7 +115,7 @@ public partial class HomePage : ContentPage
         AppNameLabel.Text = loc.AppName;
         UpdateGreeting();
         LblNearestBadge.Text = loc.NearestBadge;
-        HeroPlayBtn.Text = isPlaying ? loc.NowPlaying : loc.ListenNow;
+        UpdateHeroPlayBtn();
         LblPlaces.Text = loc.Places;
         LblJourneys.Text = loc.Journeys;
         LblNearbyTitle.Text = loc.NearbyPlaces;
@@ -104,6 +134,11 @@ public partial class HomePage : ContentPage
         };
     }
 
+    private void UpdateHeroPlayBtn()
+    {
+        HeroPlayBtn.Text = isPlaying ? loc.NowPlaying : loc.ListenNow;
+    }
+
     private void UpdateHeroTitle()
     {
         if (nearest == null) return;
@@ -118,39 +153,127 @@ public partial class HomePage : ContentPage
         isLoaded = true;
         HeroTitle.Text = loc.Loading;
 
-        pois = repo.GetCachedPois() ?? await repo.GetPois();
+        // YC5: Dùng cached pois nếu có để hiện nhanh
+        var cachedPois = repo.GetCachedPois();
+        if (cachedPois != null && cachedPois.Count > 0)
+        {
+            pois = cachedPois;
 
-        // YC3: Load translated names
-        await LoadTranslatedNamesAsync(pois);
-        ApplyTranslatedNames();
+            // YC1: Load tên từ SQLite offline cache ngay lập tức (không cần network)
+            LoadTranslatedNamesFromCache(pois);
+            ApplyTranslatedNames();
+            PoiList.ItemsSource = pois;
 
-        PoiList.ItemsSource = pois;
+            // Load location song song
+            _ = LoadLocationAsync();
 
-        await LoadLocationAsync();
+            // Background: lấy POIs mới từ API
+            _ = RefreshPoisFromApiAsync();
+        }
+        else
+        {
+            // Lần đầu — phải fetch từ API
+            pois = await repo.GetPois();
+            LoadTranslatedNamesFromCache(pois);
+            ApplyTranslatedNames();
+            PoiList.ItemsSource = pois;
+            await LoadLocationAsync();
+        }
+
+        _dataLang = lang.Current;
+        _dataReady = true;
+
+        // Background: refresh titles từ API nếu online
+        _ = RefreshTranslatedNamesFromApiAsync(pois);
     }
 
-    // YC3: Fetch titles from API for all pois
-    private async Task LoadTranslatedNamesAsync(List<Poi> poiList)
+    // YC5: Background refresh POIs sau khi đã show cache
+    private async Task RefreshPoisFromApiAsync()
     {
+        try
+        {
+            var fresh = await repo.GetPois();
+            if (fresh != null && fresh.Count > 0 && fresh.Count != pois.Count)
+            {
+                pois = fresh;
+                LoadTranslatedNamesFromCache(pois);
+                ApplyTranslatedNames();
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    PoiList.ItemsSource = null;
+                    PoiList.ItemsSource = pois;
+                    SortPoisInline();
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[HomePage] RefreshPois error: {ex.Message}");
+        }
+    }
+
+    // YC1: Load tên đã dịch từ SQLite offline cache (không cần network)
+    private void LoadTranslatedNamesFromCache(List<Poi> poiList)
+    {
+        var currentLang = lang.Current;
+        foreach (var poi in poiList)
+        {
+            var localTitle = offlineSync.GetLocalTitle(poi.Id, currentLang);
+            if (!string.IsNullOrWhiteSpace(localTitle))
+                _translatedNames[poi.Id] = localTitle;
+        }
+    }
+
+    // YC1: Background refresh từ API (chỉ gọi khi online)
+    private async Task RefreshTranslatedNamesFromApiAsync(List<Poi> poiList)
+    {
+        if (!IsOnline()) return;
+
         var currentLang = lang.Current;
         var tasks = poiList.Select(async poi =>
         {
             try
             {
+                // Kiểm tra cache trước, chỉ gọi API nếu chưa có hoặc muốn refresh
+                var localScripts = offlineSync.GetAllLocalScripts(poi.Id);
+                var selected = localScripts
+                    .FirstOrDefault(s => s.LanguageCode.StartsWith(currentLang, StringComparison.OrdinalIgnoreCase))
+                    ?? localScripts.FirstOrDefault(s => s.LanguageCode.StartsWith("en", StringComparison.OrdinalIgnoreCase))
+                    ?? localScripts.FirstOrDefault();
+
+                if (selected != null && !string.IsNullOrWhiteSpace(selected.Title))
+                {
+                    _translatedNames[poi.Id] = selected.Title;
+                    return;
+                }
+
+                // Nếu không có cache thì gọi API
                 var scripts = await api.GetTtsScripts(poi.Id);
                 if (scripts == null || scripts.Count == 0) return;
 
-                var selected = SelectTitle(scripts, currentLang);
-                if (selected != null && !string.IsNullOrWhiteSpace(selected.Title))
-                    _translatedNames[poi.Id] = selected.Title;
+                var apiSelected = SelectTitle(scripts, currentLang);
+                if (apiSelected != null && !string.IsNullOrWhiteSpace(apiSelected.Title))
+                    _translatedNames[poi.Id] = apiSelected.Title;
             }
             catch { /* fallback to poi.Name */ }
         });
 
         await Task.WhenAll(tasks);
+
+        // Update UI chỉ nếu ngôn ngữ chưa đổi
+        if (string.Equals(lang.Current, currentLang, StringComparison.OrdinalIgnoreCase))
+        {
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                ApplyTranslatedNames();
+                PoiList.ItemsSource = null;
+                PoiList.ItemsSource = pois;
+                UpdateHeroTitle();
+            });
+        }
     }
 
-    // YC3: Apply translated names to poi.DisplayName
+    // YC1: Apply translated names to poi.DisplayName
     private void ApplyTranslatedNames()
     {
         foreach (var poi in pois)
@@ -162,7 +285,6 @@ public partial class HomePage : ContentPage
         }
     }
 
-    // YC3: Language selection logic: match → en → vi → first
     private TtsDto? SelectTitle(List<TtsDto> scripts, string currentLang)
     {
         return scripts.FirstOrDefault(x =>
@@ -176,15 +298,33 @@ public partial class HomePage : ContentPage
 
     private async Task LoadLocationAsync()
     {
-        var loc2 = await Geolocation.GetLastKnownLocationAsync();
-        if (loc2 == null) return;
+        try
+        {
+            // YC5: Dùng last known trước (nhanh hơn), update với fresh location sau
+            var lastKnown = await Geolocation.GetLastKnownLocationAsync();
+            if (lastKnown != null)
+            {
+                userLoc = lastKnown;
+                FindNearest();
+                SortPoisInline();
+            }
 
-        userLoc = loc2;
-        FindNearest();
-        SortPois();
+            // Sau đó lấy fresh location
+            var fresh = await locationService.GetLocation();
+            if (fresh != null && fresh != lastKnown)
+            {
+                userLoc = fresh;
+                FindNearest();
+                SortPoisInline();
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[HomePage] LoadLocation error: {ex.Message}");
+        }
     }
 
-    private async void FindNearest()
+    private void FindNearest()
     {
         if (userLoc == null || pois.Count == 0) return;
 
@@ -198,31 +338,36 @@ public partial class HomePage : ContentPage
         foreach (var p in pois)
             p.IsNearest = p.Id == nearest.Id;
 
-        // YC3: Use translated name for hero
         UpdateHeroTitle();
-        HeroImage.Source = nearest.ImageUrl;
 
-        await HeroImage.FadeToAsync(1, 400);
+        MainThread.BeginInvokeOnMainThread(async () =>
+        {
+            HeroImage.Source = nearest.ImageUrl;
+            await HeroImage.FadeToAsync(1, 400);
 
-        var dist = Location.CalculateDistance(
-            userLoc, new Location(nearest.Lat, nearest.Lng), DistanceUnits.Kilometers);
+            var dist = Location.CalculateDistance(
+                userLoc, new Location(nearest.Lat, nearest.Lng), DistanceUnits.Kilometers);
 
-        HeroDistance.Text = dist < 1
-            ? string.Format(loc.DistanceM, (int)(dist * 1000))
-            : string.Format(loc.DistanceKmFar, Math.Round(dist, 1));
+            HeroDistance.Text = dist < 1
+                ? string.Format(loc.DistanceM, (int)(dist * 1000))
+                : string.Format(loc.DistanceKmFar, Math.Round(dist, 1));
+        });
     }
 
-    private void SortPois()
+    // YC5: SortPois inline, không tạo list mới không cần thiết
+    private void SortPoisInline()
     {
         if (userLoc == null) return;
         pois = pois.OrderBy(p =>
             Location.CalculateDistance(
                 userLoc, new Location(p.Lat, p.Lng), DistanceUnits.Kilometers))
             .ToList();
-
-        // Re-apply translated names after sort
         ApplyTranslatedNames();
-        PoiList.ItemsSource = pois;
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            PoiList.ItemsSource = null;
+            PoiList.ItemsSource = pois;
+        });
     }
 
     private async void PlayNearest(object sender, EventArgs e)
@@ -325,5 +470,15 @@ public partial class HomePage : ContentPage
         }
         catch { }
         return userLoc;
+    }
+
+    private static bool IsOnline()
+    {
+        try
+        {
+            var access = Connectivity.Current.NetworkAccess;
+            return access == NetworkAccess.Internet || access == NetworkAccess.ConstrainedInternet;
+        }
+        catch { return false; }
     }
 }

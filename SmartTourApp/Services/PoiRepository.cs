@@ -21,6 +21,10 @@ namespace SmartTourApp.Services
         private string cachedLang = string.Empty;
         private readonly SemaphoreSlim cacheLock = new(1, 1);
 
+        // YC1: Flag để biết đã pre-fetch audio chưa (tránh pre-fetch nhiều lần)
+        private bool _audioPreFetchDone = false;
+        private string _audioPreFetchLang = "";
+
         private readonly TimeSpan cacheTTL = TimeSpan.FromMinutes(5);
 
         public PoiRepository(Database db, ApiService api, AudioService audio,
@@ -40,30 +44,28 @@ namespace SmartTourApp.Services
 
         public async Task<List<Poi>> GetPois()
         {
+            var currentLang = languageService.Current;
+
             if (cachedPois != null &&
-                string.Equals(cachedLang, languageService.Current, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(cachedLang, currentLang, StringComparison.OrdinalIgnoreCase) &&
                 DateTime.UtcNow - cacheTime < cacheTTL)
             {
                 return cachedPois;
             }
 
             await cacheLock.WaitAsync();
-
             try
             {
+                currentLang = languageService.Current;
                 if (cachedPois != null &&
-                    string.Equals(cachedLang, languageService.Current, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(cachedLang, currentLang, StringComparison.OrdinalIgnoreCase) &&
                     DateTime.UtcNow - cacheTime < cacheTTL)
                 {
                     return cachedPois;
                 }
 
                 List<Poi>? server = null;
-
-                try
-                {
-                    server = await api.GetPois();
-                }
+                try { server = await api.GetPois(); }
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine("API FAIL: " + ex.Message);
@@ -74,45 +76,60 @@ namespace SmartTourApp.Services
                 {
                     cachedPois = server;
                     cacheTime = DateTime.UtcNow;
-                    cachedLang = languageService.Current;
+                    cachedLang = currentLang;
 
-                    // ── Yêu cầu 1: Version Check + Selective Pre-fetch ──
+                    var capturedPois = new List<Poi>(server);
+                    var capturedLang = currentLang;
+
+                    // ── Background: sync DB + pre-fetch toàn bộ data offline ──
                     _ = Task.Run(async () =>
                     {
                         try
                         {
                             // 1. Sync local DB
-                            db.AddPois(cachedPois);
+                            db.AddPois(capturedPois);
 
-                            // 2. Kiểm tra POI nào bị stale (server mới hơn local)
-                            var staleIds = await offlineSync.CheckStalePoiIdsAsync(cachedPois);
+                            // 2. YC1: Pre-fetch toàn bộ scripts + foods nếu chưa làm
+                            //    hoặc ngôn ngữ đã thay đổi (cần refresh food translations)
+                            bool needFetch = !_audioPreFetchDone ||
+                                !string.Equals(_audioPreFetchLang, capturedLang, StringComparison.OrdinalIgnoreCase);
 
-                            if (staleIds.Count > 0)
+                            if (needFetch)
                             {
-                                System.Diagnostics.Debug.WriteLine(
-                                    $"[PoiRepo] {staleIds.Count} stale POIs → refreshing...");
-                                await offlineSync.RefreshStaleDataAsync(staleIds, cachedPois);
+                                System.Diagnostics.Debug.WriteLine("[PoiRepo] Starting full offline pre-fetch...");
+                                await offlineSync.PrefetchPoiDataAsync(capturedPois);
+                                _audioPreFetchDone = true;
+                                _audioPreFetchLang = capturedLang;
                             }
-
-                            // 3. Preload audio URLs (top 5 gần nhất)
-                            var urls = new List<string>();
-                            foreach (var poi in cachedPois.Take(5))
+                            else
                             {
-                                var scripts = await api.GetTtsScripts(poi.Id);
-                                foreach (var s in scripts)
+                                // Chỉ check stale data
+                                var staleIds = await offlineSync.CheckStalePoiIdsAsync(capturedPois);
+                                if (staleIds.Count > 0)
                                 {
-                                    if (!string.IsNullOrWhiteSpace(s.AudioUrl))
-                                        urls.Add(s.AudioUrl!);
+                                    System.Diagnostics.Debug.WriteLine(
+                                        $"[PoiRepo] {staleIds.Count} stale POIs → refreshing...");
+                                    await offlineSync.RefreshStaleDataAsync(staleIds, capturedPois);
                                 }
                             }
 
+                            // 3. Preload audio URLs (top 5)
+                            var urls = new List<string>();
+                            foreach (var poi in capturedPois.Take(5))
+                            {
+                                var localScripts = offlineSync.GetAllLocalScripts(poi.Id);
+                                foreach (var s in localScripts)
+                                {
+                                    if (!string.IsNullOrWhiteSpace(s.AudioUrl))
+                                        urls.Add(s.AudioUrl);
+                                }
+                            }
                             if (urls.Count > 0)
                                 await audio.Preload(urls);
                         }
                         catch (Exception ex)
                         {
-                            System.Diagnostics.Debug.WriteLine(
-                                $"[PoiRepo] BG sync error: {ex.Message}");
+                            System.Diagnostics.Debug.WriteLine($"[PoiRepo] BG sync error: {ex.Message}");
                         }
                     });
 
@@ -123,7 +140,7 @@ namespace SmartTourApp.Services
                 var local = await Task.Run(() => db.GetPois());
                 cachedPois = local;
                 cacheTime = DateTime.UtcNow;
-                cachedLang = languageService.Current;
+                cachedLang = currentLang;
                 return cachedPois;
             }
             finally
@@ -156,7 +173,6 @@ namespace SmartTourApp.Services
         public async Task ProcessOutboxAsync()
         {
             var items = db.GetOutboxItems();
-
             foreach (var item in items)
             {
                 try
@@ -165,16 +181,11 @@ namespace SmartTourApp.Services
                     {
                         var poi = System.Text.Json.JsonSerializer.Deserialize<Poi>(item.Payload);
                         if (poi == null) continue;
-
                         await Task.Delay(20);
-
                         db.MarkOutboxSynced(item.Id);
                     }
                 }
-                catch
-                {
-                    db.IncreaseRetry(item.Id);
-                }
+                catch { db.IncreaseRetry(item.Id); }
             }
         }
 
@@ -189,6 +200,8 @@ namespace SmartTourApp.Services
             cachedPois = null;
             cacheTime = DateTime.MinValue;
             cachedLang = string.Empty;
+            _audioPreFetchDone = false;
+            _audioPreFetchLang = "";
         }
     }
 }
