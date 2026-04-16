@@ -25,10 +25,22 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     }));
 
 // Cấu hình Cloudinary
-var cloudinaryAccount = new Account(
-    Environment.GetEnvironmentVariable("CLOUDINARY_CLOUD_NAME"),
-    Environment.GetEnvironmentVariable("CLOUDINARY_API_KEY"),
-    Environment.GetEnvironmentVariable("CLOUDINARY_API_SECRET"));
+var cloudName = Environment.GetEnvironmentVariable("CLOUDINARY_CLOUD_NAME");
+var apiKey = Environment.GetEnvironmentVariable("CLOUDINARY_API_KEY");
+var apiSecret = Environment.GetEnvironmentVariable("CLOUDINARY_API_SECRET");
+var hasCloudinaryConfig =
+    !string.IsNullOrWhiteSpace(cloudName) &&
+    !string.IsNullOrWhiteSpace(apiKey) &&
+    !string.IsNullOrWhiteSpace(apiSecret);
+
+if (!hasCloudinaryConfig)
+{
+    Console.WriteLine("[Startup Warning] Missing Cloudinary config. CMS can still boot for migrations/tools, but image/audio upload will fail until config is set.");
+}
+
+var cloudinaryAccount = hasCloudinaryConfig
+    ? new Account(cloudName, apiKey, apiSecret)
+    : new Account("placeholder-cloud", "placeholder-key", "placeholder-secret");
 builder.Services.AddSingleton(new Cloudinary(cloudinaryAccount));
 
 // Cấu hình Identity (Quản lý User & Role)

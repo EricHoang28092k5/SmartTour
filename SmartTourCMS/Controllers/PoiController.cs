@@ -191,8 +191,17 @@ namespace SmartTourCMS.Controllers
                 .ToDictionaryAsync(l => l.Id);
 
             var missing = 0;
+            var generated = 0;
+            var skipped = 0;
             foreach (var t in translations)
             {
+                // Chỉ tạo lại những audio đang thiếu.
+                if (!string.IsNullOrWhiteSpace(t.AudioUrl))
+                {
+                    skipped++;
+                    continue;
+                }
+
                 var script = t.TtsScript ?? t.Description;
                 if (string.IsNullOrWhiteSpace(script)) continue;
 
@@ -201,14 +210,18 @@ namespace SmartTourCMS.Controllers
                     : "vi-VN";
                 var url = await _voiceService.GenerateAndUploadAudio(script, langCode);
                 if (string.IsNullOrWhiteSpace(url)) missing++;
-                else t.AudioUrl = url;
+                else
+                {
+                    t.AudioUrl = url;
+                    generated++;
+                }
             }
 
             await _context.SaveChangesAsync();
             if (missing > 0)
                 TempData["AudioWarning"] = $"Vẫn còn {missing} bản dịch không tạo được audio. Kiểm tra Azure Speech và Cloudinary.";
             else
-                TempData["AudioSuccess"] = "Đã tạo/cập nhật audio cho các bản dịch.";
+                TempData["AudioSuccess"] = $"Đã tạo audio cho {generated} bản dịch thiếu. Bỏ qua {skipped} bản dịch đã có audio.";
 
             return RedirectToAction("Index", "Translation", new { poiId });
         }

@@ -23,5 +23,8 @@ namespace SmartTour.Shared.Models
 
         [JsonIgnore] // Chặn lỗi vòng lặp JSON 
         public Poi? Poi { get; set; }
+
+        [JsonIgnore]
+        public ICollection<FoodTranslation> FoodTranslations { get; set; } = new List<FoodTranslation>();
     }
 }

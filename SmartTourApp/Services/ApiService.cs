@@ -7,17 +7,20 @@ namespace SmartTour.Services;
 public class ApiService
 {
     private readonly HttpClient http;
+    private readonly LanguageService languageService;
 
-    public ApiService(HttpClient http)
+    public ApiService(HttpClient http, LanguageService languageService)
     {
         this.http = http;
+        this.languageService = languageService;
     }
 
     public async Task<List<Poi>> GetPois()
     {
         try
         {
-            var data = await http.GetFromJsonAsync<List<Poi>>("api/pois");
+            var lang = (languageService.Current ?? "en").Trim().ToLowerInvariant();
+            var data = await http.GetFromJsonAsync<List<Poi>>($"api/pois?lang={Uri.EscapeDataString(lang)}");
             return data ?? new List<Poi>();
         }
         catch (Exception ex)

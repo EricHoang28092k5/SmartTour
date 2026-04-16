@@ -14,19 +14,23 @@ namespace SmartTourApp.Services
         private readonly ApiService api;
         private readonly AudioService audio;
         private readonly OfflineSyncService offlineSync;
+        private readonly LanguageService languageService;
 
         private List<Poi>? cachedPois;
         private DateTime cacheTime;
+        private string cachedLang = string.Empty;
         private readonly SemaphoreSlim cacheLock = new(1, 1);
 
         private readonly TimeSpan cacheTTL = TimeSpan.FromMinutes(5);
 
         public PoiRepository(Database db, ApiService api, AudioService audio,
+            LanguageService languageService,
             OfflineSyncService offlineSync)
         {
             this.db = db;
             this.api = api;
             this.audio = audio;
+            this.languageService = languageService;
             this.offlineSync = offlineSync;
         }
 
@@ -37,6 +41,7 @@ namespace SmartTourApp.Services
         public async Task<List<Poi>> GetPois()
         {
             if (cachedPois != null &&
+                string.Equals(cachedLang, languageService.Current, StringComparison.OrdinalIgnoreCase) &&
                 DateTime.UtcNow - cacheTime < cacheTTL)
             {
                 return cachedPois;
@@ -47,6 +52,7 @@ namespace SmartTourApp.Services
             try
             {
                 if (cachedPois != null &&
+                    string.Equals(cachedLang, languageService.Current, StringComparison.OrdinalIgnoreCase) &&
                     DateTime.UtcNow - cacheTime < cacheTTL)
                 {
                     return cachedPois;
@@ -68,6 +74,7 @@ namespace SmartTourApp.Services
                 {
                     cachedPois = server;
                     cacheTime = DateTime.UtcNow;
+                    cachedLang = languageService.Current;
 
                     // ── Yêu cầu 1: Version Check + Selective Pre-fetch ──
                     _ = Task.Run(async () =>
@@ -116,6 +123,7 @@ namespace SmartTourApp.Services
                 var local = await Task.Run(() => db.GetPois());
                 cachedPois = local;
                 cacheTime = DateTime.UtcNow;
+                cachedLang = languageService.Current;
                 return cachedPois;
             }
             finally
@@ -180,6 +188,7 @@ namespace SmartTourApp.Services
         {
             cachedPois = null;
             cacheTime = DateTime.MinValue;
+            cachedLang = string.Empty;
         }
     }
 }

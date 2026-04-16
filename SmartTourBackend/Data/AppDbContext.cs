@@ -24,6 +24,7 @@ namespace SmartTourBackend.Data
         public DbSet<AppSetting> AppSettings { get; set; }
         public DbSet<PoiImage> PoiImages { get; set; }
         public DbSet<Food> Food { get; set; }
+        public DbSet<FoodTranslation> FoodTranslations { get; set; }
         public DbSet<Category> Category { get; set; }
         public DbSet<TourTranslation> TourTranslations { get; set; }
         public DbSet<RouteSession> RouteSessions { get; set; }
@@ -44,6 +45,21 @@ namespace SmartTourBackend.Data
             });
             modelBuilder.Entity<RouteSessionPoi>(entity => {
                 entity.Ignore(e => e.Poi);
+            });
+
+            modelBuilder.Entity<FoodTranslation>(entity =>
+            {
+                entity.HasOne(ft => ft.Food)
+                    .WithMany(f => f.FoodTranslations)
+                    .HasForeignKey(ft => ft.FoodId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(ft => ft.Language)
+                    .WithMany()
+                    .HasForeignKey(ft => ft.LanguageId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(ft => new { ft.FoodId, ft.LanguageId }).IsUnique();
             });
         }
     }

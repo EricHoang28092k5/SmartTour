@@ -24,11 +24,25 @@ builder.Services.AddIdentity<IdentityUser, IdentityRole>()
     .AddEntityFrameworkStores<AppDbContext>()
     .AddDefaultTokenProviders();
 
-// Cloudinary + VoiceService cho API audio. 
-var cloudinaryAccount = new Account(
-    Environment.GetEnvironmentVariable("CLOUDINARY_CLOUD_NAME") ?? builder.Configuration["Cloudinary:CloudName"],
-    Environment.GetEnvironmentVariable("CLOUDINARY_API_KEY") ?? builder.Configuration["Cloudinary:ApiKey"],
-    Environment.GetEnvironmentVariable("CLOUDINARY_API_SECRET") ?? builder.Configuration["Cloudinary:ApiSecret"]);
+// Cloudinary + VoiceService cho API audio.
+// Quan trọng: khi chạy EF design-time (migration), có thể thiếu Cloudinary env.
+// Không được để app crash tại startup vì EF cần tạo DbContext trước.
+var cloudName = Environment.GetEnvironmentVariable("CLOUDINARY_CLOUD_NAME") ?? builder.Configuration["Cloudinary:CloudName"];
+var apiKey = Environment.GetEnvironmentVariable("CLOUDINARY_API_KEY") ?? builder.Configuration["Cloudinary:ApiKey"];
+var apiSecret = Environment.GetEnvironmentVariable("CLOUDINARY_API_SECRET") ?? builder.Configuration["Cloudinary:ApiSecret"];
+var hasCloudinaryConfig =
+    !string.IsNullOrWhiteSpace(cloudName) &&
+    !string.IsNullOrWhiteSpace(apiKey) &&
+    !string.IsNullOrWhiteSpace(apiSecret);
+
+if (!hasCloudinaryConfig)
+{
+    Console.WriteLine("[Startup Warning] Missing Cloudinary config. EF migration can still run, but upload audio/image will fail until config is set.");
+}
+
+var cloudinaryAccount = hasCloudinaryConfig
+    ? new Account(cloudName, apiKey, apiSecret)
+    : new Account("placeholder-cloud", "placeholder-key", "placeholder-secret");
 builder.Services.AddSingleton(new Cloudinary(cloudinaryAccount));
 builder.Services.AddScoped<IVoiceService, VoiceService>();
 

@@ -9,6 +9,24 @@
     </a>
 </div>
 
+<form id="foodFilterForm" asp-action="Index" method="get" class="card shadow-sm border-0 mb-3">
+    <div class="card-body row g-2 align-items-end">
+        <div class="col-md-5">
+            <label class="form-label mb-1">Tìm kiếm món ăn</label>
+            <input id="searchInput" type="text" name="search" value="@ViewBag.CurrentSearch" class="form-control" placeholder="Nhập tên món..." />
+        </div>
+        <div class="col-md-5">
+            <label class="form-label mb-1">Lọc theo POI</label>
+            <select id="poiFilter" name="poiId" class="form-select" asp-items="ViewBag.PoiFilterList">
+                <option value="">-- Tất cả POI --</option>
+            </select>
+        </div>
+        <div class="col-md-2 d-grid">
+            <a asp-action="Index" class="btn btn-outline-secondary"><i class="fa-solid fa-rotate-left"></i> Xóa lọc</a>
+        </div>
+    </div>
+</form>
+
 <div class="card shadow-sm border-0">
     <div class="card-body p-0">
         <table class="table table-hover align-middle mb-0">
@@ -47,13 +65,22 @@
                             <span class="badge bg-info text-dark border border-info">
                                 <i class="fa-solid fa-store"></i> @item.Poi?.Name
                             </span>
-                            <td class="text-center">
+                        </td>
+                        <td class="text-center">
                                 <div class="d-flex justify-content-center gap-2">
                                     <a asp-action="Edit" asp-route-id="@item.Id" class="btn btn-sm btn-outline-primary" title="Sửa món">
                                         <i class="fa-solid fa-pen-to-square"></i> Sửa
                                     </a>
+
+                                    <form asp-action="RegenerateTranslations" asp-route-id="@item.Id" method="post" onsubmit="return confirm('Tạo lại toàn bộ bản dịch cho món @item.Name?');">
+                                        @Html.AntiForgeryToken()
+                                        <button type="submit" class="btn btn-sm btn-outline-info" title="Tạo lại bản dịch Food">
+                                            <i class="fa-solid fa-language"></i> Tạo lại dịch
+                                        </button>
+                                    </form>
         
                                     <form asp-action="Delete" asp-route-id="@item.Id" method="post" onsubmit="return confirm('Bác có chắc muốn xóa món @item.Name này khỏi thực đơn không?');">
+                                        @Html.AntiForgeryToken()
                                         <button type="submit" class="btn btn-sm btn-outline-danger" title="Xóa món">
                                             <i class="fa-solid fa-trash"></i> Xóa
                                         </button>
@@ -65,7 +92,12 @@
             </tbody>
         </table>
             <div class="card-footer bg-white d-flex justify-content-center pt-3 pb-1 border-top-0 mt-3">
-                @Html.PagedListPager(Model, page => Url.Action("Index", new { page = page }), new PagedListRenderOptions
+                @Html.PagedListPager(Model, page => Url.Action("Index", new
+                {
+                    page = page,
+                    search = ViewBag.CurrentSearch,
+                    poiId = ViewBag.CurrentPoiId
+                }), new PagedListRenderOptions
                 {
                     LiElementClasses = new string[] { "page-item" },
                     PageClasses = new string[] { "page-link" }
@@ -73,3 +105,22 @@
             </div>
     </div>
 </div>
+
+<script>
+    (function () {
+        const form = document.getElementById('foodFilterForm');
+        const searchInput = document.getElementById('searchInput');
+        const poiFilter = document.getElementById('poiFilter');
+        if (!form || !searchInput || !poiFilter) return;
+
+        let timer = null;
+        searchInput.addEventListener('input', function () {
+            clearTimeout(timer);
+            timer = setTimeout(() => form.submit(), 300);
+        });
+
+        poiFilter.addEventListener('change', function () {
+            form.submit();
+        });
+    })();
+</script>

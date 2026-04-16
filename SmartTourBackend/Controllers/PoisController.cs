@@ -18,13 +18,37 @@ namespace SmartTourBackend.Controllers
 
         // --- 1. Lấy danh sách toàn bộ địa điểm ---
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Poi>>> GetPois()
+        public async Task<ActionResult<IEnumerable<Poi>>> GetPois([FromQuery] string? lang = null)
         {
-            return await _context.Pois
+            var requestedLang = NormalizeTranslateLanguageCode(lang);
+            var pois = await _context.Pois
+                .AsNoTracking()
                 .Include(p => p.AudioFiles)
                 .Include(p => p.PoiImages)
                 .Include(p => p.Foods)
+                    .ThenInclude(f => f.FoodTranslations)
+                        .ThenInclude(ft => ft.Language)
                 .ToListAsync();
+
+            foreach (var poi in pois)
+            {
+                if (poi.Foods == null) continue;
+                foreach (var food in poi.Foods)
+                {
+                    var translation = food.FoodTranslations?
+                        .FirstOrDefault(t => NormalizeTranslateLanguageCode(t.Language?.Code) == requestedLang)
+                        ?? food.FoodTranslations?.FirstOrDefault(t => NormalizeTranslateLanguageCode(t.Language?.Code) == "en")
+                        ?? food.FoodTranslations?.FirstOrDefault();
+
+                    if (translation != null)
+                    {
+                        food.Name = string.IsNullOrWhiteSpace(translation.Name) ? food.Name : translation.Name;
+                        food.Description = string.IsNullOrWhiteSpace(translation.Description) ? food.Description : translation.Description;
+                    }
+                }
+            }
+
+            return pois;
         }
 
         // --- 2. Lấy tất cả kịch bản TTS theo ngôn ngữ ---
@@ -155,6 +179,14 @@ namespace SmartTourBackend.Controllers
                 })
             });
         }
+
+        private static string NormalizeTranslateLanguageCode(string? code)
+        {
+            if (string.IsNullOrWhiteSpace(code)) return "en";
+            var normalized = code.Trim().ToLowerInvariant();
+            var dashIndex = normalized.IndexOf('-');
+            return dashIndex > 0 ? normalized[..dashIndex] : normalized;
+        }
     }
 
     // DTO nhận từ app — không yêu cầu UserId / DeviceId
@@ -166,4 +198,5 @@ namespace SmartTourBackend.Controllers
         public double Lng { get; set; }
         public int DurationListened { get; set; }
     }
+
 }
