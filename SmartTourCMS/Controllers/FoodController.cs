@@ -65,8 +65,8 @@ namespace SmartTourCMS.Controllers
             {
                 var keyword = search.Trim();
                 query = query.Where(f =>
-                    EF.Functions.Like(f.Name, $"%{keyword}%") ||
-                    EF.Functions.Like(f.Description, $"%{keyword}%"));
+                    EF.Functions.ILike(f.Name, $"%{keyword}%") ||
+                    EF.Functions.ILike(f.Description, $"%{keyword}%"));
             }
 
             // Lọc theo POI

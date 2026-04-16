@@ -52,8 +52,8 @@ namespace SmartTourCMS.Controllers
             {
                 var keyword = search.Trim();
                 query = query.Where(p =>
-                    EF.Functions.Like(p.Name, $"%{keyword}%") ||
-                    EF.Functions.Like(p.Description, $"%{keyword}%"));
+                    EF.Functions.ILike(p.Name, $"%{keyword}%") ||
+                    EF.Functions.ILike(p.Description, $"%{keyword}%"));
             }
 
             query = query.OrderByDescending(p => p.Id);
