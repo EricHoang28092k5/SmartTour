@@ -12,6 +12,8 @@ public partial class PoiDetailPage : ContentPage
     private readonly LocationService locationService;
     private readonly LocalizationService loc;
     private readonly ApiService api;
+    private readonly OfflineSyncService offlineSync;
+    private readonly LanguageService langService;
 
     private bool isSeeking = false;
     private double duration = 0;
@@ -23,9 +25,13 @@ public partial class PoiDetailPage : ContentPage
     private double _progressTrackWidth = 0;
     private Location? _cachedUserLocation;
 
-    // YC3: cache description theo ngôn ngữ
+    // YC2 + YC4: Cache description và tên POI theo ngôn ngữ
     private string? _cachedDescriptionLang = null;
-    private string? _cachedFoodLang = null;
+    private string? _cachedNameLang = null;
+
+    // YC3: Debounce slider update để giảm re-render
+    private double _lastSliderValue = -1;
+    private const double SliderUpdateThreshold = 0.2; // chỉ update UI khi thay đổi > 0.2s
 
     public Poi Poi
     {
@@ -41,17 +47,25 @@ public partial class PoiDetailPage : ContentPage
         PoiDetailAudioManager audio,
         LocationService locationService,
         LocalizationService loc,
-        ApiService api)
+        ApiService api,
+        OfflineSyncService offlineSync,
+        LanguageService langService)
     {
         InitializeComponent();
         this.audio = audio;
         this.locationService = locationService;
         this.loc = loc;
         this.api = api;
+        this.offlineSync = offlineSync;
+        this.langService = langService;
 
         audio.OnProgress += sec =>
         {
             if (isSeeking) return;
+            // YC3: Chỉ update UI khi thay đổi đủ lớn
+            if (Math.Abs(sec - _lastSliderValue) < SliderUpdateThreshold &&
+                sec > 0 && _lastSliderValue > 0) return;
+            _lastSliderValue = sec;
             MainThread.BeginInvokeOnMainThread(() => UpdateSliderUI(sec));
         };
 
@@ -71,6 +85,7 @@ public partial class PoiDetailPage : ContentPage
             MainThread.BeginInvokeOnMainThread(() =>
             {
                 hasStarted = false;
+                _lastSliderValue = -1;
                 SetPlayingState(false);
                 UpdateSliderUI(0);
             });
@@ -87,20 +102,19 @@ public partial class PoiDetailPage : ContentPage
     {
         base.OnAppearing();
 
-        // Apply localization
         ApplyLocalization();
 
         if (!hasStarted)
         {
+            _lastSliderValue = -1;
             UpdateSliderUI(0);
             TotalTimeLabel.Text = "00:00";
         }
 
         ProgressFillContainer.SizeChanged += OnProgressContainerSizeChanged;
 
-        // YC3: Load description từ TtsScript
-        _ = LoadDescriptionFromTtsAsync();
-        _ = LoadFoodMenuAsync();
+        // YC2 + YC4: Load tên POI và mô tả theo ngôn ngữ hiện tại
+        _ = LoadLocalizedPoiDataAsync();
 
         // Prefetch GPS
         _ = Task.Run(async () => { _cachedUserLocation = await locationService.GetLocation(); });
@@ -123,13 +137,12 @@ public partial class PoiDetailPage : ContentPage
 
         if (poi.Foods != null && poi.Foods.Any())
             FoodList.ItemsSource = poi.Foods;
-        else
-            FoodList.ItemsSource = new List<Food>();
 
-        PoiName.Text = poi.Name;
+        // Hiển thị tên ban đầu (DisplayName nếu đã có, fallback Name)
+        PoiName.Text = string.IsNullOrWhiteSpace(poi.DisplayName) ? poi.Name : poi.DisplayName;
         PoiImage.Source = poi.ImageUrl;
 
-        // Hiển thị description tạm (từ poi.Description) trong khi load TtsScript
+        // Hiển thị description tạm trong khi load
         PoiDescription.Text = string.IsNullOrWhiteSpace(poi.Description)
             ? loc.NoDescription
             : poi.Description;
@@ -138,112 +151,159 @@ public partial class PoiDetailPage : ContentPage
 
         // Reset cache để force reload khi POI thay đổi
         _cachedDescriptionLang = null;
-        _cachedFoodLang = null;
-    }
-
-    private async Task LoadFoodMenuAsync()
-    {
-        if (poi == null) return;
-
-        var currentLang = loc.Current;
-        if (_cachedFoodLang == currentLang && poi.Foods != null && poi.Foods.Any())
-            return;
-
-        try
-        {
-            var foods = await api.GetFoodsByPoi(poi.Id);
-            poi.Foods = foods ?? new List<Food>();
-            MainThread.BeginInvokeOnMainThread(() =>
-            {
-                FoodList.ItemsSource = null;
-                FoodList.ItemsSource = poi.Foods;
-            });
-            _cachedFoodLang = currentLang;
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[PoiDetail] LoadFoodMenu error: {ex.Message}");
-        }
+        _cachedNameLang = null;
     }
 
     // ══════════════════════════════════════════════════════════════
-    // YC3: LOAD DESCRIPTION FROM TTS SCRIPT
+    // YC2 + YC4: LOAD LOCALIZED POI NAME + DESCRIPTION
+    // Đồng bộ ngôn ngữ tên POI giống HomePage
     // ══════════════════════════════════════════════════════════════
 
     /// <summary>
-    /// Tải description từ TtsScript của POI theo ngôn ngữ hiện tại.
-    /// Thay thế poi.Description bằng nội dung đa ngữ từ API/SQLite.
+    /// Tải tên POI và description theo ngôn ngữ hiện tại.
+    /// Logic: Online → API → cache SQLite | Offline → SQLite → TtsScript/Description
     /// </summary>
-    private async Task LoadDescriptionFromTtsAsync()
+    private async Task LoadLocalizedPoiDataAsync()
     {
         if (poi == null) return;
 
         var currentLang = loc.Current;
 
-        // Không reload nếu đang dùng cùng ngôn ngữ
-        if (_cachedDescriptionLang == currentLang) return;
+        // Skip nếu đã load ngôn ngữ này rồi
+        if (_cachedDescriptionLang == currentLang && _cachedNameLang == currentLang) return;
 
-        // Show loading
         DescLoadingRow.IsVisible = true;
 
         try
         {
-            var scripts = await api.GetTtsScripts(poi.Id);
+            List<ApiService.TtsDto>? scripts = null;
+
+            // YC4: Online thì gọi API, offline thì dùng SQLite
+            bool isOnline = IsOnline();
+
+            if (isOnline)
+            {
+                try
+                {
+                    scripts = await api.GetTtsScripts(poi.Id);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[PoiDetail] API failed, falling back to SQLite: {ex.Message}");
+                    scripts = null;
+                }
+            }
+
+            // YC4: Fallback sang SQLite nếu offline hoặc API thất bại
+            if (scripts == null || scripts.Count == 0)
+            {
+                var localScripts = offlineSync.GetAllLocalScripts(poi.Id);
+                if (localScripts.Count > 0)
+                {
+                    scripts = localScripts.Select(s => new ApiService.TtsDto
+                    {
+                        LanguageCode = s.LanguageCode,
+                        LanguageName = s.LanguageName,
+                        Title = s.Title,
+                        TtsScript = s.TtsScript,
+                        AudioUrl = s.AudioUrl
+                    }).ToList();
+
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[PoiDetail] Using {scripts.Count} SQLite scripts for POI {poi.Id}");
+                }
+            }
 
             if (scripts == null || scripts.Count == 0)
             {
-                // Fallback: dùng poi.Description
-                PoiDescription.Text = string.IsNullOrWhiteSpace(poi.Description)
-                    ? loc.NoDescription
-                    : poi.Description;
+                // Không có gì → dùng dữ liệu gốc
+                ApplyFallbackData();
                 _cachedDescriptionLang = currentLang;
+                _cachedNameLang = currentLang;
                 return;
             }
 
-            // Tìm script theo ngôn ngữ hiện tại
-            var selected = scripts.FirstOrDefault(x =>
-                x.LanguageCode.StartsWith(currentLang, StringComparison.OrdinalIgnoreCase))
-                ?? scripts.FirstOrDefault(x =>
-                    x.LanguageCode.StartsWith("en", StringComparison.OrdinalIgnoreCase))
-                ?? scripts.FirstOrDefault();
+            // YC2: Chọn script theo ngôn ngữ (giống logic HomePage)
+            var selected = SelectByLanguage(scripts, currentLang);
 
-            if (selected != null && !string.IsNullOrWhiteSpace(selected.TtsScript))
+            if (selected != null)
             {
-                PoiDescription.Text = selected.TtsScript;
-            }
-            else if (selected != null && !string.IsNullOrWhiteSpace(selected.Title))
-            {
-                // Fallback: dùng Title + poi.Description
-                PoiDescription.Text = string.IsNullOrWhiteSpace(poi.Description)
-                    ? selected.Title
-                    : poi.Description;
+                // YC2: Cập nhật tên POI theo ngôn ngữ
+                if (!string.IsNullOrWhiteSpace(selected.Title))
+                {
+                    PoiName.Text = selected.Title;
+                    // Cập nhật DisplayName để consistency
+                    poi.DisplayName = selected.Title;
+                }
+                else
+                {
+                    PoiName.Text = string.IsNullOrWhiteSpace(poi.DisplayName)
+                        ? poi.Name
+                        : poi.DisplayName;
+                }
+
+                // Cập nhật description từ TtsScript
+                if (!string.IsNullOrWhiteSpace(selected.TtsScript))
+                    PoiDescription.Text = selected.TtsScript;
+                else if (!string.IsNullOrWhiteSpace(selected.Title))
+                    PoiDescription.Text = string.IsNullOrWhiteSpace(poi.Description)
+                        ? selected.Title
+                        : poi.Description;
+                else
+                    ApplyFallbackData();
             }
             else
             {
-                PoiDescription.Text = string.IsNullOrWhiteSpace(poi.Description)
-                    ? loc.NoDescription
-                    : poi.Description;
+                ApplyFallbackData();
             }
 
             _cachedDescriptionLang = currentLang;
+            _cachedNameLang = currentLang;
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[PoiDetail] LoadDescription error: {ex.Message}");
-            // Fallback: dùng description gốc
-            if (string.IsNullOrWhiteSpace(PoiDescription.Text) ||
-                PoiDescription.Text == loc.NoDescription)
-            {
-                PoiDescription.Text = string.IsNullOrWhiteSpace(poi.Description)
-                    ? loc.NoDescription
-                    : poi.Description;
-            }
+            System.Diagnostics.Debug.WriteLine($"[PoiDetail] LoadLocalized error: {ex.Message}");
+            ApplyFallbackData();
         }
         finally
         {
             DescLoadingRow.IsVisible = false;
         }
     }
+
+    /// <summary>
+    /// YC2: Logic chọn ngôn ngữ giống HomePage - match → en → vi → first
+    /// </summary>
+    private static ApiService.TtsDto? SelectByLanguage(List<ApiService.TtsDto> scripts, string lang)
+    {
+        return scripts.FirstOrDefault(x =>
+                x.LanguageCode.StartsWith(lang, StringComparison.OrdinalIgnoreCase))
+            ?? scripts.FirstOrDefault(x =>
+                x.LanguageCode.StartsWith("en", StringComparison.OrdinalIgnoreCase))
+            ?? scripts.FirstOrDefault(x =>
+                x.LanguageCode.StartsWith("vi", StringComparison.OrdinalIgnoreCase))
+            ?? scripts.FirstOrDefault();
+    }
+
+    private void ApplyFallbackData()
+    {
+        // Giữ tên hiện tại (DisplayName hoặc Name)
+        if (string.IsNullOrWhiteSpace(PoiName.Text))
+            PoiName.Text = string.IsNullOrWhiteSpace(poi.DisplayName) ? poi.Name : poi.DisplayName;
+
+        // Fallback description
+        if (string.IsNullOrWhiteSpace(PoiDescription.Text) ||
+            PoiDescription.Text == loc.NoDescription)
+        {
+            PoiDescription.Text = string.IsNullOrWhiteSpace(poi.Description)
+                ? loc.NoDescription
+                : poi.Description;
+        }
+    }
+
+    // Giữ nguyên tên cũ để backward compat
+    private async Task LoadDescriptionFromTtsAsync() => await LoadLocalizedPoiDataAsync();
 
     private void OnProgressContainerSizeChanged(object? sender, EventArgs e)
     {
@@ -285,6 +345,7 @@ public partial class PoiDetailPage : ContentPage
             var loc2 = await GetFreshLocationAsync();
             await audio.Play(poi, loc2);
             hasStarted = true;
+            _lastSliderValue = -1;
             SetPlayingState(true);
             StartSliderLoop();
         }
@@ -313,6 +374,7 @@ public partial class PoiDetailPage : ContentPage
     {
         audio.Stop();
         hasStarted = false;
+        _lastSliderValue = -1;
         SetPlayingState(false);
         StopSliderLoop();
         MainThread.BeginInvokeOnMainThread(() => UpdateSliderUI(0));
@@ -346,7 +408,7 @@ public partial class PoiDetailPage : ContentPage
     }
 
     // ══════════════════════════════════════════════════════════════
-    // SLIDER LOOP
+    // SLIDER LOOP — YC3: Tối ưu interval từ liên tục → 150ms
     // ══════════════════════════════════════════════════════════════
 
     private void StartSliderLoop()
@@ -362,7 +424,12 @@ public partial class PoiDetailPage : ContentPage
                 if (!isSeeking && audio.IsPlaying)
                 {
                     var currentSec = ProgressSlider.Value;
-                    MainThread.BeginInvokeOnMainThread(() => SyncProgressFill(currentSec));
+                    // YC3: Chỉ update nếu thay đổi đáng kể
+                    if (Math.Abs(currentSec - _lastSliderValue) >= SliderUpdateThreshold || _lastSliderValue < 0)
+                    {
+                        _lastSliderValue = currentSec;
+                        MainThread.BeginInvokeOnMainThread(() => SyncProgressFill(currentSec));
+                    }
                 }
                 try { await Task.Delay(150, token); }
                 catch (OperationCanceledException) { break; }
@@ -404,7 +471,12 @@ public partial class PoiDetailPage : ContentPage
     {
         var target = Math.Max(0, ProgressSlider.Value - SkipSeconds);
         audio.Seek(target);
-        MainThread.BeginInvokeOnMainThread(() => { ProgressSlider.Value = target; UpdateSliderUI(target); });
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            ProgressSlider.Value = target;
+            _lastSliderValue = target;
+            UpdateSliderUI(target);
+        });
     }
 
     private void OnSkipForward(object sender, EventArgs e)
@@ -415,11 +487,17 @@ public partial class PoiDetailPage : ContentPage
             target = 0;
             audio.Stop();
             hasStarted = false;
+            _lastSliderValue = -1;
             SetPlayingState(false);
             StopSliderLoop();
         }
         audio.Seek(target);
-        MainThread.BeginInvokeOnMainThread(() => { ProgressSlider.Value = target; UpdateSliderUI(target); });
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            ProgressSlider.Value = target;
+            _lastSliderValue = target;
+            UpdateSliderUI(target);
+        });
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -472,8 +550,8 @@ public partial class PoiDetailPage : ContentPage
         MenuTab.FontAttributes = FontAttributes.None;
         MenuTab.Text = loc.Menu;
 
-        // YC3: reload description khi quay về overview
-        _ = LoadDescriptionFromTtsAsync();
+        // YC2 + YC4: reload dữ liệu ngôn ngữ khi quay về overview
+        _ = LoadLocalizedPoiDataAsync();
     }
 
     private void ShowMenu(object sender, EventArgs e)
@@ -499,8 +577,6 @@ public partial class PoiDetailPage : ContentPage
         OverviewTab.TextColor = Color.FromArgb("#9B9BAA");
         OverviewTab.FontAttributes = FontAttributes.None;
         OverviewTab.Text = loc.Overview;
-
-        _ = LoadFoodMenuAsync();
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -514,6 +590,7 @@ public partial class PoiDetailPage : ContentPage
         ProgressFillContainer.SizeChanged -= OnProgressContainerSizeChanged;
         audio.Stop();
         hasStarted = false;
+        _lastSliderValue = -1;
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -580,8 +657,19 @@ public partial class PoiDetailPage : ContentPage
     }
 
     // ══════════════════════════════════════════════════════════════
-    // UTILS
+    // HELPERS
     // ══════════════════════════════════════════════════════════════
+
+    private static bool IsOnline()
+    {
+        try
+        {
+            var access = Connectivity.Current.NetworkAccess;
+            return access == NetworkAccess.Internet ||
+                   access == NetworkAccess.ConstrainedInternet;
+        }
+        catch { return false; }
+    }
 
     private string Format(double sec)
     {

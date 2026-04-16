@@ -109,12 +109,11 @@
                     BackgroundColor="#F0F7FF">
                 <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
                     <Label x:Name="AutoPlayInfoIcon" Grid.Column="0" Text="✅"
-               FontSize="14" VerticalOptions="Start" Margin="0,2,0,0"/>
-
+                           FontSize="14" VerticalOptions="Start" Margin="0,2,0,0"/>
                     <Label x:Name="AutoPlayInfoLabel" Grid.Column="1"
-               Text="Thuyết minh sẽ tự động phát khi bạn tiếp cận điểm tham quan."
-               FontSize="12" TextColor="#1565C0"
-               LineBreakMode="WordWrap" VerticalOptions="Center"/>
+                           Text="Thuyết minh sẽ tự động phát khi bạn tiếp cận điểm tham quan."
+                           FontSize="12" TextColor="#1565C0"
+                           LineBreakMode="WordWrap" VerticalOptions="Center"/>
                 </Grid>
             </Border>
 
@@ -220,13 +219,12 @@
                     StrokeThickness="0" StrokeShape="RoundRectangle 14"
                     BackgroundColor="#F1F8E9">
                 <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
-                    <Label Grid.Column="0" Text="ℹ️" FontSize="14" 
-               VerticalOptions="Start" Margin="0,2,0,0"/>
-
+                    <Label Grid.Column="0" Text="ℹ️" FontSize="14"
+                           VerticalOptions="Start" Margin="0,2,0,0"/>
                     <Label x:Name="LblMapCacheInfo" Grid.Column="1"
-               Text="Bản đồ tự động lưu khi bạn duyệt có kết nối mạng. Nhấn ⬇ trên bản đồ để tải toàn bộ khu vực trước chuyến đi."
-               FontSize="12" TextColor="#33691E"
-               LineBreakMode="WordWrap" VerticalOptions="Center"/>
+                           Text="Bản đồ tự động lưu khi bạn duyệt có kết nối mạng. Nhấn ⬇ trên bản đồ để tải toàn bộ khu vực trước chuyến đi."
+                           FontSize="12" TextColor="#33691E"
+                           LineBreakMode="WordWrap" VerticalOptions="Center"/>
                 </Grid>
             </Border>
 

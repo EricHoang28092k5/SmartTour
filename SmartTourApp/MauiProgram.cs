@@ -36,7 +36,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<GeofencingEngine>();
 
         // ── Language & Localization ──
-        // YC5: LanguageService defaults to English on first install
+        // YC4: LanguageService defaults to English on first install
         builder.Services.AddSingleton<LanguageService>();
         builder.Services.AddSingleton<LocalizationService>();
 
@@ -59,6 +59,8 @@ public static class MauiProgram
         builder.Services.AddHttpClient<ApiService>(client =>
         {
             client.BaseAddress = new Uri("http://10.0.2.2:5165/");
+            // YC3: Thêm timeout để tránh treo UI
+            client.Timeout = TimeSpan.FromSeconds(15);
         });
 
         // ── Data / Repository ──
@@ -79,10 +81,12 @@ public static class MauiProgram
         builder.Services.AddSingleton<PoiDetailAudioManager>();
 
         // ── Pages ──
-        // MapPage giờ nhận thêm LocalizationService + LanguageService để sync ngôn ngữ
         builder.Services.AddSingleton<SettingsPage>();
         builder.Services.AddSingleton<HomePage>();
-        builder.Services.AddSingleton<MapPage>();       // <-- sẽ inject loc + lang tự động qua DI
+        builder.Services.AddSingleton<MapPage>();
+
+        // YC2: PoiDetailPage giờ nhận thêm OfflineSyncService + LanguageService
+        // để đồng bộ tên POI theo ngôn ngữ giống HomePage
         builder.Services.AddTransient<PoiDetailPage>();
 
 #if DEBUG

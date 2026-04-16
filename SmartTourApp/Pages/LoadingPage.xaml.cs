@@ -12,6 +12,9 @@ public partial class LoadingPage : ContentPage
     private double progress = 0;
     private CancellationTokenSource? animationCts;
 
+    // YC3: Shine animation dùng timer thay vì Dispatcher để tránh block UI thread
+    private System.Timers.Timer? _shineTimer;
+
     public LoadingPage(PoiRepository repo, TrackingService tracking)
     {
         InitializeComponent();
@@ -39,6 +42,9 @@ public partial class LoadingPage : ContentPage
     {
         base.OnDisappearing();
         animationCts?.Cancel();
+        _shineTimer?.Stop();
+        _shineTimer?.Dispose();
+        _shineTimer = null;
     }
 
     private async Task InitAsync()
@@ -54,6 +60,7 @@ public partial class LoadingPage : ContentPage
             var routeTracking = services?.GetService<RouteTrackingService>();
             var coordinator = services?.GetService<AudioCoordinator>();
             var loc = services?.GetService<LocalizationService>();
+            var offlineSync = services?.GetService<OfflineSyncService>();
 
             narration?.Reset();
             tracking.Stop();
@@ -64,6 +71,13 @@ public partial class LoadingPage : ContentPage
             await UpdateStatusAsync(loc?.LoadingPoi ?? "Đang tải địa điểm...", 0.25);
 
             var pois = await repo.GetPois();
+
+            // YC4: Nếu offline, vẫn dùng SQLite cache — không cần báo lỗi
+            if (pois.Count == 0)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    "[LoadingPage] No POIs from API/cache — continuing with empty list");
+            }
 
             await UpdateStatusAsync(loc?.LoadingTts ?? "Khởi tạo TTS...", 0.5);
 
@@ -132,17 +146,22 @@ public partial class LoadingPage : ContentPage
 
     private async Task AnimateProgressTo(double target)
     {
+        // YC3: Tăng step size để giảm số vòng lặp (ít re-render hơn)
+        const double step = 0.02;
+        const int delayMs = 25;
+
         while (progress < target)
         {
-            progress += 0.01;
+            progress = Math.Min(progress + step, target);
             await MainThread.InvokeOnMainThreadAsync(() =>
             {
                 ProgressBarContainer.WidthRequest = 300 * progress;
             });
-            await Task.Delay(20);
+            await Task.Delay(delayMs);
         }
     }
 
+    // YC3: Logo animation - giảm từ vòng lặp tight → có delay hợp lý
     private async void StartLogoAnimation(CancellationToken token)
     {
         try
@@ -153,26 +172,46 @@ public partial class LoadingPage : ContentPage
                 await Task.WhenAll(
                     LogoBorder.ScaleToAsync(1.0, 600, Easing.SinInOut),
                     LogoBorder.RotateToAsync(360, 2000, Easing.Linear));
+
+                if (token.IsCancellationRequested) break;
+
                 LogoBorder.Rotation = 0;
                 LogoBorder.TranslationX = 0;
                 LogoBorder.TranslationY = 0;
                 await LogoBorder.ScaleToAsync(0.9, 600, Easing.SinInOut);
+
+                // YC3: Thêm pause nhỏ giữa các vòng
+                await Task.Delay(200, token);
             }
         }
         catch (TaskCanceledException) { }
+        catch (OperationCanceledException) { }
     }
 
+    // YC3: Shine animation dùng timer độc lập với interval 40ms thay vì 30ms
     private void StartShineAnimation(CancellationToken token)
     {
-        Dispatcher.StartTimer(TimeSpan.FromMilliseconds(30), () =>
+        _shineTimer?.Stop();
+        _shineTimer?.Dispose();
+
+        _shineTimer = new System.Timers.Timer(40); // YC3: 40ms thay vì 30ms
+        _shineTimer.Elapsed += (_, _) =>
         {
-            if (token.IsCancellationRequested) return false;
+            if (token.IsCancellationRequested)
+            {
+                _shineTimer?.Stop();
+                return;
+            }
             double offset = (DateTime.Now.TimeOfDay.TotalMilliseconds % 1500) / 1500.0;
-            ShineBox.TranslationX = 300 * offset - 60;
-            return true;
-        });
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                ShineBox.TranslationX = 300 * offset - 60;
+            });
+        };
+        _shineTimer.Start();
     }
 
+    // YC3: Background animation - giữ nguyên nhưng cleanup đúng cách
     private async void StartBackgroundAnimation(CancellationToken token)
     {
         try
@@ -180,10 +219,12 @@ public partial class LoadingPage : ContentPage
             while (!token.IsCancellationRequested)
             {
                 await ProgressBackground.FadeToAsync(0.6, 800, Easing.SinInOut);
+                if (token.IsCancellationRequested) break;
                 await ProgressBackground.FadeToAsync(1.0, 800, Easing.SinInOut);
             }
         }
         catch (TaskCanceledException) { }
+        catch (OperationCanceledException) { }
     }
 
     private void ResetUI()

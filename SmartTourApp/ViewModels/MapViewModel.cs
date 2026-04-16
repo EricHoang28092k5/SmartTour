@@ -26,11 +26,7 @@ public class MapViewModel
     public MemoryLayer PoiLayer = new();
     public MemoryLayer HeatLayer = new();
     public MemoryLayer RouteLayer = new() { Name = "Route" };
-
-    // HeatmapLayer giữ field để không break code gọi — nhưng KHÔNG add vào map
     public MemoryLayer HeatmapLayer = new();
-
-    // ── Nearest POI highlight layer — vòng tròn nhấp nháy màu cam/vàng ──
     public MemoryLayer NearestHighlightLayer = new() { Name = "NearestHighlight" };
 
     private PointFeature? userFeature;
@@ -41,10 +37,12 @@ public class MapViewModel
     private readonly Dictionary<int, PointFeature> _poiFeatureMap = new();
     private int? _selectedPoiId = null;
     private Location? lastLocation;
+
+    // YC3: giảm fps animation
     private double pulseScale = 1.0;
     private bool pulseGrowing = true;
 
-    // ── Nearest highlight state ──
+    // Nearest highlight state
     private int? _nearestPoiId = null;
     private PointFeature? _nearestPulse1;
     private PointFeature? _nearestPulse2;
@@ -53,22 +51,16 @@ public class MapViewModel
     private double _nearestPulseScale2 = 1.3;
     private bool _nearestPulseGrowing = true;
 
-    private static readonly ImageStyle _normalIconStyle = new ImageStyle
-    {
-        Image = "embedded://SmartTourApp.Resources.Images.resicon.png",
-        SymbolScale = 0.6,
-        Offset = new Offset(0, 20)
-    };
-    private static readonly ImageStyle _selectedIconStyle = new ImageStyle
-    {
-        Image = "embedded://SmartTourApp.Resources.Images.mappin.png",
-        SymbolScale = 0.6,
-        Offset = new Offset(0, 20)
-    };
-    private static readonly ImageStyle poiIconStyle = _normalIconStyle;
+    // YC3: Chỉ dirty-flag khi cần update thực sự
+    private bool _nearestLayerDirty = false;
+    private bool _userLayerDirty = false;
+
+    // YC3: Giảm khoảng cách threshold để tránh update quá nhiều
+    private const double UserMoveThresholdKm = 0.005; // 5m thay vì 3m cũ
 
     public MapViewModel()
     {
+        // YC3: Giảm FPS animation từ ~16fps → ~10fps để tiết kiệm CPU
         StartPulseAnimation();
         StartNearestHighlightAnimation();
     }
@@ -81,7 +73,8 @@ public class MapViewModel
         if (lastLocation != null)
         {
             var distance = Location.CalculateDistance(lastLocation, loc, DistanceUnits.Kilometers);
-            if (distance < 0.003) return;
+            // YC3: Tăng threshold để giảm re-render
+            if (distance < UserMoveThresholdKm) return;
         }
         lastLocation = loc;
 
@@ -92,46 +85,57 @@ public class MapViewModel
         {
             accuracyFeature = new PointFeature(newPoint)
             {
-                Styles = { new SymbolStyle { SymbolScale = 2.0, Fill = new Brush(new Color(30, 136, 229, 35)) } }
+                Styles = { new SymbolStyle
+                {
+                    SymbolScale = 2.0,
+                    Fill = new Brush(new Color(30, 136, 229, 35))
+                }}
             };
             pulseFeature = new PointFeature(newPoint)
             {
-                Styles = { new SymbolStyle { SymbolScale = 1.2, Fill = new Brush(new Color(30, 136, 229, 70)) } }
+                Styles = { new SymbolStyle
+                {
+                    SymbolScale = 1.2,
+                    Fill = new Brush(new Color(30, 136, 229, 70))
+                }}
             };
             userFeature = new PointFeature(newPoint)
             {
-                Styles = { new SymbolStyle { SymbolScale = 0.35, Fill = new Brush(new Color(30, 136, 229)), Outline = new Pen(Color.White, 4) } }
+                Styles = { new SymbolStyle
+                {
+                    SymbolScale = 0.35,
+                    Fill = new Brush(new Color(30, 136, 229)),
+                    Outline = new Pen(Color.White, 4)
+                }}
             };
             UserLayer.Features = new[] { accuracyFeature, pulseFeature, userFeature };
             centerMap = true;
         }
         else
         {
-            accuracyFeature!.Point.X = newPoint.X; accuracyFeature!.Point.Y = newPoint.Y;
-            pulseFeature!.Point.X = newPoint.X; pulseFeature!.Point.Y = newPoint.Y;
-            userFeature!.Point.X = newPoint.X; userFeature!.Point.Y = newPoint.Y;
-            UserLayer.DataHasChanged();
+            accuracyFeature!.Point.X = newPoint.X;
+            accuracyFeature!.Point.Y = newPoint.Y;
+            pulseFeature!.Point.X = newPoint.X;
+            pulseFeature!.Point.Y = newPoint.Y;
+            userFeature!.Point.X = newPoint.X;
+            userFeature!.Point.Y = newPoint.Y;
+            _userLayerDirty = true;
         }
 
         if (centerMap && map?.Navigator != null)
-            map.Navigator.CenterOnAndZoomTo(newPoint, 0.5, 500, Mapsui.Animations.Easing.CubicOut);
+            map.Navigator.CenterOnAndZoomTo(newPoint, 0.5, 500,
+                Mapsui.Animations.Easing.CubicOut);
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // NEAREST POI HIGHLIGHT (YC3 — thực sự vẽ vòng nhấp nháy)
+    // NEAREST POI HIGHLIGHT
     // ═══════════════════════════════════════════════════════════════
 
-    /// <summary>
-    /// Highlight POI gần nhất bằng vòng tròn nhấp nháy màu cam/vàng.
-    /// Dùng 2 vòng pulse lệch pha nhau để tạo hiệu ứng "ripple" sống động.
-    /// Mapsui 5.0.2: Dùng SymbolStyle trực tiếp KHÔNG dùng ImageStyle để tránh white circle bug.
-    /// </summary>
     public void HighlightPoi(Map map, double lat, double lng)
     {
         var s = SphericalMercator.FromLonLat(lng, lat);
         var pt = new MPoint(s.x, s.y);
 
-        // Outer pulse ring 1 — cam nhạt, to hơn, nhấp nháy chậm
         _nearestPulse1 = new PointFeature(new MPoint(pt.X, pt.Y))
         {
             Styles =
@@ -139,13 +143,12 @@ public class MapViewModel
                 new SymbolStyle
                 {
                     SymbolScale = 1.8,
-                    Fill = new Brush(new Color(255, 165, 0, 55)),  // cam nhạt
+                    Fill = new Brush(new Color(255, 165, 0, 55)),
                     Outline = new Pen(new Color(255, 165, 0, 120), 2.5)
                 }
             }
         };
 
-        // Outer pulse ring 2 — vàng, lệch pha 180°
         _nearestPulse2 = new PointFeature(new MPoint(pt.X, pt.Y))
         {
             Styles =
@@ -153,13 +156,12 @@ public class MapViewModel
                 new SymbolStyle
                 {
                     SymbolScale = 1.3,
-                    Fill = new Brush(new Color(255, 200, 0, 80)),  // vàng trong
+                    Fill = new Brush(new Color(255, 200, 0, 80)),
                     Outline = new Pen(new Color(255, 200, 0, 180), 2.0)
                 }
             }
         };
 
-        // Core dot — cam đậm, không nhấp nháy — làm "tâm"
         _nearestCore = new PointFeature(new MPoint(pt.X, pt.Y))
         {
             Styles =
@@ -167,7 +169,7 @@ public class MapViewModel
                 new SymbolStyle
                 {
                     SymbolScale = 0.5,
-                    Fill = new Brush(new Color(255, 120, 0, 220)),  // cam đậm
+                    Fill = new Brush(new Color(255, 120, 0, 220)),
                     Outline = new Pen(new Color(255, 255, 255, 200), 3.0)
                 }
             }
@@ -176,7 +178,6 @@ public class MapViewModel
         NearestHighlightLayer.Features = new[] { _nearestPulse1, _nearestPulse2, _nearestCore };
         NearestHighlightLayer.DataHasChanged();
 
-        // Đảm bảo layer đã add vào map (dưới POI layer để không che icon)
         if (!map.Layers.Contains(NearestHighlightLayer))
         {
             var layers = map.Layers.ToList();
@@ -191,60 +192,56 @@ public class MapViewModel
             $"[MapVM] HighlightPoi: lat={lat:F4}, lng={lng:F4}");
     }
 
-    /// <summary>
-    /// Đặt POI gần nhất và vẽ highlight — API mới rõ ràng hơn.
-    /// MapPage gọi hàm này khi nearest POI thay đổi.
-    /// </summary>
     public void SetNearestPoi(Map map, Poi poi)
     {
-        if (_nearestPoiId == poi.Id) return; // Không re-render nếu cùng POI
-
+        if (_nearestPoiId == poi.Id) return;
         _nearestPoiId = poi.Id;
         HighlightPoi(map, poi.Lat, poi.Lng);
     }
 
-    /// <summary>
-    /// Xóa highlight nearest POI (khi user đã chọn POI cụ thể hoặc ra khỏi vùng).
-    /// </summary>
     public void ClearNearestHighlight()
     {
         _nearestPoiId = null;
         _nearestPulse1 = null;
         _nearestPulse2 = null;
         _nearestCore = null;
+        _nearestLayerDirty = false;
 
         NearestHighlightLayer.Features = Array.Empty<IFeature>();
         NearestHighlightLayer.DataHasChanged();
     }
 
     /// <summary>
-    /// Animation loop cho vòng tròn nhấp nháy nearest POI.
-    /// Hai vòng lệch pha 180° tạo hiệu ứng ripple đẹp mắt.
+    /// YC3: Giảm FPS animation nearest highlight từ 20fps → 10fps
+    /// Dùng dirty flag để chỉ call DataHasChanged khi thực sự thay đổi
     /// </summary>
     private void StartNearestHighlightAnimation()
     {
         var dispatcher = Application.Current?.Dispatcher;
         if (dispatcher == null) return;
 
-        dispatcher.StartTimer(TimeSpan.FromMilliseconds(50), () =>
+        // YC3: 100ms thay vì 50ms → giảm từ 20fps xuống 10fps
+        dispatcher.StartTimer(TimeSpan.FromMilliseconds(100), () =>
         {
             if (_nearestPulse1 == null || _nearestPulse2 == null) return true;
 
             try
             {
-                // Pulse 1: 1.2 → 2.2 → 1.2 (chậm)
+                var prevScale1 = _nearestPulseScale1;
+
                 _nearestPulseScale1 = _nearestPulseGrowing
-                    ? _nearestPulseScale1 + 0.025
-                    : _nearestPulseScale1 - 0.025;
+                    ? _nearestPulseScale1 + 0.04   // step lớn hơn để bù interval chậm
+                    : _nearestPulseScale1 - 0.04;
 
                 if (_nearestPulseScale1 > 2.2) _nearestPulseGrowing = false;
                 if (_nearestPulseScale1 < 1.2) _nearestPulseGrowing = true;
 
-                // Pulse 2: lệch pha — khi 1 to thì 2 nhỏ lại
+                // YC3: Chỉ update nếu thay đổi đáng kể (tránh update quá nhiều)
+                if (Math.Abs(_nearestPulseScale1 - prevScale1) < 0.01) return true;
+
                 _nearestPulseScale2 = 3.4 - _nearestPulseScale1;
                 _nearestPulseScale2 = Math.Clamp(_nearestPulseScale2, 1.0, 2.2);
 
-                // Alpha thay đổi theo scale: to hơn → trong hơn (fade out effect)
                 int alpha1 = (int)(200 - (_nearestPulseScale1 - 1.2) / 1.0 * 150);
                 int alpha2 = (int)(200 - (_nearestPulseScale2 - 1.0) / 1.2 * 150);
                 alpha1 = Math.Clamp(alpha1, 30, 200);
@@ -303,7 +300,6 @@ public class MapViewModel
     private void EnsureRouteLayerOnTop(Map map)
     {
         if (!map.Layers.Contains(RouteLayer)) { map.Layers.Add(RouteLayer); return; }
-
         map.Layers.Remove(RouteLayer);
         map.Layers.Add(RouteLayer);
     }
@@ -325,7 +321,6 @@ public class MapViewModel
 
         PoiLayer.Style = null;
         highlightFeature = null;
-        PoiLayer.Style = null;
 
         foreach (var poi in pois)
         {
@@ -356,9 +351,7 @@ public class MapViewModel
     public void SelectPoiIcon(int poiId)
     {
         if (_selectedPoiId.HasValue && _selectedPoiId.Value != poiId)
-        {
             ResetPoiIcon(_selectedPoiId.Value);
-        }
 
         if (_poiFeatureMap.TryGetValue(poiId, out var feature))
             SetPoiIconImage(feature, "embedded://SmartTourApp.Resources.Images.mappin.png");
@@ -397,47 +390,45 @@ public class MapViewModel
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // HEATMAP — GIỮ signature, không render lên map
-    // Heatmap chỉ hiển thị qua CMS dashboard, không phải trên mobile map
+    // HEATMAP — giữ signature, không render lên map (CMS only)
     // ═══════════════════════════════════════════════════════════════
     public void LoadHeatMap(Map map, List<UserLocationLog> logs)
     {
-        // INTENTIONALLY NOT RENDERED ON MAP
-        // Heatmap visualization is handled by the CMS dashboard (web)
-        // Keeping method signature for backward compatibility
         System.Diagnostics.Debug.WriteLine(
             $"[MapVM] LoadHeatMap: {logs.Count} logs — not rendered on map (CMS only)");
     }
 
     public void LoadPoiHeatmap(Map map, List<HeatmapPoiData> data)
     {
-        // INTENTIONALLY NOT RENDERED ON MAP
-        // Heatmap visualization is handled by the CMS dashboard (web)
         System.Diagnostics.Debug.WriteLine(
             $"[MapVM] LoadPoiHeatmap: {data?.Count ?? 0} entries — not rendered on map (CMS only)");
     }
 
     public void ClearPoiHeatmap()
     {
-        // NOP — heatmap không được render trên map
         HeatmapLayer.Features = Array.Empty<IFeature>();
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // PULSE ANIMATION (user dot)
+    // PULSE ANIMATION — YC3: Giảm từ 60ms → 100ms (10fps)
     // ═══════════════════════════════════════════════════════════════
     private void StartPulseAnimation()
     {
         var dispatcher = Application.Current?.Dispatcher;
         if (dispatcher == null) return;
 
-        dispatcher.StartTimer(TimeSpan.FromMilliseconds(60), () =>
+        // YC3: 100ms interval (10fps) thay vì 60ms (16fps)
+        dispatcher.StartTimer(TimeSpan.FromMilliseconds(100), () =>
         {
             if (pulseFeature?.Styles.FirstOrDefault() is not SymbolStyle style) return true;
-            pulseScale = pulseGrowing ? pulseScale + 0.04 : pulseScale - 0.04;
+
+            var prevScale = pulseScale;
+            pulseScale = pulseGrowing ? pulseScale + 0.06 : pulseScale - 0.06;
             if (pulseScale > 1.6) pulseGrowing = false;
             if (pulseScale < 1.0) pulseGrowing = true;
-            if (Math.Abs(style.SymbolScale - pulseScale) > 0.01)
+
+            // YC3: Chỉ update khi thay đổi đáng kể
+            if (Math.Abs(style.SymbolScale - pulseScale) > 0.02)
             {
                 style.SymbolScale = pulseScale;
                 UserLayer.DataHasChanged();
@@ -460,13 +451,18 @@ public class MapViewModel
             $"?overview=full&geometries=geojson";
 
         using var http = new HttpClient();
+        http.Timeout = TimeSpan.FromSeconds(10); // YC3: thêm timeout
         var response = await http.GetAsync(url);
         if (!response.IsSuccessStatusCode)
-            throw new Exception($"OSRM error: {response.StatusCode} - {await response.Content.ReadAsStringAsync()}");
+            throw new Exception(
+                $"OSRM error: {response.StatusCode} - {await response.Content.ReadAsStringAsync()}");
 
         var json = await response.Content.ReadAsStringAsync();
         var doc = System.Text.Json.JsonDocument.Parse(json);
-        var coords = doc.RootElement.GetProperty("routes")[0].GetProperty("geometry").GetProperty("coordinates");
+        var coords = doc.RootElement
+            .GetProperty("routes")[0]
+            .GetProperty("geometry")
+            .GetProperty("coordinates");
 
         var points = new List<MPoint>();
         foreach (var c in coords.EnumerateArray())

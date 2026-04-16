@@ -8,8 +8,6 @@ public partial class QrGatePage : ContentPage
 {
     private const string QrGateUntilKey = "qr_gate_until_utc";
     private int _processing;
-
-    // YC6: Pre-warm the shell navigation to avoid cold-start delay
     private bool _navigationStarted = false;
 
     public QrGatePage()
@@ -31,18 +29,25 @@ public partial class QrGatePage : ContentPage
 
         QrReader.IsDetecting = true;
 
-        // YC6: Eagerly warm up AppShell in background so it's ready when QR is scanned
+        // Pre-warm DI services in background
         _ = Task.Run(() =>
         {
             try
             {
-                // Pre-resolve services so DI is warm
                 var services = Application.Current?.Handler?.MauiContext?.Services;
                 _ = services?.GetService<PoiRepository>();
                 _ = services?.GetService<TrackingService>();
             }
             catch { }
         });
+    }
+
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        // Reset trạng thái khi rời trang để có thể quét lại nếu quay lại
+        _navigationStarted = false;
+        Interlocked.Exchange(ref _processing, 0);
     }
 
     private async Task<bool> EnsureCameraPermissionAsync()
@@ -56,7 +61,6 @@ public partial class QrGatePage : ContentPage
 
     private void OnBarcodesDetected(object? sender, BarcodeDetectionEventArgs e)
     {
-        // YC6: Guard against multiple rapid callbacks
         if (Interlocked.CompareExchange(ref _processing, 1, 0) != 0) return;
         if (_navigationStarted) return;
 
@@ -67,7 +71,7 @@ public partial class QrGatePage : ContentPage
             return;
         }
 
-        // YC6: Stop detecting immediately to prevent further callbacks
+        // Stop detecting immediately
         MainThread.BeginInvokeOnMainThread(() =>
         {
             QrReader.IsDetecting = false;
@@ -101,31 +105,39 @@ public partial class QrGatePage : ContentPage
             return;
         }
 
-        // YC6: Mark navigation started to block any further callbacks
         _navigationStarted = true;
 
-        // YC6: Save session and navigate as fast as possible on main thread
-        // No unnecessary awaits or delays
         MainThread.BeginInvokeOnMainThread(async () =>
         {
             try
             {
-                // Save valid session immediately
-                Preferences.Default.Set(QrGateUntilKey, DateTime.UtcNow.AddDays(7).ToString("O"));
+                // YC1: Lưu phiên QR 7 ngày
+                Preferences.Default.Set(QrGateUntilKey,
+                    DateTime.UtcNow.AddDays(7).ToString("O"));
 
-                // YC6: Brief visual feedback (minimal delay)
                 StatusLabel.Text = "✅ Quét thành công!";
 
-                // YC6: Switch to AppShell directly — no extra Task.Delay
-                Application.Current!.MainPage = new AppShell();
+                // YC1: Lần đầu vào → LoadingPage → AppShell (home)
+                // Lấy services để tạo LoadingPage
+                var services = Application.Current?.Handler?.MauiContext?.Services;
+                var poiRepo = services?.GetService<PoiRepository>();
+                var tracking = services?.GetService<TrackingService>();
 
-                // Navigate to home after shell is ready
-                await Shell.Current.GoToAsync("//home");
+                if (poiRepo != null && tracking != null)
+                {
+                    // LoadingPage sẽ tự chuyển sang AppShell sau khi init xong
+                    Application.Current!.MainPage = new LoadingPage(poiRepo, tracking);
+                }
+                else
+                {
+                    // Fallback nếu DI chưa sẵn sàng
+                    Application.Current!.MainPage = new AppShell();
+                    await Shell.Current.GoToAsync("//home");
+                }
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[QrGate] Navigation error: {ex.Message}");
-                // Reset state on error
                 _navigationStarted = false;
                 QrReader.IsEnabled = true;
                 QrReader.IsDetecting = true;
@@ -141,18 +153,15 @@ public partial class QrGatePage : ContentPage
     {
         var text = raw.Trim();
 
-        // 1) Deep link chuẩn
         if (Uri.TryCreate(text, UriKind.Absolute, out var direct) &&
             string.Equals(direct.Scheme, "smarttour", StringComparison.OrdinalIgnoreCase))
             return direct;
 
-        // 2) Dạng path rút gọn: poi/52 hoặc tour/4
         if (text.StartsWith("poi/", StringComparison.OrdinalIgnoreCase))
             return Uri.TryCreate($"smarttour://{text}", UriKind.Absolute, out var p) ? p : null;
         if (text.StartsWith("tour/", StringComparison.OrdinalIgnoreCase))
             return Uri.TryCreate($"smarttour://{text}", UriKind.Absolute, out var t) ? t : null;
 
-        // 3) URL trung gian dạng /Qr/Open?type=poi&id=52
         if (Uri.TryCreate(text, UriKind.Absolute, out var web))
         {
             var path = web.AbsolutePath?.ToLowerInvariant() ?? string.Empty;
@@ -196,15 +205,11 @@ public partial class QrGatePage : ContentPage
         var text = value.Trim();
         if (string.IsNullOrWhiteSpace(text)) return false;
 
-        // 1) Chuẩn deep link chính thức
         if (text.StartsWith("smarttour://poi/", StringComparison.OrdinalIgnoreCase)) return true;
         if (text.StartsWith("smarttour://tour/", StringComparison.OrdinalIgnoreCase)) return true;
-
-        // 2) Một số scanner trả plain path
         if (text.StartsWith("poi/", StringComparison.OrdinalIgnoreCase)) return true;
         if (text.StartsWith("tour/", StringComparison.OrdinalIgnoreCase)) return true;
 
-        // 3) QR URL trung gian/fallback (kể cả chữ hoa/thường khác nhau)
         if (Uri.TryCreate(text, UriKind.Absolute, out var uri))
         {
             var path = (uri.AbsolutePath ?? string.Empty).ToLowerInvariant();
@@ -216,7 +221,6 @@ public partial class QrGatePage : ContentPage
             if (query.Contains("type=poi") || query.Contains("type=tour")) return true;
         }
 
-        // 4) Fallback mềm
         if (text.Contains("smarttour", StringComparison.OrdinalIgnoreCase)) return true;
         return false;
     }

@@ -16,6 +16,7 @@ public partial class SettingsPage : ContentPage
     private readonly RouteTrackingService routeTracking;
     private readonly AudioCoordinator coordinator;
     private readonly OfflineMapService offlineMapService;
+    private readonly OfflineSyncService offlineSync;
 
     public const string AutoPlayKey = "auto_play_enabled";
 
@@ -29,7 +30,8 @@ public partial class SettingsPage : ContentPage
         HeatmapService heatmap,
         RouteTrackingService routeTracking,
         AudioCoordinator coordinator,
-        OfflineMapService offlineMapService)
+        OfflineMapService offlineMapService,
+        OfflineSyncService offlineSync)
     {
         InitializeComponent();
         this.lang = lang;
@@ -42,15 +44,14 @@ public partial class SettingsPage : ContentPage
         this.routeTracking = routeTracking;
         this.coordinator = coordinator;
         this.offlineMapService = offlineMapService;
+        this.offlineSync = offlineSync;
     }
 
     protected override void OnAppearing()
     {
         base.OnAppearing();
 
-        // Apply localization
         ApplyLocalization();
-
         LangPicker.SelectedItem = lang.Current;
 
         var autoPlay = Preferences.Default.Get(AutoPlayKey, true);
@@ -183,24 +184,39 @@ public partial class SettingsPage : ContentPage
     }
 
     // ══════════════════════════════════════════════════════════════
-    // SAVE
+    // SAVE — YC4: Hỗ trợ đổi ngôn ngữ khi offline
     // ══════════════════════════════════════════════════════════════
 
     private async void Save(object sender, EventArgs e)
     {
         var selected = LangPicker.SelectedItem?.ToString() ?? "en";
+
         if (selected == lang.Current)
         {
             await DisplayAlert(loc.Notice, loc.LanguageUnchanged, loc.OK);
             return;
         }
 
-        // Cập nhật language (LanguageService sẽ fire OnLanguageChanged event)
+        // YC4: Kiểm tra online/offline để thông báo phù hợp
+        bool isOnline = IsOnline();
+
+        // Cập nhật ngôn ngữ (LanguageService fire OnLanguageChanged)
         lang.Current = selected;
 
-        await DisplayAlert(loc.Notice, loc.Reloading, loc.OK);
+        if (!isOnline)
+        {
+            // YC4: Offline → thông báo dữ liệu tĩnh đã đổi, dữ liệu động dùng cache SQLite
+            await DisplayAlert(
+                loc.Notice,
+                GetOfflineLangChangeMessage(selected),
+                loc.OK);
+        }
+        else
+        {
+            await DisplayAlert(loc.Notice, loc.Reloading, loc.OK);
+        }
 
-        // RESET TOÀN BỘ
+        // RESET TOÀN BỘ — kể cả offline
         repo.ClearCache();
         tracking.Stop();
         narration.Reset();
@@ -214,6 +230,34 @@ public partial class SettingsPage : ContentPage
         // Notify localization service
         loc.NotifyChanged();
 
+        // YC4: Offline mode → reload với SQLite cache, không cần API
         Application.Current!.MainPage = new LoadingPage(repo, tracking);
+    }
+
+    /// <summary>
+    /// YC4: Message phù hợp khi đổi ngôn ngữ offline
+    /// </summary>
+    private static string GetOfflineLangChangeMessage(string langCode)
+    {
+        // Bản địa hóa thông báo theo ngôn ngữ MỚI được chọn
+        return langCode switch
+        {
+            "en" => "Language changed to English. Using cached data (offline mode). UI will reload.",
+            "ja" => "言語を日本語に変更しました。キャッシュデータを使用します（オフラインモード）。",
+            "zh" => "语言已更改为中文。使用缓存数据（离线模式）。",
+            "ko" => "언어가 한국어로 변경되었습니다. 캐시된 데이터를 사용합니다(오프라인 모드).",
+            _ => "Đã đổi ngôn ngữ. Đang dùng dữ liệu đã tải (chế độ offline). UI sẽ tải lại."
+        };
+    }
+
+    private static bool IsOnline()
+    {
+        try
+        {
+            var access = Connectivity.Current.NetworkAccess;
+            return access == NetworkAccess.Internet ||
+                   access == NetworkAccess.ConstrainedInternet;
+        }
+        catch { return false; }
     }
 }

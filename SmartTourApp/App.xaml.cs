@@ -5,6 +5,8 @@ namespace SmartTourApp;
 
 public partial class App : Application
 {
+    private const string QrGateUntilKey = "qr_gate_until_utc";
+
     public App()
     {
         InitializeComponent();
@@ -27,8 +29,34 @@ public partial class App : Application
         var offlineSync = services.GetService<OfflineSyncService>();
         offlineSync?.StartBackgroundSync();
 
-        var loadingPage = new LoadingPage(poiRepo, tracking);
-        return new Window(loadingPage);
+        // ── YC1: Kiểm tra QR Gate ──
+        // Nếu chưa có phiên hợp lệ → bắt buộc quét QR
+        Page startPage = IsQrSessionValid()
+            ? (Page)new LoadingPage(poiRepo!, tracking!)
+            : new QrGatePage();
+
+        return new Window(startPage);
+    }
+
+    // ── YC1: Kiểm tra phiên QR còn hạn không ──
+    private static bool IsQrSessionValid()
+    {
+        try
+        {
+            var raw = Preferences.Default.Get(QrGateUntilKey, string.Empty);
+            if (string.IsNullOrWhiteSpace(raw)) return false;
+
+            if (!DateTime.TryParse(raw, null,
+                System.Globalization.DateTimeStyles.RoundtripKind,
+                out var until))
+                return false;
+
+            return DateTime.UtcNow < until;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     protected override void OnSleep()
