@@ -45,7 +45,8 @@
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnOfflineBannerDownloadTap"/>
                     </Border.GestureRecognizers>
-                    <Label Text="Tải bản đồ"
+                    <Label x:Name="OfflineBannerDownloadLabel"
+                           Text="Tải bản đồ"
                            FontSize="11"
                            FontAttributes="Bold"
                            TextColor="#A0CFFF"/>
@@ -89,7 +90,8 @@
                         <Border.GestureRecognizers>
                             <TapGestureRecognizer Tapped="OnCancelDownloadTap"/>
                         </Border.GestureRecognizers>
-                        <Label Text="Hủy"
+                        <Label x:Name="DownloadCancelLabel"
+                               Text="Hủy"
                                FontSize="11"
                                FontAttributes="Bold"
                                TextColor="#E53935"/>
@@ -308,7 +310,8 @@
                                        HorizontalOptions="Center">
                     <ActivityIndicator IsRunning="True" Color="#1E88E5"
                                        WidthRequest="18" HeightRequest="18"/>
-                    <Label Text="Đang tính đường đi..."
+                    <Label x:Name="RouteLoadingLabel"
+                           Text="Đang tính đường đi..."
                            FontSize="12" TextColor="#888"
                            VerticalOptions="Center"/>
                 </HorizontalStackLayout>

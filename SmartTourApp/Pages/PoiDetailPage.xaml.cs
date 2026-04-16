@@ -174,21 +174,35 @@ public partial class PoiDetailPage : ContentPage
 
         try
         {
-            // API /api/pois?lang=xx đã trả tên POI theo ngôn ngữ đã chọn
-            var localizedPois = await api.GetPois();
-            var localizedPoi = localizedPois.FirstOrDefault(p => p.Id == poi.Id);
-            if (localizedPoi != null)
+            // 1) Offline-first: lấy title đã cache theo ngôn ngữ hiện tại
+            var localTitle = offlineSync.GetLocalTitle(poi.Id, currentLang);
+            if (!string.IsNullOrWhiteSpace(localTitle))
             {
-                poi.Name = localizedPoi.Name;
-                if (!string.IsNullOrWhiteSpace(localizedPoi.Description))
-                    poi.Description = localizedPoi.Description;
+                MainThread.BeginInvokeOnMainThread(() => { PoiName.Text = localTitle; });
+                _cachedPoiNameLang = currentLang;
+                return;
+            }
 
-                MainThread.BeginInvokeOnMainThread(() =>
-                {
-                    PoiName.Text = string.IsNullOrWhiteSpace(localizedPoi.Name)
-                        ? poi.Name
-                        : localizedPoi.Name;
-                });
+            // 2) Online: API /api/pois?lang=xx đã trả tên POI localized (nếu có)
+            var localizedPoi = (await api.GetPois()).FirstOrDefault(p => p.Id == poi.Id);
+            if (!string.IsNullOrWhiteSpace(localizedPoi?.Name))
+            {
+                poi.Name = localizedPoi!.Name;
+                if (!string.IsNullOrWhiteSpace(localizedPoi.Description)) poi.Description = localizedPoi.Description;
+                MainThread.BeginInvokeOnMainThread(() => { PoiName.Text = localizedPoi.Name; });
+                _cachedPoiNameLang = currentLang;
+                return;
+            }
+
+            // 3) Fallback cuối: lấy title từ TTS scripts
+            var scripts = await api.GetTtsScripts(poi.Id);
+            var selected = scripts.FirstOrDefault(x =>
+                x.LanguageCode.StartsWith(currentLang, StringComparison.OrdinalIgnoreCase))
+                ?? scripts.FirstOrDefault(x => x.LanguageCode.StartsWith("en", StringComparison.OrdinalIgnoreCase))
+                ?? scripts.FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(selected?.Title))
+            {
+                MainThread.BeginInvokeOnMainThread(() => { PoiName.Text = selected!.Title; });
             }
             else
             {

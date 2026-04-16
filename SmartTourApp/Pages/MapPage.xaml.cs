@@ -28,6 +28,7 @@ public partial class MapPage : ContentPage
     private readonly GeofencingEngine geo;
     private readonly ApiService api;
     private readonly OfflineMapService offlineMapService;
+    private readonly LocalizationService loc;
     private readonly MapViewModel vm = new();
     private List<Poi> pois = new();
     private bool mapInitialized = false;
@@ -57,7 +58,8 @@ public partial class MapPage : ContentPage
         PoiRepository repo,
         GeofencingEngine geo,
         ApiService api,
-        OfflineMapService offlineMapService)
+        OfflineMapService offlineMapService,
+        LocalizationService loc)
     {
         InitializeComponent();
 
@@ -71,6 +73,7 @@ public partial class MapPage : ContentPage
         this.geo = geo;
         this.api = api;
         this.offlineMapService = offlineMapService;
+        this.loc = loc;
 
         offlineMapService.OnConnectivityChanged += OnConnectivityChanged;
         offlineMapService.OnDownloadProgress += OnDownloadProgress;
@@ -89,6 +92,8 @@ public partial class MapPage : ContentPage
             if (DownloadProgressFill.Parent is View p && p.Width > 0)
                 _progressBarMaxWidth = p.Width;
         };
+
+        ApplyLocalization();
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -97,6 +102,7 @@ public partial class MapPage : ContentPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
+        ApplyLocalization();
         tracking.OnLocationChanged -= UpdateLocation;
         tracking.OnLocationChanged += UpdateLocation;
 
@@ -523,12 +529,12 @@ public partial class MapPage : ContentPage
     {
         if (offlineMapService.Downloader.IsDownloading)
         {
-            await DisplayAlert("Đang tải", "Vui lòng đợi lần tải hiện tại hoàn thành.", "OK");
+            await DisplayAlert(loc.Downloading, loc.DownloadingMap, loc.OK);
             return;
         }
         if (!OfflineMapService.IsConnected())
         {
-            await DisplayAlert("Không có mạng", "Bạn đang offline. Kết nối mạng để tải bản đồ.", "OK");
+            await DisplayAlert(loc.NoNetwork, loc.NoNetworkMsg, loc.OK);
             return;
         }
 
@@ -539,20 +545,20 @@ public partial class MapPage : ContentPage
         }
         else
         {
-            var loc = await Geolocation.GetLastKnownLocationAsync();
-            if (loc == null) { await DisplayAlert("Lỗi", "Không lấy được vị trí GPS.", "OK"); return; }
-            centerLat = loc.Latitude; centerLng = loc.Longitude;
+            var gps = await Geolocation.GetLastKnownLocationAsync();
+            if (gps == null) { await DisplayAlert(loc.NoGps, loc.NoGpsMsg, loc.OK); return; }
+            centerLat = gps.Latitude; centerLng = gps.Longitude;
         }
 
         var (newTiles, sizeMB, cached, desc) = offlineMapService.GetDownloadEstimate(centerLat, centerLng, 2.5);
         if (newTiles == 0)
         {
-            await DisplayAlert("Đã có sẵn", $"Bản đồ khu vực này đã được tải!\n{cached} tiles trong cache.", "OK");
+            await DisplayAlert(loc.AlreadyCached, string.Format(loc.MapAlreadyDownloaded, cached), loc.OK);
             return;
         }
 
-        if (!await DisplayAlert("Tải bản đồ offline",
-            $"{desc}\n\nBán kính: 2.5km xung quanh vị trí hiện tại\nZoom: 14 - 18", "Tải ngay", "Hủy")) return;
+        if (!await DisplayAlert(loc.DownloadAreaTitle,
+            $"{desc}\n\nBán kính: 2.5km xung quanh vị trí hiện tại\nZoom: 14 - 18", loc.DownloadNow, loc.Cancel)) return;
 
         await StartDownloadAsync(centerLat, centerLng);
     }
@@ -630,7 +636,7 @@ public partial class MapPage : ContentPage
     {
         ConnectivityDot.Fill = isOnline ? Color.FromArgb("#4CAF50") : Color.FromArgb("#F44336");
         if (!isOnline)
-            ShowOfflineBanner("Chế độ ngoại tuyến — bản đồ chỉ hiện vùng đã tải");
+            ShowOfflineBanner(loc.OfflineMapHint);
         else
             HideOfflineBanner();
     }
@@ -671,6 +677,7 @@ public partial class MapPage : ContentPage
         OfflineBanner.IsVisible = false;
         DownloadSpinner.IsRunning = true;
         DownloadStatusLabel.TextColor = Color.FromArgb("#111111");
+        DownloadStatusLabel.Text = loc.DownloadingMap;
         DownloadProgressFill.WidthRequest = 0;
         DownloadProgressLabel.Text = "0%";
         DownloadTileCountLabel.Text = "";
@@ -709,5 +716,15 @@ public partial class MapPage : ContentPage
             .ToList();
         TourMap.Map.Widgets.Clear();
         foreach (var w in widgets) TourMap.Map.Widgets.Enqueue(w);
+    }
+
+    private void ApplyLocalization()
+    {
+        OfflineBannerLabel.Text = loc.OfflineMapHint;
+        OfflineBannerDownloadLabel.Text = loc.DownloadMap;
+        DownloadStatusLabel.Text = loc.DownloadingMap;
+        DownloadCancelLabel.Text = loc.Cancel;
+        LblDirectionsBtn.Text = loc.DirectionsBtn;
+        RouteLoadingLabel.Text = loc.CalculatingRoute;
     }
 }
