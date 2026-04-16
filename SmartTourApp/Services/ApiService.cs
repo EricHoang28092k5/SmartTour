@@ -30,6 +30,23 @@ public class ApiService
         }
     }
 
+    public async Task<List<Food>> GetFoodsByPoi(int poiId)
+    {
+        try
+        {
+            var lang = (languageService.Current ?? "en").Trim().ToLowerInvariant();
+            var res = await http.GetFromJsonAsync<FoodMenuResponse>($"api/foods/menu/{poiId}?lang={Uri.EscapeDataString(lang)}");
+            if (res?.Success == true && res.Data != null)
+                return res.Data;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[FoodAPI] GetFoodsByPoi({poiId}) error: {ex.Message}");
+        }
+
+        return new List<Food>();
+    }
+
     // ══════════════════════════════════════════════════════════════════
     // 🔥 AUDIO API MỚI — GET /api/audio/poi/{poiId}
     // Trả về audioUrl (Cloudinary) + ttsScript cho từng ngôn ngữ
@@ -218,6 +235,13 @@ public class ApiService
         public bool Success { get; set; }
         public int Total { get; set; }
         public List<PopularRouteData> Data { get; set; } = new();
+    }
+
+    public class FoodMenuResponse
+    {
+        public bool Success { get; set; }
+        public List<Food> Data { get; set; } = new();
+        public string? Message { get; set; }
     }
 
     public class PopularRouteData

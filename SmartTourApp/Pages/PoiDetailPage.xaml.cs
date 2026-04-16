@@ -25,6 +25,7 @@ public partial class PoiDetailPage : ContentPage
 
     // YC3: cache description theo ngôn ngữ
     private string? _cachedDescriptionLang = null;
+    private string? _cachedFoodLang = null;
 
     public Poi Poi
     {
@@ -99,6 +100,7 @@ public partial class PoiDetailPage : ContentPage
 
         // YC3: Load description từ TtsScript
         _ = LoadDescriptionFromTtsAsync();
+        _ = LoadFoodMenuAsync();
 
         // Prefetch GPS
         _ = Task.Run(async () => { _cachedUserLocation = await locationService.GetLocation(); });
@@ -121,6 +123,8 @@ public partial class PoiDetailPage : ContentPage
 
         if (poi.Foods != null && poi.Foods.Any())
             FoodList.ItemsSource = poi.Foods;
+        else
+            FoodList.ItemsSource = new List<Food>();
 
         PoiName.Text = poi.Name;
         PoiImage.Source = poi.ImageUrl;
@@ -134,6 +138,32 @@ public partial class PoiDetailPage : ContentPage
 
         // Reset cache để force reload khi POI thay đổi
         _cachedDescriptionLang = null;
+        _cachedFoodLang = null;
+    }
+
+    private async Task LoadFoodMenuAsync()
+    {
+        if (poi == null) return;
+
+        var currentLang = loc.Current;
+        if (_cachedFoodLang == currentLang && poi.Foods != null && poi.Foods.Any())
+            return;
+
+        try
+        {
+            var foods = await api.GetFoodsByPoi(poi.Id);
+            poi.Foods = foods ?? new List<Food>();
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                FoodList.ItemsSource = null;
+                FoodList.ItemsSource = poi.Foods;
+            });
+            _cachedFoodLang = currentLang;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[PoiDetail] LoadFoodMenu error: {ex.Message}");
+        }
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -469,6 +499,8 @@ public partial class PoiDetailPage : ContentPage
         OverviewTab.TextColor = Color.FromArgb("#9B9BAA");
         OverviewTab.FontAttributes = FontAttributes.None;
         OverviewTab.Text = loc.Overview;
+
+        _ = LoadFoodMenuAsync();
     }
 
     // ══════════════════════════════════════════════════════════════
