@@ -25,6 +25,9 @@ public partial class MapPage : ContentPage
     private readonly GeofencingEngine geo;
     private readonly ApiService api;
     private readonly OfflineMapService offlineMapService;
+    private readonly LocalizationService loc;
+    private readonly LanguageService lang;
+
     private readonly MapViewModel vm = new();
     private List<Poi> pois = new();
     private bool mapInitialized = false;
@@ -39,29 +42,42 @@ public partial class MapPage : ContentPage
     private bool cardManuallyClosed = false;
     private bool _isActionButtonTapped = false;
 
+    // ── Language: cache last applied lang để tránh re-apply không cần thiết ──
+    private string _lastAppliedLang = "";
+
     // Offline download state
     private CancellationTokenSource? _downloadCts;
     private double _progressBarMaxWidth = 0;
+
+    // ── Translation cache cho POI names trên card ──
+    private readonly Dictionary<int, string> _translatedPoiNames = new();
 
     public MapPage(
         TrackingService tracking,
         PoiRepository repo,
         GeofencingEngine geo,
         ApiService api,
-        OfflineMapService offlineMapService)
+        OfflineMapService offlineMapService,
+        LocalizationService loc,
+        LanguageService lang)
     {
         InitializeComponent();
-
-        TourMap.Map!.Navigator.ViewportChanged += (s, e) =>
-        {
-            if (!openedFromRoute) followUser = false;
-        };
 
         this.tracking = tracking;
         this.repo = repo;
         this.geo = geo;
         this.api = api;
         this.offlineMapService = offlineMapService;
+        this.loc = loc;
+        this.lang = lang;
+
+        // Subscribe language changes để update card text ngay lập tức
+        this.lang.OnLanguageChanged += OnLanguageChanged;
+
+        TourMap.Map!.Navigator.ViewportChanged += (s, e) =>
+        {
+            if (!openedFromRoute) followUser = false;
+        };
 
         offlineMapService.OnConnectivityChanged += OnConnectivityChanged;
         offlineMapService.OnDownloadProgress += OnDownloadProgress;
@@ -88,6 +104,21 @@ public partial class MapPage : ContentPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
+
+        // ── Chỉ apply localization khi ngôn ngữ thực sự thay đổi ──
+        if (_lastAppliedLang != lang.Current)
+        {
+            ApplyLocalization();
+            _lastAppliedLang = lang.Current;
+
+            // Refresh card nếu đang hiển thị
+            if (PoiCard.IsVisible)
+            {
+                var target = selectedPoi ?? currentNearest;
+                if (target != null) ShowCardForPoi(target);
+            }
+        }
+
         tracking.OnLocationChanged -= UpdateLocation;
         tracking.OnLocationChanged += UpdateLocation;
 
@@ -97,16 +128,15 @@ public partial class MapPage : ContentPage
             trackingStarted = true;
         }
 
-        // Heatmap không được hiển thị trên map (handled by CMS)
         heatmapLoaded = true;
 
-        var loc = await Geolocation.GetLastKnownLocationAsync();
-        if (loc == null)
-            loc = await Geolocation.GetLocationAsync(
+        // ── Lấy location: ưu tiên last known để tránh delay ──
+        var loc2 = await Geolocation.GetLastKnownLocationAsync();
+        if (loc2 == null)
+            loc2 = await Geolocation.GetLocationAsync(
                 new GeolocationRequest(GeolocationAccuracy.Medium, TimeSpan.FromSeconds(5)));
 
         if (TourMap?.Map?.Navigator == null) return;
-
 
         // ── YC5: Navigate đến POI cụ thể ──
         if (!string.IsNullOrEmpty(TargetPoiId))
@@ -135,15 +165,14 @@ public partial class MapPage : ContentPage
         else if (cardManuallyClosed)
             PoiCard.IsVisible = false;
 
-        // Center về user location
-        if (loc != null)
+        if (loc2 != null)
         {
             followUser = true;
             openedFromRoute = false;
-            var mercator = SphericalMercator.FromLonLat(loc.Longitude, loc.Latitude);
+            var mercator = SphericalMercator.FromLonLat(loc2.Longitude, loc2.Latitude);
             TourMap.Map.Navigator.CenterOnAndZoomTo(
                 new MPoint(mercator.x, mercator.y), 0.5, 600, Mapsui.Animations.Easing.CubicOut);
-            vm.UpdateUser(TourMap.Map, loc, false);
+            vm.UpdateUser(TourMap.Map, loc2, false);
         }
 
         UpdateConnectivityUI(OfflineMapService.IsConnected());
@@ -156,16 +185,49 @@ public partial class MapPage : ContentPage
     }
 
     // ══════════════════════════════════════════════════════════════════
+    // LOCALIZATION
+    // ══════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Áp dụng ngôn ngữ cho tất cả text tĩnh trên MapPage.
+    /// Chỉ gọi khi ngôn ngữ thực sự thay đổi — tránh lag khi navigate.
+    /// </summary>
+    private void ApplyLocalization()
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            LblDirectionsBtn.Text = loc.DirectionsBtn;
+            OfflineBannerLabel.Text = loc.OfflineMapHint;
+        });
+    }
+
+    /// <summary>
+    /// Gọi khi LanguageService.OnLanguageChanged fire.
+    /// </summary>
+    private void OnLanguageChanged(string newLang)
+    {
+        // Clear translation cache để fetch lại cho ngôn ngữ mới
+        _translatedPoiNames.Clear();
+
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            _lastAppliedLang = newLang;
+            ApplyLocalization();
+
+            // Refresh card ngay nếu đang hiển thị
+            var target = selectedPoi ?? currentNearest;
+            if (target != null && PoiCard.IsVisible)
+                ShowCardForPoi(target);
+        });
+    }
+
+    // ══════════════════════════════════════════════════════════════════
     // MAP INIT
     // ══════════════════════════════════════════════════════════════════
     private async Task InitMap()
     {
         try
         {
-            // Không load heatmap từ DB vào map — handled by CMS
-            // var db = Application.Current?.Handler?.MauiContext?.Services.GetService<Database>();
-            // if (db != null) vm.LoadHeatMap(TourMap.Map, db.GetLocations()); // REMOVED
-
             if (TourMap.Map == null)
             {
                 var map = new Mapsui.Map();
@@ -190,21 +252,80 @@ public partial class MapPage : ContentPage
             if (!TourMap.Map.Layers.Contains(vm.PoiLayer)) TourMap.Map.Layers.Add(vm.PoiLayer);
             if (!TourMap.Map.Layers.Contains(vm.UserLayer)) TourMap.Map.Layers.Add(vm.UserLayer);
 
-            // Thêm NearestHighlightLayer vào map (dưới PoiLayer)
-            // Layer này sẽ được populate khi UpdateLocation detect nearest POI
-            // (không add ngay vì vm.HighlightPoi sẽ tự add khi có dữ liệu)
-
             TourMap?.Refresh();
             MainThread.BeginInvokeOnMainThread(RemoveLoggingWidget);
 
             heatmapLoaded = true;
-            // Không gọi LoadPoiHeatmapAsync — heatmap chỉ hiển thị trên CMS
+
+            // Áp dụng localization sau khi map ready
+            ApplyLocalization();
+            _lastAppliedLang = lang.Current;
+
+            // Background: pre-fetch translated names cho visible POIs
+            _ = Task.Run(async () => await PrefetchTranslatedNamesAsync(pois));
+
             _ = Task.Run(async () => { await Task.Delay(3000); await AutoCacheCurrentAreaAsync(); });
         }
         catch (Exception ex)
         {
             await DisplayAlert("Map Error", ex.Message, "OK");
         }
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // TRANSLATION CACHE (để POI name trên card đồng bộ ngôn ngữ)
+    // ══════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Pre-fetch translated names cho tất cả POIs và lưu vào cache.
+    /// Chạy background — không block UI.
+    /// </summary>
+    private async Task PrefetchTranslatedNamesAsync(List<Poi> poiList)
+    {
+        var currentLang = lang.Current;
+        foreach (var poi in poiList)
+        {
+            if (_translatedPoiNames.ContainsKey(poi.Id)) continue;
+            try
+            {
+                var scripts = await api.GetTtsScripts(poi.Id);
+                if (scripts == null || scripts.Count == 0) continue;
+
+                var selected = scripts.FirstOrDefault(x =>
+                    x.LanguageCode.StartsWith(currentLang, StringComparison.OrdinalIgnoreCase))
+                    ?? scripts.FirstOrDefault(x =>
+                    x.LanguageCode.StartsWith("en", StringComparison.OrdinalIgnoreCase))
+                    ?? scripts.FirstOrDefault();
+
+                if (selected != null && !string.IsNullOrWhiteSpace(selected.Title))
+                    _translatedPoiNames[poi.Id] = selected.Title;
+            }
+            catch { /* ignore — fallback to poi.Name */ }
+        }
+    }
+
+    /// <summary>
+    /// Lấy tên POI đã được dịch. Nếu chưa có trong cache → dùng poi.Name.
+    /// Background fetch sẽ tự động cập nhật cache.
+    /// </summary>
+    private string GetTranslatedPoiName(Poi poi)
+    {
+        if (_translatedPoiNames.TryGetValue(poi.Id, out var translated))
+            return translated;
+
+        // Fetch async nếu chưa có (không await để không block)
+        _ = Task.Run(async () =>
+        {
+            await PrefetchTranslatedNamesAsync(new List<Poi> { poi });
+            // Refresh card sau khi fetch xong
+            if ((selectedPoi?.Id == poi.Id || currentNearest?.Id == poi.Id) && PoiCard.IsVisible)
+            {
+                MainThread.BeginInvokeOnMainThread(() => ShowCardForPoi(poi));
+            }
+        });
+
+        // Fallback: trả về DisplayName nếu đã được set bởi HomePage, hoặc Name
+        return string.IsNullOrWhiteSpace(poi.DisplayName) ? poi.Name : poi.DisplayName;
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -235,7 +356,6 @@ public partial class MapPage : ContentPage
                 SelectPoi(tapped);
                 cardManuallyClosed = false;
                 vm.ClearRoute();
-                // Clear nearest highlight khi user tap chọn POI cụ thể
                 vm.ClearNearestHighlight();
             });
         }
@@ -256,7 +376,12 @@ public partial class MapPage : ContentPage
     {
         MainThread.BeginInvokeOnMainThread(() =>
         {
-            NearestPoiLabel.Text = poi.Name;
+            // ── YC3: Hiển thị tên đã được dịch theo ngôn ngữ hiện tại ──
+            NearestPoiLabel.Text = GetTranslatedPoiName(poi);
+
+            // ── YC3: Localize nút Chỉ đường ──
+            LblDirectionsBtn.Text = loc.DirectionsBtn;
+
             if (currentLocation != null)
             {
                 var dist = Location.CalculateDistance(
@@ -264,13 +389,14 @@ public partial class MapPage : ContentPage
                 PoiDistanceLabel.Text = dist < 1 ? $"{(int)(dist * 1000)} m" : $"{dist:F1} km";
             }
             else PoiDistanceLabel.Text = "";
+
             RouteLoadingRow.IsVisible = false;
             PoiCard.IsVisible = true;
         });
     }
 
     // ══════════════════════════════════════════════════════════════════
-    // ROUTE
+    // ROUTE — giữ nguyên signature
     // ══════════════════════════════════════════════════════════════════
     private async void Route_Clicked_Action(object sender, TappedEventArgs e)
     {
@@ -308,6 +434,70 @@ public partial class MapPage : ContentPage
     }
 
     // ══════════════════════════════════════════════════════════════════
+    // YC2: NÚT CHỈ ĐƯỜNG → MỞ GOOGLE MAPS NAVIGATION
+    // Thay thế vẽ route nội bộ bằng mở Google Maps turn-by-turn
+    // ══════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Mở Google Maps ở chế độ navigation turn-by-turn đến POI được chọn.
+    /// Ưu tiên Google Maps app, fallback sang browser nếu không cài.
+    /// Clean, không lag — chỉ build URI và mở.
+    /// </summary>
+    private async void OnOpenGoogleMapsTapped(object sender, TappedEventArgs e)
+    {
+        _isActionButtonTapped = true;
+
+        var target = selectedPoi ?? currentNearest;
+        if (target == null) return;
+
+        try
+        {
+            // ── Build Google Maps Navigation URI ──
+            // geo:0,0?q=lat,lng(label) → mở directions
+            // Dùng daddr để chỉ định điểm đến với turn-by-turn navigation
+            var destinationLat = target.Lat.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var destinationLng = target.Lng.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+            // Encode tên POI để tránh ký tự đặc biệt
+            var encodedName = Uri.EscapeDataString(GetTranslatedPoiName(target));
+
+            // Google Maps navigation URI — mode=d là driving, tdir= là turn-by-turn
+            var googleMapsUri = $"google.navigation:q={destinationLat},{destinationLng}&mode=w";
+
+            // Thử mở Google Maps app trước
+            bool opened = false;
+
+            if (await Launcher.CanOpenAsync(new Uri(googleMapsUri)))
+            {
+                await Launcher.OpenAsync(new Uri(googleMapsUri));
+                opened = true;
+            }
+
+            if (!opened)
+            {
+                // Fallback: Google Maps web với directions
+                // saddr để tự động lấy current location làm điểm xuất phát
+                var webUri = $"https://www.google.com/maps/dir/?api=1&destination={destinationLat},{destinationLng}&travelmode=walking&destination_place_name={encodedName}";
+                await Browser.OpenAsync(webUri, BrowserLaunchMode.SystemPreferred);
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MapPage] Open Google Maps error: {ex.Message}");
+
+            // Final fallback: mở browser maps
+            try
+            {
+                var destinationLat = target.Lat.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                var destinationLng = target.Lng.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                var fallbackUri = $"https://maps.google.com/?q={destinationLat},{destinationLng}";
+                await Browser.OpenAsync(fallbackUri, BrowserLaunchMode.SystemPreferred);
+            }
+            catch { /* ignore */ }
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════
     // POI CARD ACTIONS
     // ══════════════════════════════════════════════════════════════════
     private async void PoiCard_Tapped(object sender, TappedEventArgs e)
@@ -329,7 +519,6 @@ public partial class MapPage : ContentPage
 
         vm.DeselectPoiIcon();
         vm.ClearRoute();
-        // Khi đóng card trong normal mode → xóa highlight nearest
         vm.ClearNearestHighlight();
 
         selectedPoi = null;
@@ -344,31 +533,30 @@ public partial class MapPage : ContentPage
     // ══════════════════════════════════════════════════════════════════
     // LOCATION UPDATE
     // ══════════════════════════════════════════════════════════════════
-    private void UpdateLocation(Location loc)
+    private void UpdateLocation(Location loc3)
     {
-        if (loc == null || TourMap?.Map == null) return;
+        if (loc3 == null || TourMap?.Map == null) return;
         MainThread.BeginInvokeOnMainThread(() =>
         {
-            vm.UpdateUser(TourMap.Map, loc);
+            vm.UpdateUser(TourMap.Map, loc3);
             if (TourMap?.Map?.Navigator != null && followUser && !openedFromRoute)
             {
-                var m = SphericalMercator.FromLonLat(loc.Longitude, loc.Latitude);
+                var m = SphericalMercator.FromLonLat(loc3.Longitude, loc3.Latitude);
                 TourMap.Map.Navigator.CenterOn(new MPoint(m.x, m.y));
                 firstZoom = false;
             }
 
             if (pois.Count == 0) return;
 
-            // ── Tìm POI gần nhất ──
             Poi? nearest = null;
             double minDist = double.MaxValue;
             foreach (var p in pois)
             {
-                var dist = Location.CalculateDistance(loc, new Location(p.Lat, p.Lng), DistanceUnits.Kilometers);
+                var dist = Location.CalculateDistance(loc3, new Location(p.Lat, p.Lng), DistanceUnits.Kilometers);
                 if (dist < minDist) { minDist = dist; nearest = p; }
             }
 
-            currentLocation = loc;
+            currentLocation = loc3;
 
             if (nearest != null && selectedPoi == null && !cardManuallyClosed)
             {
@@ -399,14 +587,14 @@ public partial class MapPage : ContentPage
     // ══════════════════════════════════════════════════════════════════
     private async void LocateUser_Clicked(object sender, EventArgs e)
     {
-        var loc = await Geolocation.GetLastKnownLocationAsync();
-        if (loc == null)
-            loc = await Geolocation.GetLocationAsync(
+        var loc2 = await Geolocation.GetLastKnownLocationAsync();
+        if (loc2 == null)
+            loc2 = await Geolocation.GetLocationAsync(
                 new GeolocationRequest(GeolocationAccuracy.Medium, TimeSpan.FromSeconds(3)));
 
-        if (loc == null || TourMap?.Map?.Navigator == null) return;
+        if (loc2 == null || TourMap?.Map?.Navigator == null) return;
 
-        var m = SphericalMercator.FromLonLat(loc.Longitude, loc.Latitude);
+        var m = SphericalMercator.FromLonLat(loc2.Longitude, loc2.Latitude);
         TourMap.Map.Navigator.CenterOnAndZoomTo(
             new MPoint(m.x, m.y), 0.5, 400, Mapsui.Animations.Easing.CubicOut);
     }
@@ -437,9 +625,9 @@ public partial class MapPage : ContentPage
         }
         else
         {
-            var loc = await Geolocation.GetLastKnownLocationAsync();
-            if (loc == null) { await DisplayAlert("Lỗi", "Không lấy được vị trí GPS.", "OK"); return; }
-            centerLat = loc.Latitude; centerLng = loc.Longitude;
+            var loc2 = await Geolocation.GetLastKnownLocationAsync();
+            if (loc2 == null) { await DisplayAlert("Lỗi", "Không lấy được vị trí GPS.", "OK"); return; }
+            centerLat = loc2.Latitude; centerLng = loc2.Longitude;
         }
 
         var (newTiles, sizeMB, cached, desc) = offlineMapService.GetDownloadEstimate(centerLat, centerLng, 2.5);
@@ -553,7 +741,6 @@ public partial class MapPage : ContentPage
     // ══════════════════════════════════════════════════════════════════
     private async Task LoadPoiHeatmapAsync()
     {
-        // Heatmap chỉ hiển thị trên CMS dashboard — không render trên mobile map
         System.Diagnostics.Debug.WriteLine("[MapPage] Heatmap rendering skipped — CMS only");
         await Task.CompletedTask;
     }

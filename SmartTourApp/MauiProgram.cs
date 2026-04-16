@@ -44,7 +44,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<OfflineDatabase>();
         builder.Services.AddSingleton<OfflineSyncService>();
 
-        // 🔥 Offline Map Infrastructure
+        // Offline Map Infrastructure
         builder.Services.AddSingleton<OfflineMapService>();
 
         // ── Audio Pipeline ──
@@ -52,7 +52,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<AudioCoordinator>();
         builder.Services.AddSingleton<TtsService>();
 
-        // ── NarrationEngine (đã tích hợp Priority Queue + Fallback) ──
+        // ── NarrationEngine (Priority Queue + Fallback) ──
         builder.Services.AddSingleton<NarrationEngine>();
 
         // ── API ──
@@ -75,14 +75,14 @@ public static class MauiProgram
         // ── Misc ──
         builder.Services.AddSingleton<OfflineService>();
 
-        // ── PoiDetailAudioManager (tích hợp Offline + TTS fallback) ──
+        // ── PoiDetailAudioManager (Offline + TTS fallback) ──
         builder.Services.AddSingleton<PoiDetailAudioManager>();
 
         // ── Pages ──
-        // YC3: HomePage and MapPage now take LanguageService + ApiService for translated names
+        // MapPage giờ nhận thêm LocalizationService + LanguageService để sync ngôn ngữ
         builder.Services.AddSingleton<SettingsPage>();
         builder.Services.AddSingleton<HomePage>();
-        builder.Services.AddSingleton<MapPage>();
+        builder.Services.AddSingleton<MapPage>();       // <-- sẽ inject loc + lang tự động qua DI
         builder.Services.AddTransient<PoiDetailPage>();
 
 #if DEBUG

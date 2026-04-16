@@ -5,6 +5,9 @@ namespace SmartTourApp;
 
 public partial class AppShell : Shell
 {
+    // ── Cache để tránh tạo lại LocalizationService mỗi lần navigate ──
+    private LocalizationService? _locService;
+
     public AppShell()
     {
         InitializeComponent();
@@ -12,35 +15,41 @@ public partial class AppShell : Shell
         Routing.RegisterRoute(nameof(PoiDetailPage), typeof(PoiDetailPage));
         Routing.RegisterRoute(nameof(MapPage), typeof(MapPage));
 
-        // 1. Đăng ký nhận thông báo đổi ngôn ngữ
-        // Lấy LocalizationService thông qua Handler của App
-        var loc = App.Current?.Handler?.MauiContext?.Services.GetService<LocalizationService>();
-        if (loc != null)
-        {
-            loc.LanguageChanged += () => MainThread.BeginInvokeOnMainThread(ApplyTabLocalization);
-        }
-
-        // 2. Chạy lần đầu khi mở app
-        ApplyTabLocalization();
+        // Lazy-get service sau khi handler sẵn sàng
+        this.HandlerChanged += OnHandlerChanged;
 
         Navigating += OnShellNavigating;
     }
 
+    private void OnHandlerChanged(object? sender, EventArgs e)
+    {
+        // Chỉ cần resolve một lần duy nhất
+        _locService = App.Current?.Handler?.MauiContext?.Services.GetService<LocalizationService>();
+        if (_locService != null)
+        {
+            _locService.LanguageChanged += () =>
+                MainThread.BeginInvokeOnMainThread(ApplyTabLocalization);
+        }
+        ApplyTabLocalization();
+    }
+
     private void ApplyTabLocalization()
     {
-        // Lấy Service để đọc các chuỗi chữ
-        var loc = App.Current?.Handler?.MauiContext?.Services.GetService<LocalizationService>();
+        var loc = _locService
+            ?? App.Current?.Handler?.MauiContext?.Services.GetService<LocalizationService>();
         if (loc == null) return;
 
-        // Gán chữ cho các ShellContent thông qua x:Name đã đặt bên XAML
         ContentHome.Title = loc.HomeTab;
         ContentMap.Title = loc.MapTab;
         ContentSettings.Title = loc.SettingsTab;
     }
 
-    private async void OnShellNavigating(object? sender, ShellNavigatingEventArgs e)
+    /// <summary>
+    /// YC1: Tối ưu navigation — PopToRoot async để tránh block main thread.
+    /// Chỉ pop khi thực sự cần (stack > 1), không block shell switching.
+    /// </summary>
+    private void OnShellNavigating(object? sender, ShellNavigatingEventArgs e)
     {
-        // Giữ nguyên logic PopToRoot cũ của bác
         if (e.Source != ShellNavigationSource.ShellSectionChanged &&
             e.Source != ShellNavigationSource.ShellItemChanged)
             return;
@@ -50,12 +59,14 @@ public partial class AppShell : Shell
             var current = Current?.CurrentItem?.CurrentItem as ShellSection;
             if (current?.Navigation?.NavigationStack?.Count > 1)
             {
-                _ = Task.Run(async () =>
+                // Fire-and-forget trên main thread, không await để không block
+                MainThread.BeginInvokeOnMainThread(async () =>
                 {
-                    await MainThread.InvokeOnMainThreadAsync(async () =>
+                    try
                     {
                         await current.Navigation.PopToRootAsync(animated: false);
-                    });
+                    }
+                    catch { /* non-critical */ }
                 });
             }
         }

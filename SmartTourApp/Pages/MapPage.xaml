@@ -232,7 +232,7 @@
                 <!-- Header Row: Name + Distance + Icon buttons -->
                 <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,12">
                     <VerticalStackLayout Grid.Column="0" Spacing="3" VerticalOptions="Center">
-                        <!-- YC3: DisplayName label -->
+                        <!-- YC3: DisplayName label — sẽ được cập nhật theo ngôn ngữ -->
                         <Label x:Name="NearestPoiLabel"
                                Text=""
                                FontSize="18" FontAttributes="Bold"
@@ -246,28 +246,6 @@
                         </HorizontalStackLayout>
                     </VerticalStackLayout>
                     <HorizontalStackLayout Grid.Column="1" Spacing="10" VerticalOptions="Start">
-                        <!-- Bookmark -->
-                        <Border WidthRequest="36" HeightRequest="36"
-                                BackgroundColor="#F5F5FA" StrokeThickness="0"
-                                StrokeShape="RoundRectangle 18">
-                            <Border.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="Save_Clicked"/>
-                            </Border.GestureRecognizers>
-                            <Image Source="bookmark.png" WidthRequest="18" HeightRequest="18"
-                                   HorizontalOptions="Center" VerticalOptions="Center"
-                                   InputTransparent="True"/>
-                        </Border>
-                        <!-- Share -->
-                        <Border WidthRequest="36" HeightRequest="36"
-                                BackgroundColor="#F5F5FA" StrokeThickness="0"
-                                StrokeShape="RoundRectangle 18">
-                            <Border.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="Share_Clicked"/>
-                            </Border.GestureRecognizers>
-                            <Image Source="share.png" WidthRequest="18" HeightRequest="18"
-                                   HorizontalOptions="Center" VerticalOptions="Center"
-                                   InputTransparent="True"/>
-                        </Border>
                         <!-- Close -->
                         <Border WidthRequest="36" HeightRequest="36"
                                 BackgroundColor="#FFF0F0" StrokeThickness="0"
@@ -285,7 +263,8 @@
                 <!-- Divider -->
                 <BoxView HeightRequest="1" BackgroundColor="#F2F2F2" Margin="0,0,0,14"/>
 
-                <!-- YC2: Single "Chỉ đường" (Google Maps) button - full width -->
+                <!-- YC2: Nút "Chỉ đường" → Mở Google Maps navigation -->
+                <!-- YC3: Label đồng bộ ngôn ngữ qua LblDirectionsBtn -->
                 <Border x:Name="DirectionsBtnContainer"
                         StrokeThickness="0"
                         StrokeShape="RoundRectangle 16"
@@ -300,6 +279,7 @@
                         <Shadow Brush="#1565C0" Offset="0,4" Radius="12" Opacity="0.3"/>
                     </Border.Shadow>
                     <Border.GestureRecognizers>
+                        <!-- YC2: Handler mở Google Maps navigation -->
                         <TapGestureRecognizer Tapped="OnOpenGoogleMapsTapped"/>
                     </Border.GestureRecognizers>
                     <HorizontalStackLayout Spacing="8"
@@ -310,7 +290,7 @@
                                FontSize="16"
                                VerticalOptions="Center"
                                InputTransparent="True"/>
-                        <!-- YC4: Localized label -->
+                        <!-- YC3: Text thay đổi theo ngôn ngữ được chọn ở Settings -->
                         <Label x:Name="LblDirectionsBtn"
                                Text="Chỉ đường"
                                FontSize="15"
