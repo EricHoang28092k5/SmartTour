@@ -227,13 +227,47 @@ namespace SmartTourCMS.Controllers
         }
 
         [HttpPost]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> Delete(int id)
         {
             var poi = await _context.Pois.FirstOrDefaultAsync(p => p.Id == id);
-            if (poi != null)
+            if (poi == null) return NotFound();
+
+            var user = await _userManager.GetUserAsync(User);
+            if (user == null) return RedirectToAction("Login", "Account");
+
+            var isAdmin = await _userManager.IsInRoleAsync(user, "Admin");
+            if (!isAdmin && poi.VendorId != user.Id) return Forbid();
+
+            try
             {
+                // Dọn dữ liệu liên quan để tránh POI đã xóa nhưng dữ liệu con còn treo trong API.
+                var poiTranslations = _context.PoiTranslations.Where(x => x.PoiId == id);
+                var poiImages = _context.PoiImages.Where(x => x.PoiId == id);
+                var foods = _context.Food.Where(x => x.PoiId == id);
+                var foodIds = await foods.Select(f => f.Id).ToListAsync();
+                var foodTranslations = _context.FoodTranslations.Where(x => foodIds.Contains(x.FoodId));
+                var tourPois = _context.TourPois.Where(x => x.PoiId == id);
+                var playLogs = _context.PlayLog.Where(x => x.PoiId == id);
+                var heatmapEntries = _context.HeatmapEntries.Where(x => x.PoiId == id);
+                var routeSessionPois = _context.RouteSessionPois.Where(x => x.PoiId == id);
+
+                _context.FoodTranslations.RemoveRange(foodTranslations);
+                _context.Food.RemoveRange(foods);
+                _context.TourPois.RemoveRange(tourPois);
+                _context.PoiTranslations.RemoveRange(poiTranslations);
+                _context.PoiImages.RemoveRange(poiImages);
+                _context.PlayLog.RemoveRange(playLogs);
+                _context.HeatmapEntries.RemoveRange(heatmapEntries);
+                _context.RouteSessionPois.RemoveRange(routeSessionPois);
                 _context.Pois.Remove(poi);
+
                 await _context.SaveChangesAsync();
+                TempData["success"] = "Đã xóa POI và toàn bộ dữ liệu liên quan.";
+            }
+            catch (Exception ex)
+            {
+                TempData["Error"] = "Xóa POI thất bại: " + ex.Message;
             }
             return RedirectToAction(nameof(Index));
         }

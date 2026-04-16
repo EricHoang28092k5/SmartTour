@@ -418,6 +418,7 @@ flowchart LR
     UC16([Nghe audio theo ngôn ngữ])
     UC17([Dùng offline map/audio])
     UC18([Gửi playlog/route])
+    UC18B([Gửi dữ liệu heatmap])
     UC19([Xóa phiên QR trong Settings])
     UC20([Đổi ngôn ngữ app])
 
@@ -456,6 +457,7 @@ flowchart LR
     A1 --> UC16
     A1 --> UC17
     A1 --> UC18
+    A1 --> UC18B
     A1 --> UC19
     A1 --> UC20
 
@@ -468,6 +470,7 @@ flowchart LR
     UC15 -. "<<include>>" .-> INC2
     UC16 -. "<<include>>" .-> INC2
     UC18 -. "<<include>>" .-> INC3
+    UC18B -. "<<include>>" .-> INC3
     UC16 -. "<<extend>>" .-> EXT1
     UC14 -. "<<extend>>" .-> EXT2
 ```
@@ -489,6 +492,10 @@ flowchart TB
     C9([View Play Logs])
     C10([View Heatmap/Route])
     C11([Manage Users])
+    C12([Create Food])
+    C13([Read Food])
+    C14([Update Food])
+    C15([Delete Food])
 
     V --> C1
     V --> C2
@@ -499,6 +506,10 @@ flowchart TB
     V --> C7
     V --> C8
     V --> C9
+    V --> C12
+    V --> C13
+    V --> C14
+    V --> C15
 
     AD --> C1
     AD --> C2
@@ -511,6 +522,10 @@ flowchart TB
     AD --> C9
     AD --> C10
     AD --> C11
+    AD --> C12
+    AD --> C13
+    AD --> C14
+    AD --> C15
 ```
 
 ## 12. Sequence diagram
@@ -753,28 +768,86 @@ sequenceDiagram
     API->>DB: Insert PlayLog/RouteSession
 ```
 
-### 12.18 Xóa phiên QR + đổi ngôn ngữ app (Traveler)
+### 12.18 Create Food (Admin/Vendor)
+```mermaid
+sequenceDiagram
+    actor U as Admin/Vendor
+    participant CMS as CMS
+    participant DB as PostgreSQL
+    U->>CMS: Nhập form tạo Food
+    CMS->>DB: Insert Food
+    CMS->>DB: Insert/Upsert FoodTranslation
+    CMS-->>U: Tạo thành công
+```
+
+### 12.19 Read Food (Admin/Vendor)
+```mermaid
+sequenceDiagram
+    actor U as Admin/Vendor
+    participant CMS as CMS
+    participant DB as PostgreSQL
+    U->>CMS: Mở màn hình Food
+    CMS->>DB: Query Food + Poi
+    DB-->>CMS: Danh sách Food
+```
+
+### 12.20 Update Food (Admin/Vendor)
+```mermaid
+sequenceDiagram
+    actor U as Admin/Vendor
+    participant CMS as CMS
+    participant DB as PostgreSQL
+    U->>CMS: Sửa thông tin Food
+    CMS->>DB: Update Food
+    CMS->>DB: Upsert FoodTranslation
+    CMS-->>U: Cập nhật thành công
+```
+
+### 12.21 Delete Food (Admin/Vendor)
+```mermaid
+sequenceDiagram
+    actor U as Admin/Vendor
+    participant CMS as CMS
+    participant DB as PostgreSQL
+    U->>CMS: Bấm xóa Food
+    CMS->>DB: Delete FoodTranslation theo FoodId
+    CMS->>DB: Delete Food
+    CMS-->>U: Xóa thành công
+```
+
+### 12.22 Xóa phiên QR trong Settings (Traveler)
+```mermaid
+sequenceDiagram
+    actor T as Traveler
+    participant APP as SettingsPage
+    participant PREF as Preferences
+    T->>APP: Bấm xóa phiên QR
+    APP->>PREF: Clear QrGateUntil
+    APP-->>T: Lần mở sau bắt buộc quét lại
+```
+
+### 12.23 Đổi ngôn ngữ app (Traveler)
 ```mermaid
 sequenceDiagram
     actor T as Traveler
     participant APP as SettingsPage
     participant PREF as Preferences
     participant REPO as PoiRepository
-    T->>APP: Đổi ngôn ngữ + xóa phiên QR
-    APP->>PREF: Update lang + clear QrGateUntil
+    T->>APP: Chọn ngôn ngữ mới
+    APP->>PREF: Save lang
     APP->>REPO: Clear cache POI
-    APP-->>T: Reload app UI theo ngôn ngữ mới
+    APP-->>T: Reload UI theo ngôn ngữ mới
 ```
 
 ## 13. Activity diagram
 ### 13.1 Đăng nhập và phân quyền (Admin)
 ```mermaid
 flowchart TD
-    A[Nhập tài khoản] --> B[Identity xác thực]
-    B --> C{Đúng thông tin?}
+    A[Nhap tai khoan] --> B[Xac thuc Identity]
+    B --> C{Dung thong tin}
     C -- Không --> A
-    C -- Có --> D[Load role từ AspNetUserRoles]
-    D --> E[Điều hướng dashboard theo role]
+    C -- Có --> D[Load role]
+    D --> E[Dieu huong dashboard theo role]
 ```
 
 ### 13.2 Tạo POI
@@ -935,13 +1008,58 @@ flowchart TD
     E --> F
 ```
 
-### 13.18 Xóa phiên QR + đổi ngôn ngữ app
+### 13.18 Create Food
 ```mermaid
 flowchart TD
-    A[Vào Settings] --> B[Xóa phiên QR]
-    B --> C[Đổi ngôn ngữ]
-    C --> D[Clear cache dữ liệu]
-    D --> E[Reload app]
+    A[Mo form Create Food] --> B[Nhap du lieu]
+    B --> C{Hop le}
+    C -- Khong --> B
+    C -- Co --> D[Luu Food + FoodTranslation]
+    D --> E[Ket thuc]
+```
+
+### 13.19 Read Food
+```mermaid
+flowchart TD
+    A[Mo trang Food] --> B[Query danh sach]
+    B --> C[Hien thi bang Food]
+    C --> D[Ket thuc]
+```
+
+### 13.20 Update Food
+```mermaid
+flowchart TD
+    A[Mo Edit Food] --> B[Sua thong tin]
+    B --> C{Hop le}
+    C -- Khong --> B
+    C -- Co --> D[Update Food + translation]
+    D --> E[Ket thuc]
+```
+
+### 13.21 Delete Food
+```mermaid
+flowchart TD
+    A[Bam xoa Food] --> B[Xac nhan]
+    B --> C[Delete translation]
+    C --> D[Delete Food]
+    D --> E[Ket thuc]
+```
+
+### 13.22 Xóa phiên QR trong Settings
+```mermaid
+flowchart TD
+    A[Vao Settings] --> B[Bam xoa phien QR]
+    B --> C[Clear QrGateUntil]
+    C --> D[Ket thuc]
+```
+
+### 13.23 Đổi ngôn ngữ app
+```mermaid
+flowchart TD
+    A[Vao Settings] --> B[Chon ngon ngu]
+    B --> C[Luu setting lang]
+    C --> D[Clear cache]
+    D --> E[Reload UI]
 ```
 
 ## 14. Data Flow Diagram (DFD Level 1)
@@ -1076,12 +1194,16 @@ Checklist nghiệm thu theo chức năng:
 - Chấm điểm chất lượng tour dựa trên analytics.
 
 ## 21. Danh mục tài liệu & mã tham chiếu
-- Tài liệu chính: `PRD_SmartTour.md`
-- Source code:
-  - `SmartTourApp/`
-  - `SmartTourCMS/`
-  - `SmartTourBackend/`
-  - `SmartTour.Shared/`
+| Loại | Đường dẫn / ghi chú |
+| --- | --- |
+| PRD (tài liệu này) | `PRD_SmartTour.md` (root repo) |
+| Backend API | `SmartTourBackend/Controllers/*.cs`, `SmartTourBackend/Program.cs`, `SmartTourBackend/Data/AppDbContext.cs` |
+| CMS Web | `SmartTourCMS/Controllers/*.cs`, `SmartTourCMS/Views/**`, `SmartTourCMS/Program.cs` |
+| App MAUI | `SmartTourApp/Pages/*.xaml*`, `SmartTourApp/Services/*.cs`, `SmartTourApp/MauiProgram.cs` |
+| Shared Models | `SmartTour.Shared/SmartTour.Shared/Models/*.cs` |
+| Migration / SQL | `SmartTourBackend/Migrations/*.cs` |
+| Sơ đồ ERD | Mermaid ERD tại mục `8.3` |
+| Use Case / Sequence / Activity | Mermaid tại mục `11`, `12`, `13` |
 
 ## 22. Lịch sử phiên bản PRD
 | Phiên bản | Ngày | Nội dung cập nhật |

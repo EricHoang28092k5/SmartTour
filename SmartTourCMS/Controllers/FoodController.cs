@@ -37,6 +37,20 @@ namespace SmartTourCMS.Controllers
 
             var isAdmin = await _userManager.IsInRoleAsync(user, "Admin");
 
+            // Dọn orphan records: món ăn trỏ tới POI đã bị xóa từ các phiên bản cũ.
+            var orphanFoodIds = await _context.Food
+                .Where(f => !_context.Pois.Any(p => p.Id == f.PoiId))
+                .Select(f => f.Id)
+                .ToListAsync();
+            if (orphanFoodIds.Count > 0)
+            {
+                var orphanTrans = _context.FoodTranslations.Where(t => orphanFoodIds.Contains(t.FoodId));
+                var orphanFoods = _context.Food.Where(f => orphanFoodIds.Contains(f.Id));
+                _context.FoodTranslations.RemoveRange(orphanTrans);
+                _context.Food.RemoveRange(orphanFoods);
+                await _context.SaveChangesAsync();
+            }
+
             // Kéo danh sách món ăn, lôi luôn thằng Bố (Poi) lên để lấy tên Quán
             var query = _context.Food.Include(f => f.Poi).AsQueryable();
 
@@ -155,11 +169,13 @@ namespace SmartTourCMS.Controllers
             var isAdmin = await _userManager.IsInRoleAsync(user, "Admin");
 
             // LƯỚI BẢO MẬT: Không phải Admin và không phải chủ quán thì cấm xóa
-            if (!isAdmin && food.Poi.VendorId != user.Id)
+            if (!isAdmin && (food.Poi == null || food.Poi.VendorId != user.Id))
             {
                 return Forbid();
             }
 
+            var trans = _context.FoodTranslations.Where(t => t.FoodId == id);
+            _context.FoodTranslations.RemoveRange(trans);
             _context.Food.Remove(food);
             await _context.SaveChangesAsync();
             
