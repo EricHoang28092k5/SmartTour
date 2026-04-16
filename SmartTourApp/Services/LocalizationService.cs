@@ -39,7 +39,6 @@ public class LocalizationService
     // ══════════════════════════════════════════════════════════════
     public string HomeTab => T("Trang chủ", "Home", "ホーム", "首页", "홈");
     public string MapTab => T("Bản đồ", "Map", "地図", "地图", "지도");
-    public string TourTab => T("Hành trình", "Tour", "ツアー", "行程", "투어");
     public string SettingsTab => T("Cài đặt", "Settings", "設定", "设置", "설정");
 
     // ══════════════════════════════════════════════════════════════
@@ -74,9 +73,6 @@ public class LocalizationService
     // MAP PAGE
     // ══════════════════════════════════════════════════════════════
     public string MapTitle => T("Bản đồ", "Map", "マップ", "地图", "지도");
-    public string TourActive => T("Tour đang hoạt động", "Tour active", "ツアー中", "游览中", "투어 진행 중");
-    public string TourRouteHint => T("Đường đỏ = lộ trình tour", "Red line = tour route", "赤線 = ツアールート", "红线 = 游览路线", "빨간선 = 투어 경로");
-    public string ExitTour => T("✕ Thoát tour", "✕ Exit tour", "✕ ツアー終了", "✕ 退出游览", "✕ 투어 종료");
     public string OfflineMapHint => T("Chế độ ngoại tuyến — bản đồ chỉ hiện vùng đã tải", "Offline — showing cached map only", "オフライン — キャッシュ済みエリアのみ表示", "离线 — 仅显示已缓存区域", "오프라인 — 캐시된 지역만 표시");
     public string DownloadMap => T("Tải bản đồ", "Download map", "マップDL", "下载地图", "지도 다운로드");
     public string DownloadingMap => T("Đang tải bản đồ...", "Downloading map...", "マップDL中...", "地图下载中...", "지도 다운로드 중...");
@@ -86,7 +82,6 @@ public class LocalizationService
     public string Call => T("Gọi", "Call", "電話", "拨打", "전화");
     public string SavePlace => T("Lưu", "Save", "保存", "收藏", "저장");
     public string RouteError => T("Không thể tính đường đi: ", "Cannot calculate route: ", "ルート計算不可: ", "无法计算路线: ", "경로 계산 불가: ");
-    public string TourStepFmt => T("Điểm {0} / {1} trong tour", "Stop {0} of {1}", "スポット {0} / {1}", "第 {0} / {1} 站", "{0} / {1} 번 정류장");
     public string DownloadAreaTitle => T("Tải bản đồ offline", "Download offline map", "オフラインマップDL", "下载离线地图", "오프라인 지도 다운로드");
     public string AlreadyCached => T("Đã có sẵn", "Already cached", "キャッシュ済み", "已缓存", "이미 캐시됨");
     public string MapAlreadyDownloaded => T("Bản đồ khu vực này đã được tải!\n{0} tiles trong cache.", "This area is already downloaded!\n{0} tiles cached.", "このエリアはダウンロード済み！\n{0}タイル", "该区域地图已下载！\n{0}个瓦片", "이 지역은 이미 다운로드됨!\n{0}개 타일");
@@ -97,27 +92,7 @@ public class LocalizationService
     public string NoNetwork => T("Không có mạng", "No network", "ネットワークなし", "无网络", "네트워크 없음");
     public string NoNetworkMsg => T("Bạn đang offline. Kết nối mạng để tải bản đồ.", "You are offline. Connect to download map.", "オフライン中。マップDLにはネット接続が必要。", "您处于离线状态。连接网络以下载地图。", "오프라인 상태입니다. 지도를 다운로드하려면 네트워크에 연결하세요.");
     public string Downloading => T("Đang tải...", "Downloading...", "ダウンロード中...", "下载中...", "다운로드 중...");
-    public string TourNeedMinPoi => T("Không thể bắt đầu", "Cannot start", "開始不可", "无法开始", "시작 불가");
-    public string TourNeedMinPoiMsg => T("Tour cần ít nhất 2 điểm dừng để hiển thị trên bản đồ.", "Tour needs at least 2 stops to show on map.", "ツアーには最低2箇所が必要です。", "游览需要至少2个站点。", "투어는 최소 2개 정류장이 필요합니다.");
-    public string StartFromFirst => T("Bắt đầu từ điểm 1", "Start from stop 1", "スポット1から開始", "从第1站开始", "1번 정류장부터 시작");
-    public string StartFromFirstMsg => T("Hành trình cần bắt đầu từ điểm 1: {0}", "Journey must start from stop 1: {0}", "ルートはスポット1から開始: {0}", "行程必须从第1站开始: {0}", "여정은 1번 정류장에서 시작해야 합니다: {0}");
 
-    // ══════════════════════════════════════════════════════════════
-    // TOUR PAGE
-    // ══════════════════════════════════════════════════════════════
-    public string TourPageTitle => T("Tours", "Tours", "ツアー", "游览", "투어");
-    public string TourPageSubtitle => T("HÀNH TRÌNH", "JOURNEYS", "旅程", "行程", "여정");
-    public string TourCount => T("{0} tour", "{0} tours", "{0}ツアー", "{0}个游览", "{0}개 투어");
-    public string Stops => T("{0} điểm dừng", "{0} stops", "{0}箇所", "{0}站", "{0}개 정류장");
-    public string StopHash => T("Điểm dừng #{0}", "Stop #{0}", "スポット#{0}", "第{0}站", "정류장 #{0}");
-    public string Details => T("Chi tiết ↓", "Details ↓", "詳細 ↓", "详情 ↓", "세부사항 ↓");
-    public string Collapse => T("Thu gọn ↑", "Collapse ↑", "折りたたむ ↑", "收起 ↑", "접기 ↑");
-    public string ViewOnMap => T("🗺 Xem bản đồ", "🗺 View on map", "🗺 地図で見る", "🗺 查看地图", "🗺 지도에서 보기");
-    public string StartJourney => T("🚀  Bắt đầu hành trình trên bản đồ", "🚀  Start journey on map", "🚀  地図でルート開始", "🚀  在地图上开始行程", "🚀  지도에서 여정 시작");
-    public string Schedule => T("LỊCH TRÌNH", "SCHEDULE", "スケジュール", "行程安排", "일정");
-    public string TourLoadError => T("Lỗi tải tour", "Tour load error", "ツアー読込エラー", "游览加载错误", "투어 로드 오류");
-    public string OfflineTourReady => T("✅ Tour sẵn sàng offline", "✅ Tour ready offline", "✅ オフライン準備完了", "✅ 离线游览准备就绪", "✅ 오프라인 투어 준비 완료");
-    public string OfflineTourDownloading => T("Đang tải dữ liệu offline...", "Downloading offline data...", "オフラインDL中...", "离线数据下载中...", "오프라인 데이터 다운로드 중...");
 
     // ══════════════════════════════════════════════════════════════
     // POI DETAIL PAGE
@@ -176,15 +151,6 @@ public class LocalizationService
     public string TilesInfo => T("{0:N0} tiles (~{1}MB)", "{0:N0} tiles (~{1}MB)", "{0:N0}タイル (~{1}MB)", "{0:N0}个瓦片 (~{1}MB)", "{0:N0}개 타일 (~{1}MB)");
     public string TilesCached => T("✅ {0} tiles đã lưu", "✅ {0} tiles cached", "✅ {0}タイル保存済み", "✅ {0}个瓦片已保存", "✅ {0}개 타일 저장됨");
     public string NoOfflineMap => T("Chưa có bản đồ offline", "No offline map yet", "オフラインマップなし", "暂无离线地图", "오프라인 지도 없음");
-
-    // ══════════════════════════════════════════════════════════════
-    // TOUR OFFLINE
-    // ══════════════════════════════════════════════════════════════
-    public string TourOfflineTitle => T("TOUR NGOẠI TUYẾN", "OFFLINE TOUR", "オフラインツアー", "离线游览", "오프라인 투어");
-    public string TourOfflineDownload => T("Tải về để dùng offline", "Download for offline", "オフライン用DL", "下载以供离线使用", "오프라인용 다운로드");
-    public string TourOfflineReady => T("Sẵn sàng offline", "Offline ready", "オフライン準備完了", "离线就绪", "오프라인 준비 완료");
-    public string TourOfflineDownloading => T("Đang tải...", "Downloading...", "ダウンロード中...", "下载中...", "다운로드 중...");
-    public string TourOfflineNotAvailable => T("Chưa tải về offline", "Not downloaded", "未ダウンロード", "未下载", "다운로드 안됨");
 
     // ══════════════════════════════════════════════════════════════
     // HELPER

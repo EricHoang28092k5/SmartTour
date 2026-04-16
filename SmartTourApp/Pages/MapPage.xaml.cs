@@ -17,7 +17,6 @@ using static SmartTour.Services.ApiService;
 namespace SmartTourApp.Pages;
 
 [QueryProperty(nameof(TargetPoiId), "targetPoi")]
-[QueryProperty(nameof(TourIdParam), "tourId")]
 public partial class MapPage : ContentPage
 {
     private bool followUser = true;
@@ -44,28 +43,6 @@ public partial class MapPage : ContentPage
     private CancellationTokenSource? _downloadCts;
     private double _progressBarMaxWidth = 0;
 
-    // ══════════════════════════════════════════════════════════════════
-    // TOUR MODE STATE
-    // ══════════════════════════════════════════════════════════════════
-    public string? TourIdParam { get; set; }
-    private bool _isTourMode = false;
-    private int _tourCurrentCardIndex = 0;
-
-    /// <summary>YC7: Track xem có card mở khi rời page không.</summary>
-    private bool _hadOpenCardWhenLeaving = false;
-
-    // ── YC4 Tour: Track radius arrival để advance card ──
-    /// <summary>
-    /// Lưu POI index đang hiển thị card (0-based).
-    /// Chỉ advance sang index+1 khi user thực sự vào radius của POI [index].
-    /// </summary>
-    private int _displayedTourPoiIndex = 0;
-
-    /// <summary>
-    /// Set các tourPoiId mà user đã "chạm vào" radius (để không re-trigger).
-    /// </summary>
-    private readonly HashSet<int> _tourRadiusReached = new();
-
     public MapPage(
         TrackingService tracking,
         PoiRepository repo,
@@ -77,7 +54,7 @@ public partial class MapPage : ContentPage
 
         TourMap.Map!.Navigator.ViewportChanged += (s, e) =>
         {
-            if (!openedFromRoute && !_isTourMode) followUser = false;
+            if (!openedFromRoute) followUser = false;
         };
 
         this.tracking = tracking;
@@ -130,13 +107,6 @@ public partial class MapPage : ContentPage
 
         if (TourMap?.Map?.Navigator == null) return;
 
-        // ── Kích hoạt tour mới ──
-        if (!string.IsNullOrEmpty(TourIdParam))
-        {
-            await ActivateTourModeAsync(TourIdParam);
-            TourIdParam = null;
-            return;
-        }
 
         // ── YC5: Navigate đến POI cụ thể ──
         if (!string.IsNullOrEmpty(TargetPoiId))
@@ -154,25 +124,6 @@ public partial class MapPage : ContentPage
                 SelectPoi(poi);
             }
             TargetPoiId = null;
-            return;
-        }
-
-        // ── Tour mode đang duy trì ──
-        if (TourSession.IsActive && _isTourMode)
-        {
-            if (!_hadOpenCardWhenLeaving)
-            {
-                if (pois.Count == 0) await Task.Delay(300);
-                CenterOnTour(TourSession.ActiveTour!);
-                await Task.Delay(400);
-                ShowTourPoiCard(_displayedTourPoiIndex);
-            }
-            else
-            {
-                ShowTourBanner(TourSession.ActiveTour!);
-                if (selectedPoi != null && !cardManuallyClosed)
-                    ShowCardForPoi(selectedPoi);
-            }
             return;
         }
 
@@ -202,223 +153,6 @@ public partial class MapPage : ContentPage
     {
         base.OnDisappearing();
         tracking.OnLocationChanged -= UpdateLocation;
-        _hadOpenCardWhenLeaving = PoiCard.IsVisible && !cardManuallyClosed;
-    }
-
-    // ══════════════════════════════════════════════════════════════════
-    // TOUR MODE — ACTIVATION / CENTER / EXIT
-    // ══════════════════════════════════════════════════════════════════
-    private async Task ActivateTourModeAsync(string tourIdStr)
-    {
-        if (!TourSession.IsActive) return;
-        var tour = TourSession.ActiveTour!;
-
-        if (pois.Count == 0)
-        {
-            pois = await repo.GetPois();
-            if (mapInitialized) vm.LoadPois(TourMap.Map!, pois);
-        }
-
-        _isTourMode = true;
-        _tourCurrentCardIndex = 0;
-        _displayedTourPoiIndex = 0;
-        _tourRadiusReached.Clear();
-        followUser = false;
-        openedFromRoute = false;
-        selectedPoi = null;
-        cardManuallyClosed = false;
-        _hadOpenCardWhenLeaving = false;
-
-        vm.LoadTourOverlay(TourMap.Map!, tour.Pois);
-        ZoomToFitTourPois(tour.Pois);
-        ShowTourBanner(tour);
-
-        await Task.Delay(600);
-        ShowTourPoiCard(0);
-    }
-
-    private void CenterOnTour(TourViewModel tour)
-    {
-        if (TourMap?.Map?.Navigator == null || tour.Pois.Count == 0) return;
-        ZoomToFitTourPois(tour.Pois);
-        ShowTourBanner(tour);
-    }
-
-    private void ZoomToFitTourPois(List<TourPoiDto> tourPois)
-    {
-        if (tourPois.Count == 0 || TourMap?.Map?.Navigator == null) return;
-
-        double minLat = tourPois.Min(p => p.Lat), maxLat = tourPois.Max(p => p.Lat);
-        double minLng = tourPois.Min(p => p.Lng), maxLng = tourPois.Max(p => p.Lng);
-
-        double latPad = Math.Max((maxLat - minLat) * 0.15, 0.002);
-        double lngPad = Math.Max((maxLng - minLng) * 0.15, 0.002);
-
-        var sw = SphericalMercator.FromLonLat(minLng - lngPad, minLat - latPad);
-        var ne = SphericalMercator.FromLonLat(maxLng + lngPad, maxLat + latPad);
-
-        TourMap.Map.Navigator.ZoomToBox(new MRect(sw.x, sw.y, ne.x, ne.y), MBoxFit.Fit, 700);
-    }
-
-    private async void ShowTourBanner(TourViewModel tour)
-    {
-        TourBannerLabel.Text = $"🗺 {tour.Name}";
-        TourBannerSubLabel.Text = $"{tour.Pois.Count} điểm • Đường đỏ = lộ trình";
-        TourModeBanner.IsVisible = true;
-        OfflineBanner.IsVisible = false;
-        await TourModeBanner.TranslateTo(0, 0, 350, Easing.CubicOut);
-    }
-
-    private async void HideTourBanner()
-    {
-        await TourModeBanner.TranslateTo(0, -100, 280, Easing.CubicIn);
-        TourModeBanner.IsVisible = false;
-    }
-
-    /// <summary>
-    /// Hiển thị card cho POI tại index trong tour.
-    /// Luôn hiển thị không điều kiện — việc ADVANCE card mới có điều kiện radius.
-    /// </summary>
-    private void ShowTourPoiCard(int index)
-    {
-        if (!TourSession.IsActive || TourSession.ActiveTour == null) return;
-        var tourPois = TourSession.ActiveTour.Pois;
-        if (index < 0 || index >= tourPois.Count) return;
-
-        _tourCurrentCardIndex = index;
-        _displayedTourPoiIndex = index;
-        var dto = tourPois[index];
-
-        var poi = pois.FirstOrDefault(p => p.Id == dto.PoiId) ?? new Poi
-        {
-            Id = dto.PoiId,
-            Name = dto.Name,
-            Lat = dto.Lat,
-            Lng = dto.Lng
-        };
-
-        selectedPoi = poi;
-        cardManuallyClosed = false;
-
-        TourStepIndicator.IsVisible = true;
-        TourStepNumber.Text = (index + 1).ToString();
-        TourStepLabel.Text = $"Điểm {index + 1} / {tourPois.Count} trong tour";
-
-        ShowCardForPoi(poi);
-        vm.SelectPoiIcon(dto.PoiId);
-    }
-
-    /// <summary>
-    /// YC4: Kiểm tra xem user có vào radius của POI đang hiển thị không.
-    /// Nếu có → advance card sang POI tiếp theo trong tour.
-    /// Gọi từ UpdateLocation mỗi khi vị trí thay đổi.
-    /// </summary>
-    private void CheckTourRadiusAdvance(Location userLoc)
-    {
-        if (!_isTourMode || !TourSession.IsActive || TourSession.ActiveTour == null)
-            return;
-
-        var tourPois = TourSession.ActiveTour.Pois;
-        if (_displayedTourPoiIndex >= tourPois.Count) return;
-
-        var currentDto = tourPois[_displayedTourPoiIndex];
-
-        // Đã từng đến POI này rồi → không check lại
-        if (_tourRadiusReached.Contains(currentDto.PoiId)) return;
-
-        // Tìm POI đầy đủ trong danh sách pois
-        var currentPoi = pois.FirstOrDefault(p => p.Id == currentDto.PoiId);
-        if (currentPoi == null)
-        {
-            // Fallback: tạo Poi tạm từ dto với radius mặc định
-            currentPoi = new Poi
-            {
-                Id = currentDto.PoiId,
-                Name = currentDto.Name,
-                Lat = currentDto.Lat,
-                Lng = currentDto.Lng,
-                Radius = 50 // mặc định 50m nếu không có data
-            };
-        }
-
-        // Tính khoảng cách
-        var distanceMeters = Location.CalculateDistance(
-            userLoc,
-            new Location(currentPoi.Lat, currentPoi.Lng),
-            DistanceUnits.Kilometers) * 1000.0;
-
-        var radiusThreshold = Math.Max(currentPoi.Radius, 30); // tối thiểu 30m
-
-        if (distanceMeters <= radiusThreshold)
-        {
-            // User đã vào radius của POI đang hiển thị
-            _tourRadiusReached.Add(currentDto.PoiId);
-
-            System.Diagnostics.Debug.WriteLine(
-                $"[TourAdvance] ✅ Reached POI #{_displayedTourPoiIndex + 1} " +
-                $"({currentPoi.Name}) dist={distanceMeters:F0}m");
-
-            // Advance sang POI tiếp theo (nếu còn)
-            int nextIndex = _displayedTourPoiIndex + 1;
-            if (nextIndex < tourPois.Count)
-            {
-                MainThread.BeginInvokeOnMainThread(() =>
-                {
-                    ShowTourPoiCard(nextIndex);
-
-                    // Center map về POI tiếp theo
-                    var nextDto = tourPois[nextIndex];
-                    var m = SphericalMercator.FromLonLat(nextDto.Lng, nextDto.Lat);
-                    TourMap.Map?.Navigator?.CenterOn(new MPoint(m.x, m.y));
-                });
-            }
-            else
-            {
-                // Đã đến POI cuối cùng trong tour
-                System.Diagnostics.Debug.WriteLine("[TourAdvance] 🏁 Last POI reached!");
-                MainThread.BeginInvokeOnMainThread(() =>
-                {
-                    TourStepLabel.Text = $"🏁 Điểm cuối — hoàn thành tour!";
-                });
-            }
-        }
-    }
-
-    private async void OnExitTourTapped(object sender, TappedEventArgs e)
-    {
-        await ExitTourModeAsync();
-    }
-
-    private async Task ExitTourModeAsync()
-    {
-        _isTourMode = false;
-        _tourCurrentCardIndex = 0;
-        _displayedTourPoiIndex = 0;
-        _tourRadiusReached.Clear();
-        _hadOpenCardWhenLeaving = false;
-
-        if (TourMap?.Map != null) vm.ClearTourOverlay(TourMap.Map);
-        vm.ClearRoute();
-        HideTourBanner();
-
-        PoiCard.IsVisible = false;
-        TourStepIndicator.IsVisible = false;
-        selectedPoi = null;
-        cardManuallyClosed = false;
-
-        TourSession.EndTour();
-        followUser = true;
-        openedFromRoute = false;
-
-        var loc = await Geolocation.GetLastKnownLocationAsync();
-        if (loc != null && TourMap?.Map?.Navigator != null)
-        {
-            var m = SphericalMercator.FromLonLat(loc.Longitude, loc.Latitude);
-            TourMap.Map.Navigator.CenterOnAndZoomTo(
-                new MPoint(m.x, m.y), 0.5, 500, Mapsui.Animations.Easing.CubicOut);
-        }
-
-        UpdateConnectivityUI(OfflineMapService.IsConnected());
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -498,44 +232,12 @@ public partial class MapPage : ContentPage
         {
             MainThread.BeginInvokeOnMainThread(() =>
             {
-                if (_isTourMode && TourSession.IsActive)
-                    HandleTourPoiTap(tapped);
-                else
-                {
-                    SelectPoi(tapped);
-                    cardManuallyClosed = false;
-                    vm.ClearRoute();
-                    // Clear nearest highlight khi user tap chọn POI cụ thể
-                    vm.ClearNearestHighlight();
-                }
+                SelectPoi(tapped);
+                cardManuallyClosed = false;
+                vm.ClearRoute();
+                // Clear nearest highlight khi user tap chọn POI cụ thể
+                vm.ClearNearestHighlight();
             });
-        }
-    }
-
-    private void HandleTourPoiTap(Poi tapped)
-    {
-        if (TourSession.ActiveTour == null) return;
-        var tourPois = TourSession.ActiveTour.Pois;
-        int tourIndex = tourPois.FindIndex(p => p.PoiId == tapped.Id);
-
-        if (tourIndex >= 0)
-        {
-            _tourCurrentCardIndex = tourIndex;
-            selectedPoi = tapped;
-            cardManuallyClosed = false;
-            TourStepIndicator.IsVisible = true;
-            TourStepNumber.Text = (tourIndex + 1).ToString();
-            TourStepLabel.Text = $"Điểm {tourIndex + 1} / {tourPois.Count} trong tour";
-            vm.SelectPoiIcon(tapped.Id);
-            ShowCardForPoi(tapped);
-        }
-        else
-        {
-            selectedPoi = tapped;
-            cardManuallyClosed = false;
-            TourStepIndicator.IsVisible = false;
-            vm.SelectPoiIcon(tapped.Id);
-            ShowCardForPoi(tapped);
         }
     }
 
@@ -546,7 +248,6 @@ public partial class MapPage : ContentPage
         selectedPoi = poi;
         currentNearest = poi;
         cardManuallyClosed = false;
-        TourStepIndicator.IsVisible = false;
         vm.SelectPoiIcon(poi.Id);
         ShowCardForPoi(poi);
     }
@@ -581,25 +282,9 @@ public partial class MapPage : ContentPage
 
     private async Task ExecuteRouteAsync()
     {
-        if (_isTourMode && TourSession.IsActive)
-        {
-            var target = selectedPoi ?? currentNearest;
-            if (target == null) return;
-
-            if (!vm.IsPoiInTour(target.Id))
-            {
-                await ExecuteBlueRouteAsync(target);
-                return;
-            }
-
-            await ExecuteTourRouteAsync();
-        }
-        else
-        {
-            var target = selectedPoi ?? currentNearest;
-            if (currentLocation == null || target == null) return;
-            await ExecuteBlueRouteAsync(target);
-        }
+        var target = selectedPoi ?? currentNearest;
+        if (currentLocation == null || target == null) return;
+        await ExecuteBlueRouteAsync(target);
     }
 
     private async Task ExecuteBlueRouteAsync(Poi target)
@@ -619,53 +304,6 @@ public partial class MapPage : ContentPage
         finally
         {
             RouteLoadingRow.IsVisible = false;
-        }
-    }
-
-    private async Task ExecuteTourRouteAsync()
-    {
-        if (TourSession.ActiveTour == null || currentLocation == null) return;
-        var tourPois = TourSession.ActiveTour.Pois;
-        if (tourPois.Count == 0) return;
-
-        var firstPoi = tourPois[0];
-        bool isFirstPoiCard = selectedPoi?.Id == firstPoi.PoiId || _tourCurrentCardIndex == 0;
-
-        if (!isFirstPoiCard)
-        {
-            await DisplayAlert("Bắt đầu từ điểm 1", $"Hành trình cần bắt đầu từ điểm 1: {firstPoi.Name}", "OK");
-            return;
-        }
-
-        var targetPoi = pois.FirstOrDefault(p => p.Id == firstPoi.PoiId)
-            ?? new Poi { Id = firstPoi.PoiId, Name = firstPoi.Name, Lat = firstPoi.Lat, Lng = firstPoi.Lng };
-
-        try
-        {
-            RouteLoadingRow.IsVisible = true;
-            vm.ClearRoute();
-            await vm.DrawRoute(TourMap.Map, currentLocation, targetPoi);
-            await Task.Delay(400);
-        }
-        catch (Exception ex)
-        {
-            await DisplayAlert("Lỗi", "Không thể tính đường đi: " + ex.Message, "OK");
-            return;
-        }
-        finally
-        {
-            RouteLoadingRow.IsVisible = false;
-        }
-
-        // Sau khi vẽ route đến poi[0] → hiện card poi[1]
-        if (tourPois.Count > 1)
-        {
-            await Task.Delay(800);
-            ShowTourPoiCard(1);
-            _tourCurrentCardIndex = 1;
-            var next = tourPois[1];
-            var m = SphericalMercator.FromLonLat(next.Lng, next.Lat);
-            TourMap.Map?.Navigator?.CenterOn(new MPoint(m.x, m.y));
         }
     }
 
@@ -689,23 +327,10 @@ public partial class MapPage : ContentPage
         _isActionButtonTapped = true;
         cardManuallyClosed = true;
 
-        if (_isTourMode)
-        {
-            if (selectedPoi != null)
-            {
-                if (!vm.IsPoiInTour(selectedPoi.Id))
-                    vm.ForceDeselectPoiIcon(selectedPoi.Id);
-                vm.ClearRoute();
-            }
-            TourStepIndicator.IsVisible = false;
-        }
-        else
-        {
-            vm.DeselectPoiIcon();
-            vm.ClearRoute();
-            // Khi đóng card trong normal mode → xóa highlight nearest
-            vm.ClearNearestHighlight();
-        }
+        vm.DeselectPoiIcon();
+        vm.ClearRoute();
+        // Khi đóng card trong normal mode → xóa highlight nearest
+        vm.ClearNearestHighlight();
 
         selectedPoi = null;
         await PoiCard.TranslateTo(0, 60, 200, Easing.CubicIn);
@@ -725,7 +350,7 @@ public partial class MapPage : ContentPage
         MainThread.BeginInvokeOnMainThread(() =>
         {
             vm.UpdateUser(TourMap.Map, loc);
-            if (TourMap?.Map?.Navigator != null && followUser && !openedFromRoute && !_isTourMode)
+            if (TourMap?.Map?.Navigator != null && followUser && !openedFromRoute)
             {
                 var m = SphericalMercator.FromLonLat(loc.Longitude, loc.Latitude);
                 TourMap.Map.Navigator.CenterOn(new MPoint(m.x, m.y));
@@ -745,30 +370,19 @@ public partial class MapPage : ContentPage
 
             currentLocation = loc;
 
-            if (!_isTourMode)
+            if (nearest != null && selectedPoi == null && !cardManuallyClosed)
             {
-                if (nearest != null && selectedPoi == null && !cardManuallyClosed)
-                {
-                    bool nearestChanged = currentNearest?.Id != nearest.Id;
-                    currentNearest = nearest;
-                    ShowCardForPoi(nearest);
-
-                    // Highlight vòng nhấp nháy quanh POI gần nhất
-                    if (nearestChanged && TourMap?.Map != null)
-                        vm.SetNearestPoi(TourMap.Map, nearest);
-                }
-                else if (nearest == null && selectedPoi == null)
-                {
-                    currentNearest = null;
-                    if (!cardManuallyClosed) PoiCard.IsVisible = false;
-                    vm.ClearNearestHighlight();
-                }
+                bool nearestChanged = currentNearest?.Id != nearest.Id;
+                currentNearest = nearest;
+                ShowCardForPoi(nearest);
+                if (nearestChanged && TourMap?.Map != null)
+                    vm.SetNearestPoi(TourMap.Map, nearest);
             }
-            else
+            else if (nearest == null && selectedPoi == null)
             {
-                // Tour mode: kiểm tra xem user có vào radius POI hiện tại không
-                // → tự động advance card nếu đúng điều kiện
-                CheckTourRadiusAdvance(loc);
+                currentNearest = null;
+                if (!cardManuallyClosed) PoiCard.IsVisible = false;
+                vm.ClearNearestHighlight();
             }
 
             if (selectedPoi != null && currentLocation != null && !cardManuallyClosed)
@@ -880,7 +494,7 @@ public partial class MapPage : ContentPage
     private void UpdateConnectivityUI(bool isOnline)
     {
         ConnectivityDot.Fill = isOnline ? Color.FromArgb("#4CAF50") : Color.FromArgb("#F44336");
-        if (!isOnline && !_isTourMode)
+        if (!isOnline)
             ShowOfflineBanner("Chế độ ngoại tuyến — bản đồ chỉ hiện vùng đã tải");
         else if (isOnline)
             HideOfflineBanner();

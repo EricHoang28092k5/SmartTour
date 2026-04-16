@@ -125,27 +125,6 @@ namespace SmartTourApp.Services
         }
 
         // ══════════════════════════════════════════════════════════════
-        // PRE-FETCH TOUR (Yêu cầu 1 — User bấm "Bắt đầu")
-        // ══════════════════════════════════════════════════════════════
-
-        /// <summary>
-        /// Pre-fetch toàn bộ data offline cho danh sách POI.
-        /// Gọi khi User nhấn "Bắt đầu Tour" khi còn có mạng.
-        /// </summary>
-        public async Task PrefetchForOfflineAsync(
-            List<Poi> pois,
-            IProgress<string>? progress = null,
-            CancellationToken token = default)
-        {
-            progress?.Report("Đang chuẩn bị dữ liệu offline...");
-
-            await offlineSync.PrefetchPoiDataAsync(pois, token);
-
-            var cachedCount = offlineSync.GetAllLocalScripts_Count();
-            progress?.Report($"✅ Đã lưu {cachedCount} bản thuyết minh offline");
-        }
-
-        // ══════════════════════════════════════════════════════════════
         // BACKGROUND SYNC
         // ══════════════════════════════════════════════════════════════
 

@@ -105,9 +105,6 @@
     <MauiXaml Update="Pages\QrGatePage.xaml">
       <Generator>MSBuild:Compile</Generator>
     </MauiXaml>
-    <MauiXaml Update="Pages\TourPage.xaml">
-      <Generator>MSBuild:Compile</Generator>
-    </MauiXaml>
   </ItemGroup>
 
   <ItemGroup>

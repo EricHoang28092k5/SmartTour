@@ -30,9 +30,6 @@ public class MapViewModel
     // HeatmapLayer giữ field để không break code gọi — nhưng KHÔNG add vào map
     public MemoryLayer HeatmapLayer = new();
 
-    public MemoryLayer TourPoiLayer = new() { Name = "TourPoi" };
-    public MemoryLayer TourRouteLayer = new() { Name = "TourRoute" };
-
     // ── Nearest POI highlight layer — vòng tròn nhấp nháy màu cam/vàng ──
     public MemoryLayer NearestHighlightLayer = new() { Name = "NearestHighlight" };
 
@@ -43,7 +40,6 @@ public class MapViewModel
     private readonly List<PointFeature> poiFeatures = new();
     private readonly Dictionary<int, PointFeature> _poiFeatureMap = new();
     private int? _selectedPoiId = null;
-    private readonly HashSet<int> _tourPoiIds = new();
     private Location? lastLocation;
     private double pulseScale = 1.0;
     private bool pulseGrowing = true;
@@ -308,11 +304,6 @@ public class MapViewModel
     {
         if (!map.Layers.Contains(RouteLayer)) { map.Layers.Add(RouteLayer); return; }
 
-        var list = map.Layers.ToList();
-        int routeIdx = list.IndexOf(RouteLayer);
-        int maxBelow = Math.Max(list.IndexOf(TourRouteLayer), list.IndexOf(TourPoiLayer));
-        if (maxBelow < 0 || routeIdx > maxBelow) return;
-
         map.Layers.Remove(RouteLayer);
         map.Layers.Add(RouteLayer);
     }
@@ -324,109 +315,6 @@ public class MapViewModel
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // TOUR OVERLAY
-    // ═══════════════════════════════════════════════════════════════
-    public MPoint? LoadTourOverlay(Map map, List<TourPoiDto> tourPois)
-    {
-        _tourPoiIds.Clear();
-
-        TourPoiLayer.Style = null;
-        TourRouteLayer.Style = null;
-
-        foreach (var f in _poiFeatureMap)
-            SetPoiIconImage(f.Value, "embedded://SmartTourApp.Resources.Images.resicon.png");
-
-        var tourLabelFeatures = new List<IFeature>();
-        var routeCoords = new List<NtsGeometry.Coordinate>();
-
-        for (int i = 0; i < tourPois.Count; i++)
-        {
-            var dto = tourPois[i];
-            _tourPoiIds.Add(dto.PoiId);
-
-            if (_poiFeatureMap.TryGetValue(dto.PoiId, out var mainFeature))
-                SetPoiIconImage(mainFeature, "embedded://SmartTourApp.Resources.Images.mappin.png");
-
-            var s = SphericalMercator.FromLonLat(dto.Lng, dto.Lat);
-            var pt = new MPoint(s.x, s.y);
-            routeCoords.Add(new NtsGeometry.Coordinate(pt.X, pt.Y));
-
-            var lf = new PointFeature(new MPoint(pt.X, pt.Y));
-
-            lf.Styles.Add(new ImageStyle
-            {
-                Image = "embedded://SmartTourApp.Resources.Images.resicon.png",
-                SymbolScale = 0.01,
-                Opacity = 0,
-                Enabled = true
-            });
-
-            lf.Styles.Add(new LabelStyle
-            {
-                Text = (i + 1).ToString(),
-                Font = new Font { Size = 11, Bold = true },
-                ForeColor = Color.White,
-                BackColor = new Brush(new Color(220, 38, 38)),
-                Halo = new Pen(Color.Transparent, 0),
-                BorderThickness = 0,
-                BorderColor = Color.Transparent,
-                Offset = new Offset(0, -28),
-                HorizontalAlignment = LabelStyle.HorizontalAlignmentEnum.Center,
-                VerticalAlignment = LabelStyle.VerticalAlignmentEnum.Center,
-                MaxWidth = 20
-            });
-
-            tourLabelFeatures.Add(lf);
-        }
-
-        TourPoiLayer.Features = tourLabelFeatures;
-        TourPoiLayer.DataHasChanged();
-        if (!map.Layers.Contains(TourPoiLayer)) map.Layers.Add(TourPoiLayer);
-
-        if (routeCoords.Count >= 2)
-        {
-            var redLine = new NtsGeometry.LineString(routeCoords.ToArray());
-            var rf = new GeometryFeature { Geometry = redLine };
-            rf.Styles.Add(new VectorStyle { Line = new Pen(Color.White, 8), Fill = null });
-            rf.Styles.Add(new VectorStyle { Line = new Pen(new Color(220, 38, 38), 4), Fill = null });
-
-            TourRouteLayer.Features = new[] { rf };
-            TourRouteLayer.DataHasChanged();
-
-            if (!map.Layers.Contains(TourRouteLayer))
-            {
-                var list = map.Layers.ToList();
-                int poiIdx = list.IndexOf(PoiLayer);
-                if (poiIdx >= 0) map.Layers.Insert(poiIdx, TourRouteLayer);
-                else map.Layers.Add(TourRouteLayer);
-            }
-        }
-
-        if (map.Layers.Contains(RouteLayer)) EnsureRouteLayerOnTop(map);
-
-        PoiLayer.DataHasChanged();
-
-        if (routeCoords.Count == 0) return null;
-        return new MPoint(routeCoords.Average(c => c.X), routeCoords.Average(c => c.Y));
-    }
-
-    public void ClearTourOverlay(Map map)
-    {
-        foreach (var id in _tourPoiIds)
-            if (_poiFeatureMap.TryGetValue(id, out var f))
-                SetPoiIconImage(f, "embedded://SmartTourApp.Resources.Images.resicon.png");
-
-        _tourPoiIds.Clear();
-        TourPoiLayer.Features = Array.Empty<IFeature>();
-        TourPoiLayer.DataHasChanged();
-        TourRouteLayer.Features = Array.Empty<IFeature>();
-        TourRouteLayer.DataHasChanged();
-        PoiLayer.DataHasChanged();
-    }
-
-    public bool IsPoiInTour(int poiId) => _tourPoiIds.Contains(poiId);
-
-    // ═══════════════════════════════════════════════════════════════
     // POI LOAD
     // ═══════════════════════════════════════════════════════════════
     public void LoadPois(Map map, List<Poi> pois)
@@ -434,7 +322,6 @@ public class MapViewModel
         poiFeatures.Clear();
         _poiFeatureMap.Clear();
         _selectedPoiId = null;
-        _tourPoiIds.Clear();
 
         PoiLayer.Style = null;
         highlightFeature = null;
@@ -468,9 +355,7 @@ public class MapViewModel
     // ═══════════════════════════════════════════════════════════════
     public void SelectPoiIcon(int poiId)
     {
-        if (_selectedPoiId.HasValue &&
-            _selectedPoiId.Value != poiId &&
-            !_tourPoiIds.Contains(_selectedPoiId.Value))
+        if (_selectedPoiId.HasValue && _selectedPoiId.Value != poiId)
         {
             ResetPoiIcon(_selectedPoiId.Value);
         }
@@ -486,8 +371,7 @@ public class MapViewModel
     {
         if (_selectedPoiId.HasValue)
         {
-            if (!_tourPoiIds.Contains(_selectedPoiId.Value))
-                ResetPoiIcon(_selectedPoiId.Value);
+            ResetPoiIcon(_selectedPoiId.Value);
             _selectedPoiId = null;
             PoiLayer.DataHasChanged();
         }

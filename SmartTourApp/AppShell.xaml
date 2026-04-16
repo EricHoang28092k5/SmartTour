@@ -17,11 +17,6 @@
         ContentTemplate="{DataTemplate pages:MapPage}" />
 
         <ShellContent
-        x:Name="ContentTour"
-        Route="tour"
-        ContentTemplate="{DataTemplate pages:TourPage}" />
-
-        <ShellContent
         x:Name="ContentSettings"
         Route="settings"
         ContentTemplate="{DataTemplate pages:SettingsPage}" />

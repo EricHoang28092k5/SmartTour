@@ -35,7 +35,6 @@ public partial class AppShell : Shell
         // Gán chữ cho các ShellContent thông qua x:Name đã đặt bên XAML
         ContentHome.Title = loc.HomeTab;
         ContentMap.Title = loc.MapTab;
-        ContentTour.Title = loc.TourTab;
         ContentSettings.Title = loc.SettingsTab;
     }
 

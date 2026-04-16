@@ -46,9 +46,6 @@ public static class MauiProgram
         // 🔥 Offline Map Infrastructure
         builder.Services.AddSingleton<OfflineMapService>();
 
-        // 🔥 YC1: Tour Offline Manager
-        builder.Services.AddSingleton<TourOfflineManager>();
-
         // ── Audio Pipeline ──
         builder.Services.AddSingleton<AudioListenTracker>();
         builder.Services.AddSingleton<AudioCoordinator>();
@@ -84,7 +81,6 @@ public static class MauiProgram
         builder.Services.AddSingleton<SettingsPage>();
         builder.Services.AddSingleton<HomePage>();
         builder.Services.AddSingleton<MapPage>();
-        builder.Services.AddSingleton<TourPage>();
         builder.Services.AddTransient<PoiDetailPage>();
 
 #if DEBUG
