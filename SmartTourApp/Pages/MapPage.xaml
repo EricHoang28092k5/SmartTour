@@ -232,6 +232,7 @@
                 <!-- Header Row: Name + Distance + Icon buttons -->
                 <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,12">
                     <VerticalStackLayout Grid.Column="0" Spacing="3" VerticalOptions="Center">
+                        <!-- YC3: DisplayName label -->
                         <Label x:Name="NearestPoiLabel"
                                Text=""
                                FontSize="18" FontAttributes="Bold"
@@ -284,63 +285,43 @@
                 <!-- Divider -->
                 <BoxView HeightRequest="1" BackgroundColor="#F2F2F2" Margin="0,0,0,14"/>
 
-                <!-- Action Buttons Row -->
-                <ScrollView Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
-                    <HorizontalStackLayout Spacing="10">
-                        <!-- Đường đi -->
-                        <Border Style="{StaticResource ActionBtn}">
-                            <Border.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="Route_Clicked_Action"/>
-                            </Border.GestureRecognizers>
-                            <HorizontalStackLayout Spacing="6" VerticalOptions="Center"
-                                                   InputTransparent="True">
-                                <Image Source="route.png" WidthRequest="18" HeightRequest="18"
-                                       InputTransparent="True"/>
-                                <Label Text="Đường đi"
-                                       Style="{StaticResource ActionText}"
-                                       InputTransparent="True"/>
-                            </HorizontalStackLayout>
-                        </Border>
-                        <!-- Bắt đầu -->
-                        <Border Style="{StaticResource ActionBtn}">
-                            <HorizontalStackLayout Spacing="6" VerticalOptions="Center"
-                                                   InputTransparent="True">
-                                <Image Source="navigation.png" WidthRequest="18" HeightRequest="18"
-                                       VerticalOptions="Center" InputTransparent="True"/>
-                                <Label Text="Bắt đầu"
-                                       Style="{StaticResource ActionText}"
-                                       VerticalOptions="Center" InputTransparent="True"/>
-                            </HorizontalStackLayout>
-                        </Border>
-                        <!-- Gọi -->
-                        <Border Style="{StaticResource ActionBtn}">
-                            <HorizontalStackLayout Spacing="6" VerticalOptions="Center"
-                                                   InputTransparent="True">
-                                <Image Source="call.png" WidthRequest="18" HeightRequest="18"
-                                       VerticalOptions="Center" InputTransparent="True"/>
-                                <Label Text="Gọi"
-                                       Style="{StaticResource ActionText}"
-                                       VerticalOptions="Center" InputTransparent="True"/>
-                            </HorizontalStackLayout>
-                        </Border>
-                        <!-- Lưu -->
-                        <Border Style="{StaticResource ActionBtn}">
-                            <Border.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="Save_Clicked"/>
-                            </Border.GestureRecognizers>
-                            <HorizontalStackLayout Spacing="6" VerticalOptions="Center"
-                                                   InputTransparent="True">
-                                <Image Source="bookmark.png" WidthRequest="18" HeightRequest="18"
-                                       VerticalOptions="Center" InputTransparent="True"/>
-                                <Label Text="Lưu"
-                                       Style="{StaticResource ActionText}"
-                                       VerticalOptions="Center" InputTransparent="True"/>
-                            </HorizontalStackLayout>
-                        </Border>
+                <!-- YC2: Single "Chỉ đường" (Google Maps) button - full width -->
+                <Border x:Name="DirectionsBtnContainer"
+                        StrokeThickness="0"
+                        StrokeShape="RoundRectangle 16"
+                        HeightRequest="48">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop Color="#1565C0" Offset="0"/>
+                            <GradientStop Color="#1E88E5" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Border.Background>
+                    <Border.Shadow>
+                        <Shadow Brush="#1565C0" Offset="0,4" Radius="12" Opacity="0.3"/>
+                    </Border.Shadow>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnOpenGoogleMapsTapped"/>
+                    </Border.GestureRecognizers>
+                    <HorizontalStackLayout Spacing="8"
+                                           HorizontalOptions="Center"
+                                           VerticalOptions="Center"
+                                           InputTransparent="True">
+                        <Label Text="🗺️"
+                               FontSize="16"
+                               VerticalOptions="Center"
+                               InputTransparent="True"/>
+                        <!-- YC4: Localized label -->
+                        <Label x:Name="LblDirectionsBtn"
+                               Text="Chỉ đường"
+                               FontSize="15"
+                               FontAttributes="Bold"
+                               TextColor="White"
+                               VerticalOptions="Center"
+                               InputTransparent="True"/>
                     </HorizontalStackLayout>
-                </ScrollView>
+                </Border>
 
-                <!-- Route loading indicator -->
+                <!-- Route loading indicator (kept for compatibility) -->
                 <HorizontalStackLayout x:Name="RouteLoadingRow"
                                        IsVisible="False" Spacing="8"
                                        Margin="0,12,0,0"
