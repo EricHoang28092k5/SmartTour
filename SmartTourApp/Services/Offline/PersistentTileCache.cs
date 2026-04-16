@@ -65,7 +65,9 @@ namespace SmartTourApp.Services.Offline
         /// </summary>
         public (byte[] Data, int ParentZ)? GetFallbackTile(int z, int x, int y)
         {
-            for (int parentZ = z - 1; parentZ >= Math.Max(0, z - 3); parentZ--)
+            // Mở rộng phạm vi fallback để giảm khả năng map trắng khi mở app offline từ đầu.
+            // Nếu tile zoom hiện tại chưa có, cho phép lấy từ zoom thấp hơn sâu hơn (tối đa 8 cấp).
+            for (int parentZ = z - 1; parentZ >= Math.Max(0, z - 8); parentZ--)
             {
                 int scale = 1 << (z - parentZ);
                 int parentX = x / scale;

@@ -28,6 +28,7 @@ public partial class MapPage : ContentPage
     private readonly GeofencingEngine geo;
     private readonly ApiService api;
     private readonly OfflineMapService offlineMapService;
+    private readonly OfflineSyncService offlineSync;
     private readonly LocalizationService loc;
     private readonly MapViewModel vm = new();
     private List<Poi> pois = new();
@@ -52,6 +53,7 @@ public partial class MapPage : ContentPage
     // Offline download state
     private CancellationTokenSource? _downloadCts;
     private double _progressBarMaxWidth = 0;
+    private readonly Dictionary<string, string> _poiNameCache = new();
 
     public MapPage(
         TrackingService tracking,
@@ -59,6 +61,7 @@ public partial class MapPage : ContentPage
         GeofencingEngine geo,
         ApiService api,
         OfflineMapService offlineMapService,
+        OfflineSyncService offlineSync,
         LocalizationService loc)
     {
         InitializeComponent();
@@ -73,6 +76,7 @@ public partial class MapPage : ContentPage
         this.geo = geo;
         this.api = api;
         this.offlineMapService = offlineMapService;
+        this.offlineSync = offlineSync;
         this.loc = loc;
 
         offlineMapService.OnConnectivityChanged += OnConnectivityChanged;
@@ -118,6 +122,7 @@ public partial class MapPage : ContentPage
         if (loc == null)
             loc = await Geolocation.GetLocationAsync(
                 new GeolocationRequest(GeolocationAccuracy.Medium, TimeSpan.FromSeconds(5)));
+        if (loc != null) SaveOfflineCenter(loc.Latitude, loc.Longitude);
 
         if (TourMap?.Map?.Navigator == null) return;
 
@@ -337,7 +342,7 @@ public partial class MapPage : ContentPage
     {
         MainThread.BeginInvokeOnMainThread(() =>
         {
-            NearestPoiLabel.Text = poi.Name;
+            NearestPoiLabel.Text = ResolvePoiNameFromLocalCache(poi);
             if (currentLocation != null)
             {
                 var dist = Location.CalculateDistance(
@@ -349,6 +354,57 @@ public partial class MapPage : ContentPage
             PoiCard.IsVisible = true;
             _cardShownForPoiId = poi.Id;
         });
+
+        _ = RefreshPoiCardNameAsync(poi);
+    }
+
+    private string ResolvePoiNameFromLocalCache(Poi poi)
+    {
+        var currentLang = (loc.Current ?? "vi").Trim().ToLowerInvariant();
+        var cacheKey = $"{poi.Id}:{currentLang}";
+        if (_poiNameCache.TryGetValue(cacheKey, out var cached) && !string.IsNullOrWhiteSpace(cached))
+            return cached;
+
+        var localTitle = offlineSync.GetLocalTitle(poi.Id, currentLang);
+        if (!string.IsNullOrWhiteSpace(localTitle))
+        {
+            _poiNameCache[cacheKey] = localTitle;
+            return localTitle;
+        }
+
+        return string.IsNullOrWhiteSpace(poi.DisplayName) ? poi.Name : poi.DisplayName;
+    }
+
+    private async Task RefreshPoiCardNameAsync(Poi poi)
+    {
+        var currentLang = (loc.Current ?? "vi").Trim().ToLowerInvariant();
+        var cacheKey = $"{poi.Id}:{currentLang}";
+        if (_poiNameCache.TryGetValue(cacheKey, out var name) && !string.IsNullOrWhiteSpace(name))
+            return;
+
+        try
+        {
+            // Dùng API tts scripts để lấy title theo ngôn ngữ khi local cache chưa có
+            var scripts = await api.GetTtsScripts(poi.Id);
+            var selected = scripts.FirstOrDefault(s =>
+                s.LanguageCode.StartsWith(currentLang, StringComparison.OrdinalIgnoreCase))
+                ?? scripts.FirstOrDefault(s =>
+                    s.LanguageCode.StartsWith("en", StringComparison.OrdinalIgnoreCase))
+                ?? scripts.FirstOrDefault();
+
+            if (string.IsNullOrWhiteSpace(selected?.Title)) return;
+            _poiNameCache[cacheKey] = selected.Title;
+
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                if (_cardShownForPoiId == poi.Id)
+                    NearestPoiLabel.Text = selected.Title;
+            });
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MapPage] RefreshPoiCardNameAsync error: {ex.Message}");
+        }
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -470,6 +526,7 @@ public partial class MapPage : ContentPage
             }
 
             currentLocation = loc;
+            SaveOfflineCenter(loc.Latitude, loc.Longitude);
 
             // YC3: Hiện card nearest chỉ khi:
             //   - Không có selectedPoi (user chưa tap icon cụ thể)
