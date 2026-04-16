@@ -54,6 +54,7 @@ public partial class MapPage : ContentPage
     private CancellationTokenSource? _downloadCts;
     private double _progressBarMaxWidth = 0;
     private readonly Dictionary<string, string> _poiNameCache = new();
+    private bool _seedTilesStarted = false;
 
     public MapPage(
         TrackingService tracking,
@@ -197,6 +198,9 @@ public partial class MapPage : ContentPage
         }
 
         UpdateConnectivityUI(OfflineMapService.IsConnected());
+
+        // Seed nhanh vài tile để bảo đảm mở lại offline không trắng hoàn toàn.
+        _ = EnsureSeedTilesAsync();
     }
 
     protected override void OnDisappearing()
@@ -674,15 +678,59 @@ public partial class MapPage : ContentPage
     private async Task AutoCacheCurrentAreaAsync()
     {
         if (!OfflineMapService.IsConnected() || currentLocation == null) return;
+        if (offlineMapService.Downloader.IsDownloading) return;
         try
         {
             await offlineMapService.Downloader.DownloadAreaAsync(
                 currentLocation.Latitude, currentLocation.Longitude,
-                radiusKm: 1.5, minZoom: 14, maxZoom: 16);
+                radiusKm: 1.0, minZoom: 13, maxZoom: 15);
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[MapPage] Auto-cache error: {ex.Message}");
+        }
+    }
+
+    private async Task EnsureSeedTilesAsync()
+    {
+        if (_seedTilesStarted) return;
+        if (!OfflineMapService.IsConnected()) return;
+        if (offlineMapService.Downloader.IsDownloading) return;
+
+        _seedTilesStarted = true;
+        try
+        {
+            double centerLat;
+            double centerLng;
+
+            if (currentLocation != null)
+            {
+                centerLat = currentLocation.Latitude;
+                centerLng = currentLocation.Longitude;
+            }
+            else if (TryGetOfflineCenter(out var cachedLat, out var cachedLng))
+            {
+                centerLat = cachedLat;
+                centerLng = cachedLng;
+            }
+            else if (pois.Count > 0)
+            {
+                centerLat = pois[0].Lat;
+                centerLng = pois[0].Lng;
+            }
+            else
+            {
+                return;
+            }
+
+            SaveOfflineCenter(centerLat, centerLng);
+            await offlineMapService.Downloader.DownloadAreaAsync(
+                centerLat, centerLng,
+                radiusKm: 0.8, minZoom: 13, maxZoom: 14);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MapPage] EnsureSeedTilesAsync error: {ex.Message}");
         }
     }
 

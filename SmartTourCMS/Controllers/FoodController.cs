@@ -30,6 +30,7 @@ namespace SmartTourCMS.Controllers
         }
 
         // --- 1. DANH SÁCH MÓN ĂN (ĐÃ SỬA TÌM KIẾM KHÔNG DẤU) ---
+       // Hiển thị danh sách Món ăn, kèm theo ti tỉ thứ như tìm kiếm, lọc, phân trang.
         public async Task<IActionResult> Index(string? search, int? poiId, int? page)
         {
             var user = await _userManager.GetUserAsync(User);

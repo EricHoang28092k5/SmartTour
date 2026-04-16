@@ -81,6 +81,13 @@ namespace SmartTourApp.Services
                     var capturedPois = new List<Poi>(server);
                     var capturedLang = currentLang;
 
+                    // Ghi POI xuống SQLite NGAY để nếu user thoát app sớm vẫn có dữ liệu offline.
+                    try { db.AddPois(capturedPois); }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[PoiRepo] Sync save pois error: {ex.Message}");
+                    }
+
                     // ── Background: sync DB + pre-fetch toàn bộ data offline ──
                     _ = Task.Run(async () =>
                     {
