@@ -35,7 +35,8 @@ public class ApiService
         try
         {
             var lang = (languageService.Current ?? "en").Trim().ToLowerInvariant();
-            var res = await http.GetFromJsonAsync<FoodMenuResponse>($"api/foods/menu/{poiId}?lang={Uri.EscapeDataString(lang)}");
+            var tick = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var res = await http.GetFromJsonAsync<FoodMenuResponse>($"api/foods/menu/{poiId}?lang={Uri.EscapeDataString(lang)}&t={tick}");
             if (res?.Success == true && res.Data != null)
                 return res.Data;
         }
