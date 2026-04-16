@@ -35,7 +35,7 @@ namespace SmartTourCMS.Controllers
         }
 
         // --- DANH SÁCH POI ---
-        public async Task<IActionResult> Index(int? page)
+        public async Task<IActionResult> Index(string? search, int? page)
         {
             var user = await _userManager.GetUserAsync(User);
             if (user == null) return RedirectToAction("Login", "Account");
@@ -48,11 +48,20 @@ namespace SmartTourCMS.Controllers
 
             if (!isAdmin) query = query.Where(p => p.VendorId == user.Id);
 
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var keyword = search.Trim();
+                query = query.Where(p =>
+                    EF.Functions.Like(p.Name, $"%{keyword}%") ||
+                    EF.Functions.Like(p.Description, $"%{keyword}%"));
+            }
+
             query = query.OrderByDescending(p => p.Id);
 
             const int pageSize = 10;
             var pageNumber = page ?? 1;
             var pagedList = query.ToPagedList(pageNumber, pageSize);
+            ViewBag.CurrentSearch = search;
 
             ViewBag.IsAdmin = isAdmin;
             if (isAdmin)
