@@ -81,6 +81,7 @@ public partial class HomePage : ContentPage
     {
         base.OnAppearing();
         ApplyLocalization();
+        _ = SendPresenceHeartbeatSafeAsync();
 
         var currentLang = lang.Current;
 
@@ -107,6 +108,19 @@ public partial class HomePage : ContentPage
             // YC5: Data đã ready, chỉ update UI tối thiểu — không delay
             UpdateGreeting();
             UpdateHeroPlayBtn();
+        }
+    }
+
+    private async Task SendPresenceHeartbeatSafeAsync()
+    {
+        try
+        {
+            if (!IsOnline()) return;
+            await api.PostPresenceHeartbeatAsync();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[HomePage] Presence heartbeat error: {ex.Message}");
         }
     }
 

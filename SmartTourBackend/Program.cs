@@ -16,7 +16,8 @@ builder.Services.AddControllersWithViews();
 
 // DÙNG LẠI KẾT NỐI POSTGRESQL CỦA BẠN MÀY
 var dbConnectionString = NormalizeDbConnectionString(
-    Environment.GetEnvironmentVariable("DB_CONNECTION_STRING")
+    ReadDbConnectionFromDotEnv()
+    ?? Environment.GetEnvironmentVariable("DB_CONNECTION_STRING")
     ?? builder.Configuration.GetConnectionString("DefaultConnection"));
 
 builder.Services.AddDbContext<AppDbContext>(options =>
@@ -64,13 +65,14 @@ app.Run();
 static string? NormalizeDbConnectionString(string? raw)
 {
     if (string.IsNullOrWhiteSpace(raw)) return raw;
+    raw = raw.Trim().Trim('"').Trim();
     try
     {
         var csb = new NpgsqlConnectionStringBuilder(raw);
-        var host = csb.Host?.Trim() ?? string.Empty;
+        var host = (csb.Host ?? string.Empty).Trim().Trim('"').Trim();
         if (host.StartsWith("tcp://", StringComparison.OrdinalIgnoreCase))
         {
-            if (Uri.TryCreate(host, UriKind.Absolute, out var uri))
+            if (Uri.TryCreate(host, UriKind.Absolute, out var uri) && !string.IsNullOrWhiteSpace(uri.Host))
             {
                 csb.Host = uri.Host;
                 if (uri.Port > 0) csb.Port = uri.Port;
@@ -85,10 +87,38 @@ static string? NormalizeDbConnectionString(string? raw)
             }
         }
 
+        if (csb.Host.Contains('/'))
+            csb.Host = csb.Host.Split('/')[0];
+
+        csb.Host = csb.Host.Trim().Trim('"');
         return csb.ConnectionString;
     }
     catch
     {
         return raw;
     }
+}
+
+static string? ReadDbConnectionFromDotEnv()
+{
+    try
+    {
+        var envPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".env");
+        if (!File.Exists(envPath))
+            envPath = Path.Combine(Directory.GetCurrentDirectory(), ".env");
+        if (!File.Exists(envPath)) return null;
+
+        foreach (var line in File.ReadAllLines(envPath))
+        {
+            if (!line.StartsWith("DB_CONNECTION_STRING=", StringComparison.Ordinal)) continue;
+            var value = line["DB_CONNECTION_STRING=".Length..].Trim();
+            return value.Trim().Trim('"');
+        }
+    }
+    catch
+    {
+        // ignore and fallback
+    }
+
+    return null;
 }
