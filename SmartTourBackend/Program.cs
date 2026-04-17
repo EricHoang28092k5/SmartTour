@@ -1,6 +1,7 @@
 using DotNetEnv;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using SmartTourBackend.Data;
 using SmartTourBackend.Services;
 using CloudinaryDotNet;
@@ -14,8 +15,9 @@ builder.Services.AddCors(options => {
 builder.Services.AddControllersWithViews();
 
 // DÙNG LẠI KẾT NỐI POSTGRESQL CỦA BẠN MÀY
-var dbConnectionString = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING")
-    ?? builder.Configuration.GetConnectionString("DefaultConnection");
+var dbConnectionString = NormalizeDbConnectionString(
+    Environment.GetEnvironmentVariable("DB_CONNECTION_STRING")
+    ?? builder.Configuration.GetConnectionString("DefaultConnection"));
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(dbConnectionString));
@@ -58,3 +60,35 @@ app.MapControllerRoute(name: "default", pattern: "{controller=Poi}/{action=Index
 app.MapControllers();
 
 app.Run();
+
+static string? NormalizeDbConnectionString(string? raw)
+{
+    if (string.IsNullOrWhiteSpace(raw)) return raw;
+    try
+    {
+        var csb = new NpgsqlConnectionStringBuilder(raw);
+        var host = csb.Host?.Trim() ?? string.Empty;
+        if (host.StartsWith("tcp://", StringComparison.OrdinalIgnoreCase))
+        {
+            if (Uri.TryCreate(host, UriKind.Absolute, out var uri))
+            {
+                csb.Host = uri.Host;
+                if (uri.Port > 0) csb.Port = uri.Port;
+            }
+            else
+            {
+                var plain = host["tcp://".Length..];
+                var parts = plain.Split(':', 2);
+                csb.Host = parts[0];
+                if (parts.Length == 2 && int.TryParse(parts[1], out var port))
+                    csb.Port = port;
+            }
+        }
+
+        return csb.ConnectionString;
+    }
+    catch
+    {
+        return raw;
+    }
+}

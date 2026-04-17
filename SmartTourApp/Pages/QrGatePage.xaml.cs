@@ -1,3 +1,4 @@
+using SmartTour.Services;
 using SmartTourApp.Services;
 using ZXing.Net.Maui;
 using System.Threading;
@@ -133,6 +134,13 @@ public partial class QrGatePage : ContentPage
                     // Fallback nếu DI chưa sẵn sàng
                     Application.Current!.MainPage = new AppShell();
                     await Shell.Current.GoToAsync("//home");
+                    var api = services?.GetService<ApiService>();
+                    if (api != null)
+                    {
+                        try { await api.PostPresenceHeartbeatAsync(); } catch { }
+                    }
+                    if (Application.Current is App app)
+                        app.StartPresenceHeartbeatTimer();
                 }
             }
             catch (Exception ex)

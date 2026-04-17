@@ -1,4 +1,6 @@
 ﻿using System.Net.Http.Json;
+using Microsoft.Maui.Devices;
+using Microsoft.Maui.Storage;
 using SmartTour.Shared.Models;
 using SmartTourApp.Services;
 
@@ -113,6 +115,35 @@ public class ApiService
     public async Task PostPlayLog(PlayLog log)
     {
         await http.PostAsJsonAsync("api/pois/playlog", log);
+    }
+
+    public async Task PostPresenceHeartbeatAsync()
+    {
+        const string key = "heatmap_device_id";
+        var deviceId = Preferences.Default.Get(key, string.Empty);
+        if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            deviceId = Guid.NewGuid().ToString("N");
+            Preferences.Default.Set(key, deviceId);
+        }
+
+        var payload = new
+        {
+            deviceId,
+            deviceModel = $"{DeviceInfo.Manufacturer} {DeviceInfo.Model}".Trim(),
+            platform = DeviceInfo.Platform.ToString(),
+            osVersion = DeviceInfo.VersionString,
+            appVersion = AppInfo.Current.VersionString
+        };
+
+        try
+        {
+            await http.PostAsJsonAsync("api/presence/heartbeat", payload);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine("[Presence] " + ex.Message);
+        }
     }
 
     // ══════════════════════════════════════════════════════════════════

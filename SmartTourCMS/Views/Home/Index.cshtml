@@ -1,5 +1,7 @@
 ﻿@{
     ViewData["Title"] = "Bảng điều khiển Admin";
+    var deviceStatuses = ViewBag.DeviceStatuses as List<SmartTourCMS.Models.DeviceStatusViewModel>
+        ?? new List<SmartTourCMS.Models.DeviceStatusViewModel>();
 }
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -45,6 +47,16 @@
                 <div class="icon"><i class="fa-solid fa-wave-square fa-2x"></i></div>
             </div>
         </div>
+
+        <div class="col-lg-3 col-6">
+            <div class="small-box bg-secondary p-3 rounded shadow-sm text-white mb-4">
+                <div class="inner">
+                    <h3>@(ViewBag.OnlineDevices ?? 0)</h3>
+                    <p>Thiết bị online (5 phút)</p>
+                </div>
+                <div class="icon"><i class="fa-solid fa-mobile-screen-button fa-2x"></i></div>
+            </div>
+        </div>
     </div>
 
     <div class="row">
@@ -76,6 +88,70 @@
                             <i class="fa-solid fa-fire"></i> Xem Bản đồ nhiệt (Heatmap)
                         </a>
                     }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center">
+                    <span><i class="fa-solid fa-mobile-screen-button text-secondary"></i> Thiết bị đang sử dụng</span>
+                    <small class="text-muted">Trạng thái Online = có heartbeat trong 5 phút gần nhất</small>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Thiết bị</th>
+                                    <th>IP</th>
+                                    <th>Nền tảng</th>
+                                    <th>Phiên bản</th>
+                                    <th>Lần cuối hoạt động (UTC)</th>
+                                    <th>Trạng thái</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (deviceStatuses.Count == 0)
+                                {
+                                    <tr>
+                                        <td colspan="6" class="text-center text-muted py-4">
+                                            Chưa có dữ liệu thiết bị. Mở app để gửi heartbeat rồi tải lại trang.
+                                        </td>
+                                    </tr>
+                                }
+                                else
+                                {
+                                    @foreach (var d in deviceStatuses)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <div class="fw-semibold">@(string.IsNullOrWhiteSpace(d.DeviceModel) ? "Unknown device" : d.DeviceModel)</div>
+                                                <small class="text-muted">@d.DeviceId</small><br />
+                                                <small class="text-muted">@d.UserAgent</small>
+                                            </td>
+                                            <td>@(string.IsNullOrWhiteSpace(d.IpAddress) ? "-" : d.IpAddress)</td>
+                                            <td>@(string.IsNullOrWhiteSpace(d.Platform) ? "-" : $"{d.Platform} {d.OsVersion}".Trim())</td>
+                                            <td>@(string.IsNullOrWhiteSpace(d.AppVersion) ? "-" : d.AppVersion)</td>
+                                            <td>@d.LastSeenUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                                            <td>
+                                                @if (d.IsActive)
+                                                {
+                                                    <span class="badge bg-success">Đang hoạt động</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge bg-secondary">Không hoạt động</span>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>

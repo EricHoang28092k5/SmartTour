@@ -29,6 +29,7 @@ namespace SmartTourBackend.Data
         public DbSet<TourTranslation> TourTranslations { get; set; }
         public DbSet<RouteSession> RouteSessions { get; set; }
         public DbSet<RouteSessionPoi> RouteSessionPois { get; set; }
+        public DbSet<DevicePresence> DevicePresences { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -60,6 +61,18 @@ namespace SmartTourBackend.Data
                     .OnDelete(DeleteBehavior.Restrict);
 
                 entity.HasIndex(ft => new { ft.FoodId, ft.LanguageId }).IsUnique();
+            });
+
+            modelBuilder.Entity<DevicePresence>(entity =>
+            {
+                entity.HasIndex(e => e.DeviceId).IsUnique();
+                entity.Property(e => e.DeviceId).HasMaxLength(128);
+                entity.Property(e => e.IpAddress).HasMaxLength(128);
+                entity.Property(e => e.UserAgent).HasMaxLength(512);
+                entity.Property(e => e.DeviceModel).HasMaxLength(128);
+                entity.Property(e => e.Platform).HasMaxLength(64);
+                entity.Property(e => e.OsVersion).HasMaxLength(64);
+                entity.Property(e => e.AppVersion).HasMaxLength(32);
             });
         }
     }

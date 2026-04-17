@@ -2,6 +2,7 @@ using CloudinaryDotNet;
 using DotNetEnv;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using SmartTourBackend.Data;
 using SmartTourBackend.Services;
 
@@ -13,7 +14,9 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllersWithViews();
 
 // Kết nối Database Neon
-var connectionString = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING");
+var connectionString = NormalizeDbConnectionString(
+    Environment.GetEnvironmentVariable("DB_CONNECTION_STRING")
+    ?? builder.Configuration.GetConnectionString("DefaultConnection"));
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString, npgsql =>
     {
@@ -134,3 +137,35 @@ catch (Exception ex)
 }
 
 app.Run();
+
+static string? NormalizeDbConnectionString(string? raw)
+{
+    if (string.IsNullOrWhiteSpace(raw)) return raw;
+    try
+    {
+        var csb = new NpgsqlConnectionStringBuilder(raw);
+        var host = csb.Host?.Trim() ?? string.Empty;
+        if (host.StartsWith("tcp://", StringComparison.OrdinalIgnoreCase))
+        {
+            if (Uri.TryCreate(host, UriKind.Absolute, out var uri))
+            {
+                csb.Host = uri.Host;
+                if (uri.Port > 0) csb.Port = uri.Port;
+            }
+            else
+            {
+                var plain = host["tcp://".Length..];
+                var parts = plain.Split(':', 2);
+                csb.Host = parts[0];
+                if (parts.Length == 2 && int.TryParse(parts[1], out var port))
+                    csb.Port = port;
+            }
+        }
+
+        return csb.ConnectionString;
+    }
+    catch
+    {
+        return raw;
+    }
+}

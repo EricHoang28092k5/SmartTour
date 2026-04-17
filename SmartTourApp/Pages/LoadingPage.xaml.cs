@@ -1,4 +1,5 @@
 ﻿using Microsoft.Maui.Controls;
+using SmartTour.Services;
 using SmartTourApp.Services;
 using SmartTourApp.Pages;
 
@@ -127,6 +128,15 @@ public partial class LoadingPage : ContentPage
 
             await AnimateProgressTo(0.75);
             await UpdateStatusAsync(loc?.LoadingDone ?? "Hoàn tất!", 1.0);
+
+            var api = services?.GetService<ApiService>();
+            if (api != null)
+            {
+                try { await api.PostPresenceHeartbeatAsync(); }
+                catch { /* keep startup resilient */ }
+            }
+            if (Application.Current is App app)
+                app.StartPresenceHeartbeatTimer();
 
             await this.FadeToAsync(0, 400);
             Application.Current!.MainPage = new AppShell();

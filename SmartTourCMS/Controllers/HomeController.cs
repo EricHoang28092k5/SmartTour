@@ -2,8 +2,10 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using SmartTour.Shared.Models;
 using SmartTourBackend.Data;
+using SmartTourCMS.Models;
 using System.Diagnostics;
 using System.Linq;
 
@@ -82,6 +84,11 @@ namespace SmartTourCMS.Controllers
 
             ViewBag.ChartData = chartData;
 
+            var onlineThreshold = DateTime.UtcNow.AddMinutes(-5);
+            var devices = await GetDeviceStatusesSafeAsync(onlineThreshold);
+            ViewBag.OnlineDevices = devices.Count(x => x.IsActive);
+            ViewBag.DeviceStatuses = devices;
+
             // --- 3. LẤY 5 TOUR MỚI NHẤT (ĐÃ LỌC QUYỀN) ---
             var tourQuery = _context.Tours.AsQueryable();
             if (!isAdmin)
@@ -143,6 +150,45 @@ namespace SmartTourCMS.Controllers
             {
                 RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier
             });
+        }
+
+        private async Task<List<DeviceStatusViewModel>> GetDeviceStatusesSafeAsync(DateTime onlineThresholdUtc)
+        {
+            try
+            {
+                return await _context.DevicePresences
+                    .AsNoTracking()
+                    .OrderByDescending(d => d.LastSeenUtc)
+                    .Take(300)
+                    .Select(d => new DeviceStatusViewModel
+                    {
+                        DeviceId = d.DeviceId,
+                        IpAddress = d.IpAddress,
+                        DeviceModel = d.DeviceModel,
+                        Platform = d.Platform,
+                        OsVersion = d.OsVersion,
+                        AppVersion = d.AppVersion,
+                        UserAgent = d.UserAgent,
+                        LastSeenUtc = d.LastSeenUtc,
+                        IsActive = d.LastSeenUtc >= onlineThresholdUtc
+                    })
+                    .ToListAsync();
+            }
+            catch (Exception ex)
+            {
+                var pg = ex as PostgresException ?? ex.InnerException as PostgresException;
+                if (pg?.SqlState == "42P01")
+                {
+                    _logger.LogWarning(
+                        "Bảng DevicePresences chưa tồn tại. Chạy migration: dotnet ef database update --project SmartTourBackend");
+                }
+                else
+                {
+                    _logger.LogWarning(ex, "Không lấy được danh sách trạng thái thiết bị.");
+                }
+
+                return new List<DeviceStatusViewModel>();
+            }
         }
     }
 }
