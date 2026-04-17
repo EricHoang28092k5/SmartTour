@@ -1,4 +1,5 @@
-﻿using SmartTourApp.Pages;
+﻿using SmartTour.Services;
+using SmartTourApp.Pages;
 using SmartTourApp.Services;
 
 namespace SmartTourApp;
@@ -6,6 +7,8 @@ namespace SmartTourApp;
 public partial class App : Application
 {
     private const string QrGateUntilKey = "qr_gate_until_utc";
+
+    private System.Timers.Timer? _presenceTimer;
 
     public App()
     {
@@ -63,6 +66,8 @@ public partial class App : Application
     {
         base.OnSleep();
 
+        _presenceTimer?.Stop();
+
         var services = Current?.Handler?.MauiContext?.Services;
 
         // Dừng audio thuyết minh chung khi app ẩn
@@ -93,6 +98,9 @@ public partial class App : Application
     {
         base.OnResume();
 
+        StartPresenceHeartbeatTimer();
+        _ = SendPresenceHeartbeatAsync();
+
         var services = Current?.Handler?.MauiContext?.Services;
 
         // Trigger sync lại ngay khi app quay lại
@@ -108,6 +116,36 @@ public partial class App : Application
                 }
                 catch { }
             });
+        }
+    }
+
+    /// <summary>Gọi từ LoadingPage sau khi DI sẵn sàng — heartbeat mỗi 2 phút khi app đang chạy.</summary>
+    public void StartPresenceHeartbeatTimer()
+    {
+        if (_presenceTimer != null) return;
+
+        _presenceTimer = new System.Timers.Timer(TimeSpan.FromMinutes(2).TotalMilliseconds)
+        {
+            AutoReset = true
+        };
+        _presenceTimer.Elapsed += (_, _) =>
+        {
+            MainThread.BeginInvokeOnMainThread(() => _ = SendPresenceHeartbeatAsync());
+        };
+        _presenceTimer.Start();
+    }
+
+    private static async Task SendPresenceHeartbeatAsync()
+    {
+        try
+        {
+            var api = Current?.Handler?.MauiContext?.Services.GetService<ApiService>();
+            if (api != null)
+                await api.PostPresenceHeartbeatAsync();
+        }
+        catch
+        {
+            /* ignore */
         }
     }
 }

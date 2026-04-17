@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using SmartTour.Shared.Models;
 using SmartTourBackend.Data;
 using System.Diagnostics;
@@ -82,6 +83,9 @@ namespace SmartTourCMS.Controllers
 
             ViewBag.ChartData = chartData;
 
+            // Thiết bị đã gửi heartbeat trong ~5 phút gần đây (ước lượng đang mở app).
+            ViewBag.OnlineDevices = await CountOnlineDevicesSafeAsync();
+
             // --- 3. LẤY 5 TOUR MỚI NHẤT (ĐÃ LỌC QUYỀN) ---
             var tourQuery = _context.Tours.AsQueryable();
             if (!isAdmin)
@@ -143,6 +147,33 @@ namespace SmartTourCMS.Controllers
             {
                 RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier
             });
+        }
+
+        /// <summary>
+        /// Nếu chưa chạy migration AddDevicePresence (bảng chưa có) thì trả 0 thay vì crash dashboard.
+        /// </summary>
+        private async Task<int> CountOnlineDevicesSafeAsync()
+        {
+            try
+            {
+                var onlineSince = DateTime.UtcNow.AddMinutes(-5);
+                return await _context.DevicePresences
+                    .AsNoTracking()
+                    .CountAsync(d => d.LastSeenUtc >= onlineSince);
+            }
+            catch (Exception ex)
+            {
+                var pg = ex as PostgresException ?? ex.InnerException as PostgresException;
+                if (pg?.SqlState == "42P01")
+                {
+                    _logger.LogWarning(
+                        "Bảng DevicePresences chưa có trên DB. Chạy migration: dotnet ef database update --project SmartTourBackend");
+                }
+                else
+                    _logger.LogWarning(ex, "Không đếm được thiết bị online.");
+
+                return 0;
+            }
         }
     }
 }
