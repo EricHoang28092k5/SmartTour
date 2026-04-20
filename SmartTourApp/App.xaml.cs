@@ -67,6 +67,14 @@ public partial class App : Application
         _presenceTimer?.Stop();
 
         var services = Current?.Handler?.MauiContext?.Services;
+        var api = services?.GetService<ApiService>();
+        if (api != null)
+        {
+            _ = Task.Run(async () =>
+            {
+                try { await api.PostPresenceOfflineAsync(); } catch { }
+            });
+        }
 
         // Dừng audio thuyết minh chung khi app ẩn
         services?.GetService<NarrationEngine>()?.Stop();
@@ -120,7 +128,7 @@ public partial class App : Application
     {
         if (_presenceTimer == null)
         {
-            _presenceTimer = new System.Timers.Timer(TimeSpan.FromMinutes(2).TotalMilliseconds)
+            _presenceTimer = new System.Timers.Timer(TimeSpan.FromSeconds(10).TotalMilliseconds)
             {
                 AutoReset = true
             };

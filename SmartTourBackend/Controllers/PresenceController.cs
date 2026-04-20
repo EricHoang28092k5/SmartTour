@@ -59,6 +59,23 @@ public class PresenceController : ControllerBase
         return Ok(new { success = true });
     }
 
+    [HttpPost("offline")]
+    [AllowAnonymous]
+    public async Task<IActionResult> Offline([FromBody] PresenceHeartbeatDto? dto)
+    {
+        var id = (dto?.DeviceId ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(id) || id.Length > 128)
+            return BadRequest(new { success = false, message = "DeviceId không hợp lệ." });
+
+        var existing = await _context.DevicePresences.FirstOrDefaultAsync(x => x.DeviceId == id);
+        if (existing == null) return Ok(new { success = true });
+
+        // Đánh dấu offline ngay để dashboard cập nhật trạng thái tức thì.
+        existing.LastSeenUtc = DateTime.UtcNow.AddMinutes(-30);
+        await _context.SaveChangesAsync();
+        return Ok(new { success = true });
+    }
+
     private string GetClientIpAddress()
     {
         var forwarded = Request.Headers["X-Forwarded-For"].ToString();

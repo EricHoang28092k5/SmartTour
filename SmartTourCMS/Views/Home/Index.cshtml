@@ -51,8 +51,8 @@
         <div class="col-lg-3 col-6">
             <div class="small-box bg-secondary p-3 rounded shadow-sm text-white mb-4">
                 <div class="inner">
-                    <h3>@(ViewBag.OnlineDevices ?? 0)</h3>
-                    <p>Thiết bị online (5 phút)</p>
+                    <h3 id="onlineDevicesCount">@(ViewBag.OnlineDevices ?? 0)</h3>
+                    <p id="onlineDevicesLabel">Thiết bị online (20 giây)</p>
                 </div>
                 <div class="icon"><i class="fa-solid fa-mobile-screen-button fa-2x"></i></div>
             </div>
@@ -98,7 +98,7 @@
             <div class="card shadow-sm border-0 mb-4">
                 <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center">
                     <span><i class="fa-solid fa-mobile-screen-button text-secondary"></i> Thiết bị đang sử dụng</span>
-                    <small class="text-muted">Trạng thái Online = có heartbeat trong 5 phút gần nhất</small>
+                    <small id="onlineThresholdHint" class="text-muted">Trạng thái Online = có heartbeat trong 20 giây gần nhất</small>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
@@ -113,7 +113,7 @@
                                     <th>Trạng thái</th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody id="deviceStatusBody">
                                 @if (deviceStatuses.Count == 0)
                                 {
                                     <tr>
@@ -184,6 +184,72 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     })
     .catch(err => console.error("Lỗi Dashboard:", err));
+
+    const onlineCountEl = document.getElementById('onlineDevicesCount');
+    const onlineLabelEl = document.getElementById('onlineDevicesLabel');
+    const thresholdHintEl = document.getElementById('onlineThresholdHint');
+    const deviceBodyEl = document.getElementById('deviceStatusBody');
+
+    function esc(v) {
+        return (v ?? '').toString()
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;');
+    }
+
+    function renderDevices(payload) {
+        if (!payload || !payload.success || !deviceBodyEl) return;
+
+        const threshold = payload.thresholdSeconds ?? 20;
+        if (onlineCountEl) onlineCountEl.textContent = payload.onlineDevices ?? 0;
+        if (onlineLabelEl) onlineLabelEl.textContent = `Thiết bị online (${threshold} giây)`;
+        if (thresholdHintEl) thresholdHintEl.textContent = `Trạng thái Online = có heartbeat trong ${threshold} giây gần nhất`;
+
+        const rows = payload.data ?? [];
+        if (rows.length === 0) {
+            deviceBodyEl.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-4">Chưa có dữ liệu thiết bị.</td></tr>`;
+            return;
+        }
+
+        deviceBodyEl.innerHTML = rows.map(d => {
+            const isActive = !!d.isActive;
+            const badge = isActive
+                ? '<span class="badge bg-success">Đang hoạt động</span>'
+                : '<span class="badge bg-secondary">Không hoạt động</span>';
+            const deviceModel = d.deviceModel && d.deviceModel.trim() ? d.deviceModel : 'Unknown device';
+            const ip = d.ipAddress && d.ipAddress.trim() ? d.ipAddress : '-';
+            const platform = `${d.platform ?? ''} ${d.osVersion ?? ''}`.trim() || '-';
+            const appVersion = d.appVersion && d.appVersion.trim() ? d.appVersion : '-';
+            const lastSeen = d.lastSeenUtc ? d.lastSeenUtc.replace('T', ' ').replace('Z', '') : '-';
+            return `
+                <tr>
+                    <td>
+                        <div class="fw-semibold">${esc(deviceModel)}</div>
+                        <small class="text-muted">${esc(d.deviceId)}</small><br />
+                        <small class="text-muted">${esc(d.userAgent)}</small>
+                    </td>
+                    <td>${esc(ip)}</td>
+                    <td>${esc(platform)}</td>
+                    <td>${esc(appVersion)}</td>
+                    <td>${esc(lastSeen)}</td>
+                    <td>${badge}</td>
+                </tr>`;
+        }).join('');
+    }
+
+    async function refreshDeviceStatus() {
+        try {
+            const res = await fetch('/api/cms-dashboard/device-status', { cache: 'no-store' });
+            if (!res.ok) return;
+            const payload = await res.json();
+            renderDevices(payload);
+        } catch (e) {
+            console.warn('device-status refresh failed', e);
+        }
+    }
+
+    refreshDeviceStatus();
+    setInterval(refreshDeviceStatus, 3000);
 });
 </script>
 

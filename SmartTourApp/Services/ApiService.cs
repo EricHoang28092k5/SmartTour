@@ -119,13 +119,7 @@ public class ApiService
 
     public async Task PostPresenceHeartbeatAsync()
     {
-        const string key = "heatmap_device_id";
-        var deviceId = Preferences.Default.Get(key, string.Empty);
-        if (string.IsNullOrWhiteSpace(deviceId))
-        {
-            deviceId = Guid.NewGuid().ToString("N");
-            Preferences.Default.Set(key, deviceId);
-        }
+        var deviceId = GetOrCreatePresenceDeviceId();
 
         var payload = new
         {
@@ -144,6 +138,30 @@ public class ApiService
         {
             System.Diagnostics.Debug.WriteLine("[Presence] " + ex.Message);
         }
+    }
+
+    public async Task PostPresenceOfflineAsync()
+    {
+        var deviceId = GetOrCreatePresenceDeviceId();
+        try
+        {
+            await http.PostAsJsonAsync("api/presence/offline", new { deviceId });
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine("[Presence Offline] " + ex.Message);
+        }
+    }
+
+    private static string GetOrCreatePresenceDeviceId()
+    {
+        const string key = "heatmap_device_id";
+        var deviceId = Preferences.Default.Get(key, string.Empty);
+        if (!string.IsNullOrWhiteSpace(deviceId)) return deviceId;
+
+        deviceId = Guid.NewGuid().ToString("N");
+        Preferences.Default.Set(key, deviceId);
+        return deviceId;
     }
 
     // ══════════════════════════════════════════════════════════════════

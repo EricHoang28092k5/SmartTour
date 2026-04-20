@@ -14,6 +14,7 @@ namespace SmartTourCMS.Controllers
     [Authorize(Roles = "Admin,Vendor")]
     public class HomeController : Controller
     {
+        private const int ActiveThresholdSeconds = 20;
         private readonly ILogger<HomeController> _logger;
         private readonly AppDbContext _context;
         private readonly UserManager<IdentityUser> _userManager;
@@ -84,7 +85,7 @@ namespace SmartTourCMS.Controllers
 
             ViewBag.ChartData = chartData;
 
-            var onlineThreshold = DateTime.UtcNow.AddMinutes(-5);
+            var onlineThreshold = DateTime.UtcNow.AddSeconds(-ActiveThresholdSeconds);
             var devices = await GetDeviceStatusesSafeAsync(onlineThreshold);
             ViewBag.OnlineDevices = devices.Count(x => x.IsActive);
             ViewBag.DeviceStatuses = devices;
@@ -141,6 +142,24 @@ namespace SmartTourCMS.Controllers
                 .ToListAsync();
 
             return Ok(new { success = true, data });
+        }
+
+        [HttpGet]
+        [Route("api/cms-dashboard/device-status")]
+        public async Task<IActionResult> GetDeviceStatus()
+        {
+            var user = await _userManager.GetUserAsync(User);
+            if (user == null) return Unauthorized(new { success = false, message = "Unauthorized" });
+
+            var onlineThreshold = DateTime.UtcNow.AddSeconds(-ActiveThresholdSeconds);
+            var devices = await GetDeviceStatusesSafeAsync(onlineThreshold);
+            return Ok(new
+            {
+                success = true,
+                thresholdSeconds = ActiveThresholdSeconds,
+                onlineDevices = devices.Count(x => x.IsActive),
+                data = devices
+            });
         }
 
         [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
