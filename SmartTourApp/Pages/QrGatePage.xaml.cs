@@ -1,6 +1,7 @@
 using SmartTour.Services;
 using SmartTourApp.Services;
 using ZXing.Net.Maui;
+using ZXing.Net.Maui.Controls;
 using System.Threading;
 
 namespace SmartTourApp.Pages;
@@ -10,6 +11,7 @@ public partial class QrGatePage : ContentPage
     private const string QrGateUntilKey = "qr_gate_until_utc";
     private int _processing;
     private bool _navigationStarted = false;
+    private CameraBarcodeReaderView? QrReader;
 
     public QrGatePage()
     {
@@ -20,17 +22,21 @@ public partial class QrGatePage : ContentPage
     {
         base.OnAppearing();
 
+        _navigationStarted = false;
+        Interlocked.Exchange(ref _processing, 0);
+
         var hasCamera = await EnsureCameraPermissionAsync();
         if (!hasCamera)
         {
             StatusLabel.Text = "Chưa cấp quyền camera. Vui lòng cấp quyền rồi mở lại app.";
-            QrReader.IsDetecting = false;
+            CameraContainer.Content = null;
             return;
         }
 
-        QrReader.IsDetecting = true;
+        // Luôn rebuild camera view sau khi permission confirmed
+        // — fix lỗi màn hình đen lần đầu grant permission
+        BuildCameraView();
 
-        // Pre-warm DI services in background
         _ = Task.Run(() =>
         {
             try
@@ -46,19 +52,65 @@ public partial class QrGatePage : ContentPage
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
-        // Reset trạng thái khi rời trang để có thể quét lại nếu quay lại
         _navigationStarted = false;
         Interlocked.Exchange(ref _processing, 0);
+        StopCamera();
     }
+
+    // ── Build / rebuild camera view ──────────────────────────────────
+
+    private void BuildCameraView()
+    {
+        StopCamera();
+
+        var reader = new CameraBarcodeReaderView
+        {
+            IsDetecting = true,
+            HorizontalOptions = LayoutOptions.Fill,
+            VerticalOptions = LayoutOptions.Fill,
+            Options = new BarcodeReaderOptions
+            {
+                Formats = BarcodeFormat.QrCode,   // ✅ BarcodeFormat (singular), không phải BarcodeFormats
+                AutoRotate = true,
+                Multiple = false
+            }
+        };
+
+        reader.BarcodesDetected += OnBarcodesDetected;
+        QrReader = reader;
+        CameraContainer.Content = reader;
+    }
+
+    private void StopCamera()
+    {
+        if (QrReader != null)
+        {
+            QrReader.IsDetecting = false;
+            QrReader.BarcodesDetected -= OnBarcodesDetected;
+            CameraContainer.Content = null;
+            QrReader = null;
+        }
+    }
+
+    // ── Permission helper ────────────────────────────────────────────
 
     private async Task<bool> EnsureCameraPermissionAsync()
     {
         var status = await Permissions.CheckStatusAsync<Permissions.Camera>();
         if (status == PermissionStatus.Granted) return true;
 
-        status = await Permissions.RequestAsync<Permissions.Camera>();
-        return status == PermissionStatus.Granted;
+        status = await MainThread.InvokeOnMainThreadAsync(
+            () => Permissions.RequestAsync<Permissions.Camera>());
+
+        if (status == PermissionStatus.Granted) return true;
+
+        if (status == PermissionStatus.Denied)
+            StatusLabel.Text = "Quyền camera bị từ chối. Vào Cài đặt để cấp quyền.";
+
+        return false;
     }
+
+    // ── QR detection ─────────────────────────────────────────────────
 
     private void OnBarcodesDetected(object? sender, BarcodeDetectionEventArgs e)
     {
@@ -72,11 +124,13 @@ public partial class QrGatePage : ContentPage
             return;
         }
 
-        // Stop detecting immediately
         MainThread.BeginInvokeOnMainThread(() =>
         {
-            QrReader.IsDetecting = false;
-            QrReader.IsEnabled = false;
+            if (QrReader != null)
+            {
+                QrReader.IsDetecting = false;
+                QrReader.IsEnabled = false;
+            }
         });
 
         if (!IsValidGateQr(raw))
@@ -85,8 +139,11 @@ public partial class QrGatePage : ContentPage
             {
                 StatusLabel.Text = "QR không hợp lệ. Vui lòng quét lại mã SmartTour.";
                 await Task.Delay(600);
-                QrReader.IsEnabled = true;
-                QrReader.IsDetecting = true;
+                if (QrReader != null)
+                {
+                    QrReader.IsEnabled = true;
+                    QrReader.IsDetecting = true;
+                }
                 Interlocked.Exchange(ref _processing, 0);
             });
             return;
@@ -99,8 +156,11 @@ public partial class QrGatePage : ContentPage
             {
                 StatusLabel.Text = "Không đọc được định dạng QR.";
                 await Task.Delay(600);
-                QrReader.IsEnabled = true;
-                QrReader.IsDetecting = true;
+                if (QrReader != null)
+                {
+                    QrReader.IsEnabled = true;
+                    QrReader.IsDetecting = true;
+                }
                 Interlocked.Exchange(ref _processing, 0);
             });
             return;
@@ -112,26 +172,21 @@ public partial class QrGatePage : ContentPage
         {
             try
             {
-                // YC1: Lưu phiên QR 7 ngày
                 Preferences.Default.Set(QrGateUntilKey,
                     DateTime.UtcNow.AddDays(7).ToString("O"));
 
                 StatusLabel.Text = "✅ Quét thành công!";
 
-                // YC1: Lần đầu vào → LoadingPage → AppShell (home)
-                // Lấy services để tạo LoadingPage
                 var services = Application.Current?.Handler?.MauiContext?.Services;
                 var poiRepo = services?.GetService<PoiRepository>();
                 var tracking = services?.GetService<TrackingService>();
 
                 if (poiRepo != null && tracking != null)
                 {
-                    // LoadingPage sẽ tự chuyển sang AppShell sau khi init xong
                     Application.Current!.MainPage = new LoadingPage(poiRepo, tracking);
                 }
                 else
                 {
-                    // Fallback nếu DI chưa sẵn sàng
                     Application.Current!.MainPage = new AppShell();
                     await Shell.Current.GoToAsync("//home");
                     var api = services?.GetService<ApiService>();
@@ -147,8 +202,11 @@ public partial class QrGatePage : ContentPage
             {
                 System.Diagnostics.Debug.WriteLine($"[QrGate] Navigation error: {ex.Message}");
                 _navigationStarted = false;
-                QrReader.IsEnabled = true;
-                QrReader.IsDetecting = true;
+                if (QrReader != null)
+                {
+                    QrReader.IsEnabled = true;
+                    QrReader.IsDetecting = true;
+                }
             }
             finally
             {
@@ -156,6 +214,8 @@ public partial class QrGatePage : ContentPage
             }
         });
     }
+
+    // ── URI helpers (giữ nguyên tên hàm) ─────────────────────────────
 
     private static Uri? NormalizeQr(string raw)
     {

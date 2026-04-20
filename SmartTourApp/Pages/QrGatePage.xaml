@@ -22,9 +22,9 @@
                 BackgroundColor="#000000"
                 StrokeShape="RoundRectangle 14">
             <Grid>
-                <zxing:CameraBarcodeReaderView x:Name="QrReader"
-                                               IsDetecting="True"
-                                               BarcodesDetected="OnBarcodesDetected" />
+                <!-- Camera container — rebuilt dynamically after permission grant -->
+                <ContentView x:Name="CameraContainer" />
+
                 <Border WidthRequest="240"
                         HeightRequest="240"
                         HorizontalOptions="Center"
@@ -32,7 +32,8 @@
                         Stroke="#22C55E"
                         StrokeThickness="3"
                         BackgroundColor="#00FFFFFF"
-                        StrokeShape="RoundRectangle 18" />
+                        StrokeShape="RoundRectangle 18"
+                        InputTransparent="True"/>
             </Grid>
         </Border>
 
@@ -44,4 +45,3 @@
         </VerticalStackLayout>
     </Grid>
 </ContentPage>
-
