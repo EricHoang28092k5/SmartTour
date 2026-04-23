@@ -203,8 +203,10 @@ public class VendorPremiumController : ControllerBase
             var root = doc.RootElement;
             var resultCode = root.TryGetProperty("resultCode", out var resultCodeEl) ? resultCodeEl.GetInt32() : -1;
             var payUrl = root.TryGetProperty("payUrl", out var payUrlEl) ? payUrlEl.GetString() : null;
+            var deeplink = root.TryGetProperty("deeplink", out var deeplinkEl) ? deeplinkEl.GetString() : null;
+            var qrCodeUrl = root.TryGetProperty("qrCodeUrl", out var qrCodeUrlEl) ? qrCodeUrlEl.GetString() : null;
 
-            if (resultCode != 0 || string.IsNullOrWhiteSpace(payUrl))
+            if (resultCode != 0 || (string.IsNullOrWhiteSpace(payUrl) && string.IsNullOrWhiteSpace(deeplink) && string.IsNullOrWhiteSpace(qrCodeUrl)))
             {
                 order.Status = "failed";
                 order.LastError = body;
@@ -221,7 +223,9 @@ public class VendorPremiumController : ControllerBase
                     orderId,
                     requestId,
                     amount,
-                    payUrl
+                    payUrl,
+                    deeplink,
+                    qrCodeUrl
                 }
             });
         }

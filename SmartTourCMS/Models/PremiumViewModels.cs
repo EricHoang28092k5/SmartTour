@@ -37,6 +37,9 @@ public class PremiumCheckoutViewModel
     public long AmountVnd { get; set; }
     public string OrderId { get; set; } = string.Empty;
     public string PayUrl { get; set; } = string.Empty;
+    public string? Deeplink { get; set; }
+    public string? QrCodeUrl { get; set; }
+    public string CheckoutUrl => !string.IsNullOrWhiteSpace(Deeplink) ? Deeplink! : PayUrl;
     public string QrImageUrl { get; set; } = string.Empty;
 }
 

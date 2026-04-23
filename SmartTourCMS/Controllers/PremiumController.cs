@@ -116,7 +116,11 @@ public class PremiumController : Controller
 
             var orderId = dataEl.TryGetProperty("orderId", out var orderEl) ? orderEl.GetString() ?? string.Empty : string.Empty;
             var payUrl = dataEl.TryGetProperty("payUrl", out var payUrlEl) ? payUrlEl.GetString() ?? string.Empty : string.Empty;
-            if (string.IsNullOrWhiteSpace(orderId) || string.IsNullOrWhiteSpace(payUrl))
+            var deeplink = dataEl.TryGetProperty("deeplink", out var deeplinkEl) ? deeplinkEl.GetString() : null;
+            var qrCodeUrl = dataEl.TryGetProperty("qrCodeUrl", out var qrCodeUrlEl) ? qrCodeUrlEl.GetString() : null;
+            var checkoutUrl = !string.IsNullOrWhiteSpace(deeplink) ? deeplink : payUrl;
+            var qrSource = !string.IsNullOrWhiteSpace(qrCodeUrl) ? qrCodeUrl : checkoutUrl;
+            if (string.IsNullOrWhiteSpace(orderId) || string.IsNullOrWhiteSpace(checkoutUrl))
             {
                 TempData["Error"] = "Thiếu dữ liệu thanh toán từ Backend API.";
                 return RedirectToAction(nameof(Index), new { poiId });
@@ -132,7 +136,9 @@ public class PremiumController : Controller
                 AmountVnd = package.AmountVnd,
                 OrderId = orderId,
                 PayUrl = payUrl,
-                QrImageUrl = $"https://quickchart.io/qr?text={Uri.EscapeDataString(payUrl)}&size=300"
+                Deeplink = deeplink,
+                QrCodeUrl = qrCodeUrl,
+                QrImageUrl = $"https://quickchart.io/qr?text={Uri.EscapeDataString(qrSource!)}&size=300"
             };
             return View("Checkout", vm);
         }
