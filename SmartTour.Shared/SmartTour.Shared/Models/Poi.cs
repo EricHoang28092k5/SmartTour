@@ -1,4 +1,4 @@
-﻿using SQLite;
+using SQLite;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace SmartTour.Shared.Models
@@ -17,6 +17,10 @@ namespace SmartTour.Shared.Models
         public int Priority { get; set; } = 1;
         public string? TtsScript { get; set; }
         public bool IsActive { get; set; } = true;
+        public string ApprovalStatus { get; set; } = "approved"; // pending|approved|rejected
+        public string? ApprovedByUserId { get; set; }
+        public DateTime? ApprovedAt { get; set; }
+        public string? ApprovalNote { get; set; }
 
         [Ignore]
         public bool IsNearest { get; set; }

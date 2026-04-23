@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using SmartTour.Shared.Models;
@@ -30,6 +30,9 @@ namespace SmartTourBackend.Data
         public DbSet<RouteSession> RouteSessions { get; set; }
         public DbSet<RouteSessionPoi> RouteSessionPois { get; set; }
         public DbSet<DevicePresence> DevicePresences { get; set; }
+        public DbSet<PoiAudioListenEvent> PoiAudioListenEvents { get; set; }
+        public DbSet<AudioPipelineJob> AudioPipelineJobs { get; set; }
+        public DbSet<ScriptChangeRequest> ScriptChangeRequests { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -73,6 +76,36 @@ namespace SmartTourBackend.Data
                 entity.Property(e => e.Platform).HasMaxLength(64);
                 entity.Property(e => e.OsVersion).HasMaxLength(64);
                 entity.Property(e => e.AppVersion).HasMaxLength(32);
+            });
+
+            modelBuilder.Entity<PoiAudioListenEvent>(entity =>
+            {
+                entity.ToTable("poi_audio_listen_events");
+                entity.HasIndex(e => new { e.DeviceId, e.PoiId, e.DurationSeconds, e.CreatedAt });
+                entity.HasIndex(e => new { e.DeviceId, e.PoiId, e.CreatedAt });
+            });
+
+            modelBuilder.Entity<AudioPipelineJob>(entity =>
+            {
+                entity.ToTable("audio_pipeline_jobs");
+                entity.HasIndex(e => new { e.Status, e.NextRetryAt });
+                entity.Property(e => e.Status).HasMaxLength(20);
+                entity.Property(e => e.JobType).HasMaxLength(50);
+            });
+
+            modelBuilder.Entity<ScriptChangeRequest>(entity =>
+            {
+                entity.ToTable("script_change_requests");
+                entity.HasIndex(e => new { e.PoiId, e.Status, e.CreatedAt });
+                entity.Property(e => e.LanguageCode).HasMaxLength(20);
+                entity.Property(e => e.Status).HasMaxLength(20);
+            });
+
+            modelBuilder.Entity<Poi>(entity =>
+            {
+                entity.Property(e => e.ApprovalStatus).HasMaxLength(20).HasDefaultValue("approved");
+                entity.Property(e => e.ApprovedByUserId).HasMaxLength(128);
+                entity.HasIndex(e => e.ApprovalStatus);
             });
         }
     }

@@ -1,4 +1,4 @@
-﻿@{
+@{
     ViewData["Title"] = "Bảng điều khiển Admin";
     var deviceStatuses = ViewBag.DeviceStatuses as List<SmartTourCMS.Models.DeviceStatusViewModel>
         ?? new List<SmartTourCMS.Models.DeviceStatusViewModel>();
@@ -48,15 +48,18 @@
             </div>
         </div>
 
-        <div class="col-lg-3 col-6">
-            <div class="small-box bg-secondary p-3 rounded shadow-sm text-white mb-4">
-                <div class="inner">
-                    <h3 id="onlineDevicesCount">@(ViewBag.OnlineDevices ?? 0)</h3>
-                    <p id="onlineDevicesLabel">Thiết bị online (20 giây)</p>
+        @if (User.IsInRole("Admin"))
+        {
+            <div class="col-lg-3 col-6">
+                <div class="small-box bg-secondary p-3 rounded shadow-sm text-white mb-4">
+                    <div class="inner">
+                        <h3 id="onlineDevicesCount">@(ViewBag.OnlineDevices ?? 0)</h3>
+                        <p id="onlineDevicesLabel">Thiết bị online (20 giây)</p>
+                    </div>
+                    <div class="icon"><i class="fa-solid fa-mobile-screen-button fa-2x"></i></div>
                 </div>
-                <div class="icon"><i class="fa-solid fa-mobile-screen-button fa-2x"></i></div>
             </div>
-        </div>
+        }
     </div>
 
     <div class="row">
@@ -93,73 +96,77 @@
         </div>
     </div>
 
-    <div class="row">
-        <div class="col-12">
-            <div class="card shadow-sm border-0 mb-4">
-                <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center">
-                    <span><i class="fa-solid fa-mobile-screen-button text-secondary"></i> Thiết bị đang sử dụng</span>
-                    <small id="onlineThresholdHint" class="text-muted">Trạng thái Online = có heartbeat trong 20 giây gần nhất</small>
-                </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover align-middle mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Thiết bị</th>
-                                    <th>IP</th>
-                                    <th>Nền tảng</th>
-                                    <th>Phiên bản</th>
-                                    <th>Lần cuối hoạt động (UTC)</th>
-                                    <th>Trạng thái</th>
-                                </tr>
-                            </thead>
-                            <tbody id="deviceStatusBody">
-                                @if (deviceStatuses.Count == 0)
-                                {
+    @if (User.IsInRole("Admin"))
+    {
+        <div class="row">
+            <div class="col-12">
+                <div class="card shadow-sm border-0 mb-4">
+                    <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center">
+                        <span><i class="fa-solid fa-mobile-screen-button text-secondary"></i> Thiết bị đang sử dụng</span>
+                        <small id="onlineThresholdHint" class="text-muted">Trạng thái Online = có heartbeat trong 20 giây gần nhất</small>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead class="table-light">
                                     <tr>
-                                        <td colspan="6" class="text-center text-muted py-4">
-                                            Chưa có dữ liệu thiết bị. Mở app để gửi heartbeat rồi tải lại trang.
-                                        </td>
+                                        <th>Thiết bị</th>
+                                        <th>IP</th>
+                                        <th>Nền tảng</th>
+                                        <th>Phiên bản</th>
+                                        <th>Lần cuối hoạt động (UTC)</th>
+                                        <th>Trạng thái</th>
                                     </tr>
-                                }
-                                else
-                                {
-                                    @foreach (var d in deviceStatuses)
+                                </thead>
+                                <tbody id="deviceStatusBody">
+                                    @if (deviceStatuses.Count == 0)
                                     {
                                         <tr>
-                                            <td>
-                                                <div class="fw-semibold">@(string.IsNullOrWhiteSpace(d.DeviceModel) ? "Unknown device" : d.DeviceModel)</div>
-                                                <small class="text-muted">@d.DeviceId</small><br />
-                                                <small class="text-muted">@d.UserAgent</small>
-                                            </td>
-                                            <td>@(string.IsNullOrWhiteSpace(d.IpAddress) ? "-" : d.IpAddress)</td>
-                                            <td>@(string.IsNullOrWhiteSpace(d.Platform) ? "-" : $"{d.Platform} {d.OsVersion}".Trim())</td>
-                                            <td>@(string.IsNullOrWhiteSpace(d.AppVersion) ? "-" : d.AppVersion)</td>
-                                            <td>@d.LastSeenUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
-                                            <td>
-                                                @if (d.IsActive)
-                                                {
-                                                    <span class="badge bg-success">Đang hoạt động</span>
-                                                }
-                                                else
-                                                {
-                                                    <span class="badge bg-secondary">Không hoạt động</span>
-                                                }
+                                            <td colspan="6" class="text-center text-muted py-4">
+                                                Chưa có dữ liệu thiết bị. Mở app để gửi heartbeat rồi tải lại trang.
                                             </td>
                                         </tr>
                                     }
-                                }
-                            </tbody>
-                        </table>
+                                    else
+                                    {
+                                        @foreach (var d in deviceStatuses)
+                                        {
+                                            <tr>
+                                                <td>
+                                                    <div class="fw-semibold">@(string.IsNullOrWhiteSpace(d.DeviceModel) ? "Unknown device" : d.DeviceModel)</div>
+                                                    <small class="text-muted">@d.DeviceId</small><br />
+                                                    <small class="text-muted">@d.UserAgent</small>
+                                                </td>
+                                                <td>@(string.IsNullOrWhiteSpace(d.IpAddress) ? "-" : d.IpAddress)</td>
+                                                <td>@(string.IsNullOrWhiteSpace(d.Platform) ? "-" : $"{d.Platform} {d.OsVersion}".Trim())</td>
+                                                <td>@(string.IsNullOrWhiteSpace(d.AppVersion) ? "-" : d.AppVersion)</td>
+                                                <td>@d.LastSeenUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                                                <td>
+                                                    @if (d.IsActive)
+                                                    {
+                                                        <span class="badge bg-success">Đang hoạt động</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="badge bg-secondary">Không hoạt động</span>
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
+    }
 </div>
 
 <script>
 document.addEventListener("DOMContentLoaded", function () {
+    const canViewDeviceStats = @User.IsInRole("Admin").ToString().ToLowerInvariant();
     fetch('/api/cms-dashboard/poi-stats').then(r => r.json())
     .then((poiStats) => {
         // 1. Đổ dữ liệu vào Biểu đồ Audio
@@ -248,8 +255,10 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     }
 
-    refreshDeviceStatus();
-    setInterval(refreshDeviceStatus, 3000);
+    if (canViewDeviceStats) {
+        refreshDeviceStatus();
+        setInterval(refreshDeviceStatus, 3000);
+    }
 });
 </script>
 

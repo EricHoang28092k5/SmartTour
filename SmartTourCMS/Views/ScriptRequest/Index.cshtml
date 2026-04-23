@@ -1,0 +1,35 @@
+@model List<SmartTour.Shared.Models.ScriptChangeRequest>
+@{
+    ViewData["Title"] = "Yêu cầu Script";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h3>Yêu cầu đổi script</h3>
+    <a asp-action="Create" class="btn btn-primary">Tạo yêu cầu</a>
+</div>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>POI</th>
+            <th>Lang</th>
+            <th>Trạng thái</th>
+            <th>Tạo lúc</th>
+            <th>Lý do từ chối</th>
+        </tr>
+    </thead>
+    <tbody>
+    @foreach (var item in Model)
+    {
+        <tr>
+            <td>@item.Id</td>
+            <td>@item.PoiId</td>
+            <td>@item.LanguageCode</td>
+            <td>@item.Status</td>
+            <td>@item.CreatedAt.ToLocalTime()</td>
+            <td>@item.RejectReason</td>
+        </tr>
+    }
+    </tbody>
+</table>

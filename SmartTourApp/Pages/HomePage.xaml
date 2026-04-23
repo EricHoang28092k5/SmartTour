@@ -116,76 +116,32 @@
                 </VerticalStackLayout>
             </Grid>
 
-            <!-- ══════════════════════════════════════ -->
-            <!--  QUICK STATS BAR                       -->
-            <!-- ══════════════════════════════════════ -->
-            <Grid ColumnDefinitions="*,1,*" 
-                  BackgroundColor="#F7F8FC" 
-                  Padding="0,18"
-                  Margin="0">
+            <Border Margin="20,20,20,12"
+                    Stroke="#E8ECF4"
+                    StrokeThickness="1"
+                    BackgroundColor="#F9FAFD"
+                    StrokeShape="RoundRectangle 16"
+                    Padding="12">
+                <VerticalStackLayout Spacing="10">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                        <Label Text="🔎" FontSize="16" VerticalOptions="Center"/>
+                        <SearchBar x:Name="PoiSearchBar"
+                                   Grid.Column="1"
+                                   Placeholder="Tìm địa điểm..."
+                                   SearchCommandParameter="{x:Null}"
+                                   SearchButtonPressed="OnSearchSubmitted"
+                                   TextChanged="OnSearchChanged"
+                                   BackgroundColor="Transparent"/>
+                    </Grid>
 
-                <VerticalStackLayout Grid.Column="0" Spacing="3" VerticalOptions="Center">
-                    <Label Text="12" 
-               FontSize="22" 
-               FontAttributes="Bold" 
-               TextColor="#111111" 
-               HorizontalOptions="Center"/>
-                    <Label x:Name="LblPlaces" 
-               Text="Địa điểm" 
-               FontSize="11" 
-               TextColor="#888888" 
-               HorizontalOptions="Center"/>
+                    <Grid ColumnDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="8">
+                        <Button x:Name="DistanceAllBtn" Text="Tất cả" Clicked="OnDistanceChipClicked" CommandParameter="all" HeightRequest="34" CornerRadius="14" BackgroundColor="#3563FF" TextColor="White" FontSize="12"/>
+                        <Button x:Name="Distance1Btn" Grid.Column="1" Text="&lt; 1km" Clicked="OnDistanceChipClicked" CommandParameter="1" HeightRequest="34" CornerRadius="14" BackgroundColor="#EEF2FF" TextColor="#3C4A67" FontSize="12"/>
+                        <Button x:Name="Distance3Btn" Grid.Column="2" Text="&lt; 3km" Clicked="OnDistanceChipClicked" CommandParameter="3" HeightRequest="34" CornerRadius="14" BackgroundColor="#EEF2FF" TextColor="#3C4A67" FontSize="12"/>
+                        <Button x:Name="Distance5Btn" Grid.Column="3" Text="&lt; 5km" Clicked="OnDistanceChipClicked" CommandParameter="5" HeightRequest="34" CornerRadius="14" BackgroundColor="#EEF2FF" TextColor="#3C4A67" FontSize="12"/>
+                    </Grid>
                 </VerticalStackLayout>
-
-                <BoxView Grid.Column="1" 
-             BackgroundColor="#E8E8E8" 
-             WidthRequest="1" 
-             HeightRequest="30"
-             VerticalOptions="Center"/>
-
-                <VerticalStackLayout Grid.Column="2" Spacing="3" VerticalOptions="Center">
-                    <Label Text="3" 
-               FontSize="22" 
-               FontAttributes="Bold" 
-               TextColor="#111111" 
-               HorizontalOptions="Center"/>
-                    <Label x:Name="LblJourneys" 
-               Text="Hành trình" 
-               FontSize="11" 
-               TextColor="#888888" 
-               HorizontalOptions="Center"/>
-                </VerticalStackLayout>
-            </Grid>
-
-            <!-- ══════════════════════════════════════ -->
-            <!--  SECTION TITLE                         -->
-            <!-- ══════════════════════════════════════ -->
-            <Grid ColumnDefinitions="*,Auto" Padding="20,24,20,14">
-                <VerticalStackLayout Grid.Column="0" Spacing="3">
-                    <Label x:Name="LblNearbyTitle"
-                           Text="Địa điểm gần bạn"
-                           FontSize="20"
-                           FontAttributes="Bold"
-                           TextColor="#111111"/>
-                    <Label x:Name="LblNearbySubtitle"
-                           Text="Khám phá các điểm tham quan xung quanh"
-                           FontSize="12"
-                           TextColor="#999999"/>
-                </VerticalStackLayout>
-
-                <Border Grid.Column="1"
-                        BackgroundColor="#EEF4FF"
-                        StrokeThickness="0"
-                        StrokeShape="RoundRectangle 14"
-                        Padding="12,6"
-                        VerticalOptions="Center">
-                    <Label x:Name="LblViewAll"
-                           Text="Xem tất cả →"
-                           FontSize="12"
-                           FontAttributes="Bold"
-                           TextColor="#3461FF"/>
-                </Border>
-            </Grid>
+            </Border>
 
             <!-- ══════════════════════════════════════ -->
             <!--  POI LIST                              -->

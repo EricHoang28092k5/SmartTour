@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using SmartTourBackend.Data;
@@ -11,9 +12,11 @@ using SmartTourBackend.Data;
 namespace SmartTourBackend.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260423112156_AddPoiApprovalWorkflow")]
+    partial class AddPoiApprovalWorkflow
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -713,8 +716,6 @@ namespace SmartTourBackend.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("DeviceId", "PoiId", "CreatedAt");
 
                     b.HasIndex("DeviceId", "PoiId", "DurationSeconds", "CreatedAt");
 

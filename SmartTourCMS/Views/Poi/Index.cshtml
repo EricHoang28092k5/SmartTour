@@ -25,6 +25,12 @@
         <a asp-action="Create" class="btn btn-success shadow-sm" style="min-width: 120px;">
             <i class="fa-solid fa-plus"></i> Thêm mới
         </a>
+        @if (ViewBag.IsAdmin != null && (bool)ViewBag.IsAdmin)
+        {
+            <a asp-action="PendingApprovals" class="btn btn-warning shadow-sm">
+                <i class="fa-solid fa-clock"></i> Chờ duyệt
+            </a>
+        }
     </div>
 </div>
 
@@ -36,6 +42,7 @@
                 <tr>
                     <th>Ảnh</th>
                     <th>Tên địa điểm</th>
+                    <th>Duyệt</th>
                     <th>Tọa độ</th>
                     <th>Bán kính</th>
                     <th>Giờ hoạt động</th>
@@ -67,6 +74,20 @@
                         </td>
                         <td><strong>@item.Name</strong></td>
                         <td>
+                            @if (item.ApprovalStatus == "approved")
+                            {
+                                <span class="badge bg-success">Đã duyệt</span>
+                            }
+                            else if (item.ApprovalStatus == "rejected")
+                            {
+                                <span class="badge bg-danger">Từ chối</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-warning text-dark">Chờ duyệt</span>
+                            }
+                        </td>
+                        <td>
                             <span class="badge rounded-pill bg-light text-dark border">
                                 @item.Lat.ToString("F4"), @item.Lng.ToString("F4")
                             </span>
@@ -86,35 +107,44 @@
                             }
                         </td>
                         <td class="text-center">
-                            @* NÚT NGHE THỬ AUDIO *@
-                            @if (item.AudioFiles != null && item.AudioFiles.Any())
-                            {
-                                var firstAudio = item.AudioFiles.First().FileUrl;
-                                <button class="btn btn-sm btn-outline-primary me-1" title="Nghe thử" onclick="playPreview('@firstAudio')">
-                                    <i class="fa-solid fa-volume-high"></i>
-                                </button>
+                            @{
+                                var isAdmin = ViewBag.IsAdmin != null && (bool)ViewBag.IsAdmin;
+                                var isRejectedForVendor = !isAdmin && item.ApprovalStatus == "rejected";
                             }
-                            
-                            <a href="/Translation/Index?poiId=@item.Id" class="btn btn-sm btn-outline-info me-1">
-                                <i class="fa-solid fa-language"></i> Dịch
-                            </a>
+                            @if (isRejectedForVendor)
+                            {
+                                <span class="text-muted">POI đã bị từ chối</span>
+                            }
+                            else
+                            {
+                                @if (item.AudioFiles != null && item.AudioFiles.Any())
+                                {
+                                    var firstAudio = item.AudioFiles.First().FileUrl;
+                                    <button class="btn btn-sm btn-outline-primary me-1" title="Nghe thử" onclick="playPreview('@firstAudio')">
+                                        <i class="fa-solid fa-volume-high"></i>
+                                    </button>
+                                }
 
-                            @* NÚT XEM BẢN ĐỒ *@
-                            <button class="btn btn-sm btn-info text-white me-1" title="Xem vị trí"
-                                    onclick="showMapModal('@item.Name', @item.Lat, @item.Lng)">
-                                <i class="fa-solid fa-eye"></i>
-                            </button>
+                                <a href="/Translation/Index?poiId=@item.Id" class="btn btn-sm btn-outline-info me-1">
+                                    <i class="fa-solid fa-language"></i> Dịch
+                                </a>
 
-                            <a asp-action="Edit" asp-route-id="@item.Id" class="btn btn-sm btn-warning me-1" title="Sửa">
-                                <i class="fa-solid fa-pen"></i>
-                            </a>
-
-                            <form asp-action="Delete" asp-route-id="@item.Id" method="post" style="display:inline;" onsubmit="return confirm('Bác có chắc chắn muốn xóa tận gốc địa điểm này không?');">
-                                @Html.AntiForgeryToken()
-                                <button type="submit" class="btn btn-danger btn-sm">
-                                    <i class="fa fa-trash"></i> Xóa
+                                <button class="btn btn-sm btn-info text-white me-1" title="Xem vị trí"
+                                        onclick="showMapModal('@item.Name', @item.Lat, @item.Lng)">
+                                    <i class="fa-solid fa-eye"></i>
                                 </button>
-                            </form>
+
+                                <a asp-action="Edit" asp-route-id="@item.Id" class="btn btn-sm btn-warning me-1" title="Sửa">
+                                    <i class="fa-solid fa-pen"></i>
+                                </a>
+
+                                <form asp-action="Delete" asp-route-id="@item.Id" method="post" style="display:inline;" onsubmit="return confirm('Bác có chắc chắn muốn xóa tận gốc địa điểm này không?');">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="btn btn-danger btn-sm">
+                                        <i class="fa fa-trash"></i> Xóa
+                                    </button>
+                                </form>
+                            }
                         </td>
                         @if (ViewBag.IsAdmin != null && (bool)ViewBag.IsAdmin)
                         {

@@ -1,4 +1,4 @@
-﻿using SmartTour.Services;
+using SmartTour.Services;
 using SmartTour.Shared.Models;
 using SmartTourApp.Services;
 
@@ -24,6 +24,8 @@ public partial class PoiDetailPage : ContentPage
     private CancellationTokenSource? _sliderCts;
     private double _progressTrackWidth = 0;
     private Location? _cachedUserLocation;
+    private bool _isPlayHandling;
+    private DateTime _lastPlayActionUtc = DateTime.MinValue;
 
     // YC1: cache description theo ngôn ngữ
     private string? _cachedDescriptionLang = null;
@@ -448,29 +450,46 @@ public partial class PoiDetailPage : ContentPage
     private async void OnPlayClicked(object sender, EventArgs e)
     {
         if (poi == null) return;
+        if (_isPlayHandling) return;
 
-        if (!hasStarted)
-        {
-            // YC6: Set playing state NGAY để UI phản hồi tức thì
-            hasStarted = true;
-            SetPlayingState(true);
-            StartSliderLoop();
+        var now = DateTime.UtcNow;
+        if ((now - _lastPlayActionUtc).TotalMilliseconds < 500)
+            return;
+        _lastPlayActionUtc = now;
+        _isPlayHandling = true;
 
-            // Lấy location và play song song để giảm delay
-            var loc2 = await GetFreshLocationAsync();
-            await audio.Play(poi, loc2);
-        }
-        else if (audio.IsPlaying)
+        try
         {
-            audio.Pause();
-            SetPlayingState(false);
-            StopSliderLoop();
+            PlayBtn.IsEnabled = false;
+
+            if (!hasStarted)
+            {
+                // YC6: Set playing state NGAY để UI phản hồi tức thì
+                hasStarted = true;
+                SetPlayingState(true);
+                StartSliderLoop();
+
+                // Lấy location và play song song để giảm delay
+                var loc2 = await GetFreshLocationAsync();
+                await audio.Play(poi, loc2);
+            }
+            else if (audio.IsPlaying)
+            {
+                audio.Pause();
+                SetPlayingState(false);
+                StopSliderLoop();
+            }
+            else
+            {
+                audio.Resume();
+                SetPlayingState(true);
+                StartSliderLoop();
+            }
         }
-        else
+        finally
         {
-            audio.Resume();
-            SetPlayingState(true);
-            StartSliderLoop();
+            _isPlayHandling = false;
+            PlayBtn.IsEnabled = true;
         }
     }
 

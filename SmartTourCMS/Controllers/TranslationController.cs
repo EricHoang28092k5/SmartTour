@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity; // Bơm thêm Identity
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -124,7 +124,13 @@ namespace SmartTourCMS.Controllers
             if (existingTranslation == null) return NotFound();
 
             var user = await _userManager.GetUserAsync(User);
-            if (!await _userManager.IsInRoleAsync(user, "Admin") && existingTranslation.Poi.VendorId != user.Id) return Forbid();
+            var isAdmin = await _userManager.IsInRoleAsync(user, "Admin");
+            if (!isAdmin && existingTranslation.Poi.VendorId != user.Id) return Forbid();
+            if (!isAdmin)
+            {
+                TempData["Error"] = "Vendor không được chỉnh trực tiếp script/audio. Vui lòng gửi yêu cầu tại mục Yêu cầu script.";
+                return RedirectToAction("Index", "ScriptRequest");
+            }
 
             try
             {

@@ -1,0 +1,36 @@
+@{
+    ViewData["Title"] = "Tạo yêu cầu script";
+    var pois = ViewBag.Pois as List<SmartTour.Shared.Models.Poi> ?? new();
+}
+
+<h3>Tạo yêu cầu đổi script</h3>
+
+<form asp-action="Create" method="post">
+    @Html.AntiForgeryToken()
+    <div class="mb-3">
+        <label class="form-label">POI</label>
+        <select class="form-select" name="poiId" required>
+            <option value="">-- Chọn POI --</option>
+            @foreach (var poi in pois)
+            {
+                <option value="@poi.Id">@poi.Name (@poi.Id)</option>
+            }
+        </select>
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Ngôn ngữ</label>
+        <select class="form-select" name="languageCode">
+            <option value="vi">vi</option>
+            <option value="en">en</option>
+            <option value="ja">ja</option>
+            <option value="zh">zh</option>
+            <option value="ko">ko</option>
+        </select>
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Script mới</label>
+        <textarea class="form-control" name="newScript" rows="6" required></textarea>
+    </div>
+    <button class="btn btn-primary" type="submit">Gửi duyệt</button>
+    <a asp-action="Index" class="btn btn-outline-secondary">Hủy</a>
+</form>

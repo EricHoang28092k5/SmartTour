@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using SmartTourBackend.Data;
@@ -11,9 +12,11 @@ using SmartTourBackend.Data;
 namespace SmartTourBackend.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260423105521_SyncStreetFoodModel")]
+    partial class SyncStreetFoodModel
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -602,23 +605,6 @@ namespace SmartTourBackend.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<string>("ApprovalNote")
-                        .HasColumnType("text");
-
-                    b.Property<string>("ApprovalStatus")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasDefaultValue("approved");
-
-                    b.Property<DateTime?>("ApprovedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("ApprovedByUserId")
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
-
                     b.Property<string>("AudioUrl")
                         .IsRequired()
                         .HasColumnType("text");
@@ -683,8 +669,6 @@ namespace SmartTourBackend.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ApprovalStatus");
-
                     b.HasIndex("CategoryId");
 
                     b.ToTable("Pois");
@@ -713,8 +697,6 @@ namespace SmartTourBackend.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("DeviceId", "PoiId", "CreatedAt");
 
                     b.HasIndex("DeviceId", "PoiId", "DurationSeconds", "CreatedAt");
 

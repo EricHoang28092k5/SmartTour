@@ -1,4 +1,4 @@
-﻿using SmartTour.Shared.Models;
+using SmartTour.Shared.Models;
 using SmartTourApp.Data;
 using SmartTour.Services;
 
@@ -56,6 +56,7 @@ public class AudioListenTracker
     /// Đây là guard chính để tránh ghi log sai.
     /// </summary>
     private bool isTracking;
+    private double expectedDurationSeconds;
 
     // ══════════════════════════════════════════════════════════════════
     // DEVICE ID
@@ -111,6 +112,12 @@ public class AudioListenTracker
             $"[Tracker] ▶ StartSession POI={poiId} | accumulated={accumulatedSeconds:F1}s");
     }
 
+    public void UpdateExpectedDuration(double totalDurationSeconds)
+    {
+        if (totalDurationSeconds > 0)
+            expectedDurationSeconds = totalDurationSeconds;
+    }
+
     /// <summary>
     /// Tạm dừng ghi nhận (Pause hoặc trước Seek).
     /// Snapshot thời gian đã nghe → dừng đồng hồ, KHÔNG flush.
@@ -136,7 +143,7 @@ public class AudioListenTracker
     /// Dừng hoàn toàn và ghi log nếu đã nghe ≥ 1 giây.
     /// Gọi khi: Stop / audio kết thúc tự nhiên.
     /// </summary>
-    public void StopSession()
+    public void StopSession(bool completedNaturally = false)
     {
         if (sessionStart != null)
         {
@@ -150,7 +157,7 @@ public class AudioListenTracker
         System.Diagnostics.Debug.WriteLine(
             $"[Tracker] ⏹ StopSession | total={accumulatedSeconds:F1}s");
 
-        FlushSession();
+        FlushSession(completedNaturally);
     }
 
     /// <summary>
@@ -173,7 +180,7 @@ public class AudioListenTracker
     // INTERNAL: FLUSH
     // ══════════════════════════════════════════════════════════════════
 
-    private void FlushSession()
+    private void FlushSession(bool completedNaturally = false)
     {
         // Guard: chỉ ghi khi đã nghe thực sự ít nhất 1 giây
         if (currentPoiId == null || accumulatedSeconds < 1.0)
@@ -216,14 +223,25 @@ public class AudioListenTracker
         _ = Task.Run(async () =>
         {
             bool isOnline = IsOnline();
+            var totalDurationSec = (int)Math.Round(expectedDurationSeconds);
+            var qualifiedListen = IsQualifiedListen(duration, totalDurationSec, completedNaturally);
 
             if (isOnline)
             {
                 try
                 {
                     await api.PostPlayLog(logCopy);
+                    if (qualifiedListen)
+                    {
+                        await api.PostPoiAudioListenAsync(
+                            poiId,
+                            duration,
+                            DeviceId,
+                            totalDurationSec > 0 ? totalDurationSec : null,
+                            completedNaturally);
+                    }
                     System.Diagnostics.Debug.WriteLine(
-                        $"[Tracker] ✅ Online log sent: POI={poiId}, duration={duration}s");
+                        $"[Tracker] ✅ Online log sent: POI={poiId}, duration={duration}s, qualified={qualifiedListen}");
                 }
                 catch (Exception ex)
                 {
@@ -255,6 +273,19 @@ public class AudioListenTracker
         accumulatedSeconds = 0;
         sessionStart = null;
         isTracking = false;
+        expectedDurationSeconds = 0;
+    }
+
+    private static bool IsQualifiedListen(int listenedSeconds, int totalDurationSeconds, bool completedNaturally)
+    {
+        if (listenedSeconds <= 0) return false;
+        if (totalDurationSeconds <= 0)
+            return completedNaturally || listenedSeconds >= 15;
+
+        var threshold = totalDurationSeconds < 15
+            ? totalDurationSeconds * 0.5
+            : 15.0;
+        return listenedSeconds >= threshold;
     }
 
     // ══════════════════════════════════════════════════════════════════

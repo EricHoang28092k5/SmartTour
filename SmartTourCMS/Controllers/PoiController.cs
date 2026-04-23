@@ -1,4 +1,4 @@
-﻿using CloudinaryDotNet;
+using CloudinaryDotNet;
 using CloudinaryDotNet.Actions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -47,7 +47,14 @@ namespace SmartTourCMS.Controllers
                 .Include(p => p.AudioFiles)
                 .AsQueryable();
 
-            if (!isAdmin) query = query.Where(p => p.VendorId == user.Id);
+            if (isAdmin)
+            {
+                query = query.Where(p => p.ApprovalStatus != "rejected");
+            }
+            else
+            {
+                query = query.Where(p => p.VendorId == user.Id);
+            }
 
             // Ép nó lấy dữ liệu ra List trước (để C# so sánh không dấu)
             var poiList = await query.OrderByDescending(p => p.Id).ToListAsync();
@@ -98,6 +105,13 @@ namespace SmartTourCMS.Controllers
         {
             var user = await _userManager.GetUserAsync(User);
             if (user != null) poi.VendorId = user.Id;
+            var isAdmin = user != null && await _userManager.IsInRoleAsync(user, "Admin");
+
+            poi.ApprovalStatus = isAdmin ? "approved" : "pending";
+            poi.IsActive = isAdmin;
+            poi.ApprovedAt = isAdmin ? DateTime.UtcNow : null;
+            poi.ApprovedByUserId = isAdmin ? user?.Id : null;
+            poi.CreatedBy = user?.Email ?? user?.UserName ?? user?.Id;
 
             // 1. Upload ảnh lên Cloudinary
             if (imageFile != null)
@@ -116,13 +130,15 @@ namespace SmartTourCMS.Controllers
             _context.Pois.Add(poi);
             await _context.SaveChangesAsync();
 
-            // 3. Dịch đa ngôn ngữ và TẠO AUDIO (Có Delay chống Block)
-            var missingAudio = await CreateTranslationsAndAudio(poi);
-
-            if (missingAudio > 0)
+            // Vendor tạo POI phải chờ admin duyệt trước khi generate translation/audio.
+            if (!isAdmin)
             {
-                TempData["AudioWarning"] = $"Không tạo được audio cho {missingAudio} bản dịch. Kiểm tra: (1) AZURE_SPEECH_KEY/AZURE_SPEECH_REGION, (2) dịch vụ Azure Speech đã active, (3) Cloudinary trong .env.";
+                TempData["success"] = "POI đã được gửi duyệt. Admin phê duyệt xong mới hiển thị trên app.";
+                return RedirectToAction(nameof(Index));
             }
+
+            // Chỉ tạo bản dịch/audio tại bước duyệt POI.
+            TempData["success"] = "POI đã tạo thành công.";
             return RedirectToAction(nameof(Index));
         }
 
@@ -164,10 +180,13 @@ namespace SmartTourCMS.Controllers
             try
             {
                 poi.VendorId = existing.VendorId;
+                poi.ApprovalStatus = existing.ApprovalStatus;
+                poi.ApprovedAt = existing.ApprovedAt;
+                poi.ApprovedByUserId = existing.ApprovedByUserId;
                 _context.Update(poi);
 
-                // Nếu Description thay đổi, xóa sạch Translation cũ để AI dịch lại
-                if (poi.Description != existing.Description)
+                // Chỉ tạo/làm mới bản dịch khi POI đã được duyệt.
+                if (poi.ApprovalStatus == "approved" && poi.Description != existing.Description)
                 {
                     var oldTrans = _context.PoiTranslations.Where(t => t.PoiId == id);
                     _context.PoiTranslations.RemoveRange(oldTrans);
@@ -182,6 +201,62 @@ namespace SmartTourCMS.Controllers
             }
             catch (Exception ex) { ModelState.AddModelError("", ex.Message); return View(poi); }
             return RedirectToAction(nameof(Index));
+        }
+
+        [Authorize(Roles = "Admin")]
+        [HttpGet]
+        public async Task<IActionResult> PendingApprovals()
+        {
+            var pending = await _context.Pois
+                .Where(p => p.ApprovalStatus == "pending")
+                .OrderByDescending(p => p.CreatedAt)
+                .ToListAsync();
+            return View(pending);
+        }
+
+        [Authorize(Roles = "Admin")]
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ApprovePoi(int id)
+        {
+            var poi = await _context.Pois.FirstOrDefaultAsync(p => p.Id == id);
+            if (poi == null) return NotFound();
+            if (poi.ApprovalStatus != "pending") return RedirectToAction(nameof(PendingApprovals));
+
+            var admin = await _userManager.GetUserAsync(User);
+            poi.ApprovalStatus = "approved";
+            poi.IsActive = true;
+            poi.ApprovedAt = DateTime.UtcNow;
+            poi.ApprovedByUserId = admin?.Id;
+
+            var existingTranslations = await _context.PoiTranslations.AnyAsync(t => t.PoiId == poi.Id);
+            if (!existingTranslations)
+            {
+                var missingAudio = await CreateTranslationsAndAudio(poi);
+                if (missingAudio > 0)
+                    TempData["AudioWarning"] = $"POI được duyệt nhưng còn {missingAudio} bản dịch chưa có audio.";
+            }
+
+            await _context.SaveChangesAsync();
+            TempData["success"] = "Đã duyệt POI thành công.";
+            return RedirectToAction(nameof(PendingApprovals));
+        }
+
+        [Authorize(Roles = "Admin")]
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> RejectPoi(int id)
+        {
+            var poi = await _context.Pois.FirstOrDefaultAsync(p => p.Id == id);
+            if (poi == null) return NotFound();
+            if (poi.ApprovalStatus != "pending") return RedirectToAction(nameof(PendingApprovals));
+
+            poi.ApprovalStatus = "rejected";
+            poi.IsActive = false;
+            poi.ApprovalNote = null;
+            await _context.SaveChangesAsync();
+            TempData["success"] = "Đã từ chối POI.";
+            return RedirectToAction(nameof(PendingApprovals));
         }
 
         [HttpPost]

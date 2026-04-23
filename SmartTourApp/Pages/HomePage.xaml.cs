@@ -1,4 +1,4 @@
-﻿using SmartTour.Services;
+using SmartTour.Services;
 using SmartTour.Shared.Models;
 using SmartTourApp.Services;
 using static SmartTour.Services.ApiService;
@@ -17,6 +17,7 @@ public partial class HomePage : ContentPage
     private readonly OfflineSyncService offlineSync;
 
     private List<Poi> pois = new();
+    private List<Poi> filteredPois = new();
     private Poi? nearest;
     private Location? userLoc;
 
@@ -31,6 +32,8 @@ public partial class HomePage : ContentPage
     // YC5: Track nếu data đã load xong để tránh re-fetch khi quay lại
     private bool _dataReady = false;
     private string _dataLang = "";
+    private string _searchKeyword = "";
+    private double? _distanceFilterKm = null;
 
     public HomePage(
         PoiRepository repo,
@@ -96,6 +99,7 @@ public partial class HomePage : ContentPage
             ApplyTranslatedNames();
             PoiList.ItemsSource = null;
             PoiList.ItemsSource = pois;
+            filteredPois = pois.ToList();
             UpdateHeroTitle();
             _dataLang = currentLang;
             _dataReady = true;
@@ -130,11 +134,11 @@ public partial class HomePage : ContentPage
         UpdateGreeting();
         LblNearestBadge.Text = loc.NearestBadge;
         UpdateHeroPlayBtn();
-        LblPlaces.Text = loc.Places;
-        LblJourneys.Text = loc.Journeys;
-        LblNearbyTitle.Text = loc.NearbyPlaces;
-        LblNearbySubtitle.Text = loc.ExploreAround;
-        LblViewAll.Text = loc.ViewAll;
+        PoiSearchBar.Placeholder = loc.SearchPoiPlaceholder;
+        DistanceAllBtn.Text = loc.FilterAllDistance;
+        Distance1Btn.Text = loc.FilterDistance1Km;
+        Distance3Btn.Text = loc.FilterDistance3Km;
+        Distance5Btn.Text = loc.FilterDistance5Km;
     }
 
     private void UpdateGreeting()
@@ -177,6 +181,7 @@ public partial class HomePage : ContentPage
             LoadTranslatedNamesFromCache(pois);
             ApplyTranslatedNames();
             PoiList.ItemsSource = pois;
+            filteredPois = pois.ToList();
 
             // Load location song song
             _ = LoadLocationAsync();
@@ -214,8 +219,7 @@ public partial class HomePage : ContentPage
                 ApplyTranslatedNames();
                 MainThread.BeginInvokeOnMainThread(() =>
                 {
-                    PoiList.ItemsSource = null;
-                    PoiList.ItemsSource = pois;
+                    ApplyFiltersToView();
                     SortPoisInline();
                 });
             }
@@ -377,11 +381,7 @@ public partial class HomePage : ContentPage
                 userLoc, new Location(p.Lat, p.Lng), DistanceUnits.Kilometers))
             .ToList();
         ApplyTranslatedNames();
-        MainThread.BeginInvokeOnMainThread(() =>
-        {
-            PoiList.ItemsSource = null;
-            PoiList.ItemsSource = pois;
-        });
+        MainThread.BeginInvokeOnMainThread(ApplyFiltersToView);
     }
 
     private async void PlayNearest(object sender, EventArgs e)
@@ -494,5 +494,93 @@ public partial class HomePage : ContentPage
             return access == NetworkAccess.Internet || access == NetworkAccess.ConstrainedInternet;
         }
         catch { return false; }
+    }
+
+    private async void OnSearchSubmitted(object sender, EventArgs e)
+    {
+        _searchKeyword = PoiSearchBar.Text?.Trim() ?? "";
+        await RunServerSearchIfNeededAsync();
+        ApplyFiltersToView();
+    }
+
+    private void OnSearchChanged(object sender, TextChangedEventArgs e)
+    {
+        _searchKeyword = e.NewTextValue?.Trim() ?? "";
+        ApplyFiltersToView();
+    }
+
+    private void OnDistanceChipClicked(object? sender, EventArgs e)
+    {
+        if (sender is not Button btn) return;
+        var key = btn.CommandParameter?.ToString() ?? "all";
+        _distanceFilterKm = key switch
+        {
+            "1" => 1,
+            "3" => 3,
+            "5" => 5,
+            _ => null
+        };
+        UpdateDistanceChipStyles(key);
+        ApplyFiltersToView();
+    }
+
+    private void UpdateDistanceChipStyles(string activeKey)
+    {
+        StyleDistanceChip(DistanceAllBtn, activeKey == "all");
+        StyleDistanceChip(Distance1Btn, activeKey == "1");
+        StyleDistanceChip(Distance3Btn, activeKey == "3");
+        StyleDistanceChip(Distance5Btn, activeKey == "5");
+    }
+
+    private static void StyleDistanceChip(Button btn, bool active)
+    {
+        btn.BackgroundColor = active ? Color.FromArgb("#3563FF") : Color.FromArgb("#EEF2FF");
+        btn.TextColor = active ? Colors.White : Color.FromArgb("#3C4A67");
+    }
+
+    private void ApplyFiltersToView()
+    {
+        IEnumerable<Poi> query = pois;
+
+        if (!string.IsNullOrWhiteSpace(_searchKeyword))
+        {
+            var k = _searchKeyword.ToLowerInvariant();
+            query = query.Where(p =>
+                (p.DisplayName ?? p.Name ?? string.Empty).ToLowerInvariant().Contains(k) ||
+                (p.Description ?? string.Empty).ToLowerInvariant().Contains(k));
+        }
+
+        if (_distanceFilterKm.HasValue && userLoc != null)
+        {
+            query = query.Where(p =>
+                Location.CalculateDistance(userLoc, new Location(p.Lat, p.Lng), DistanceUnits.Kilometers) <= _distanceFilterKm.Value);
+        }
+
+        filteredPois = query.ToList();
+        PoiList.ItemsSource = null;
+        PoiList.ItemsSource = filteredPois;
+    }
+
+    private async Task RunServerSearchIfNeededAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_searchKeyword) || !IsOnline()) return;
+
+        try
+        {
+            var response = await api.SearchPois(
+                _searchKeyword,
+                userLoc?.Latitude,
+                userLoc?.Longitude,
+                _distanceFilterKm);
+            if (response?.Success == true && response.Data.Count > 0)
+            {
+                pois = response.Data;
+                ApplyTranslatedNames();
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[HomePage] RunServerSearchIfNeededAsync error: {ex.Message}");
+        }
     }
 }

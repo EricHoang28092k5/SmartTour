@@ -1,6 +1,7 @@
-﻿using SmartTour.Shared.Models;
+using SmartTour.Shared.Models;
 using SmartTourApp.Services;
 using SmartTourApp.Pages; // để dùng SettingsPage.AutoPlayKey
+using SmartTour.Services;
 
 public class TrackingService
 {
@@ -10,6 +11,7 @@ public class TrackingService
     private readonly PoiRepository repo;
     private readonly LocationLogger logger;
     private readonly HeatmapService heatmap;
+    private readonly ApiService api;
     private readonly RouteTrackingService routeTracking;
 
     private CancellationTokenSource? cts;
@@ -17,6 +19,8 @@ public class TrackingService
     private List<Poi> pois = new();
     private Location? lastLocation;
     private int interval = 3;
+    private DateTime _lastPopularitySyncUtc = DateTime.MinValue;
+    private const int PopularitySyncSeconds = 120;
 
     // ── Track trạng thái auto-play của chu kỳ trước để detect bật lại ──
     private bool _prevAutoPlayEnabled = true;
@@ -30,6 +34,7 @@ public class TrackingService
         PoiRepository repo,
         LocationLogger logger,
         HeatmapService heatmap,
+        ApiService api,
         RouteTrackingService routeTracking)
     {
         this.location = location;
@@ -38,6 +43,7 @@ public class TrackingService
         this.repo = repo;
         this.logger = logger;
         this.heatmap = heatmap;
+        this.api = api;
         this.routeTracking = routeTracking;
     }
 
@@ -95,6 +101,7 @@ public class TrackingService
 
                     if (autoPlayEnabled)
                     {
+                        await RefreshPoiPopularityIfNeededAsync();
                         var poi = geo.FindBestPoi(loc, pois);
                         if (poi != null)
                             await narration.Play(poi, loc);
@@ -119,6 +126,31 @@ public class TrackingService
                 }
             }
         }, token);
+    }
+
+    private async Task RefreshPoiPopularityIfNeededAsync()
+    {
+        var now = DateTime.UtcNow;
+        if ((now - _lastPopularitySyncUtc).TotalSeconds < PopularitySyncSeconds)
+            return;
+
+        _lastPopularitySyncUtc = now;
+        try
+        {
+            var response = await api.GetHeatmap();
+            if (response?.Success != true || response.Data == null || response.Data.Count == 0)
+                return;
+
+            var popularity = response.Data
+                .GroupBy(x => x.PoiId)
+                .ToDictionary(g => g.Key, g => g.Max(x => x.Sum));
+
+            geo.UpdatePoiPopularity(popularity);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Tracking] RefreshPoiPopularity failed: {ex.Message}");
+        }
     }
 
     public void Stop()

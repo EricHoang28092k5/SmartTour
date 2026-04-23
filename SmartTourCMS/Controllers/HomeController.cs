@@ -36,17 +36,18 @@ namespace SmartTourCMS.Controllers
             // --- 1. THỐNG KÊ SỐ LƯỢNG THEO QUYỀN ---
             if (isAdmin)
             {
-                ViewBag.TotalPois = await _context.Pois.CountAsync();
+                ViewBag.TotalPois = await _context.Pois.CountAsync(p => p.ApprovalStatus == "approved");
                 ViewBag.TotalTours = await _context.Tours.CountAsync();
-                ViewBag.TotalTranslations = await _context.PoiTranslations.CountAsync();
+                ViewBag.TotalTranslations = await _context.PoiTranslations
+                    .CountAsync(pt => _context.Pois.Any(p => p.Id == pt.PoiId && p.ApprovalStatus == "approved"));
                 ViewBag.TotalLanguages = await _context.Languages.CountAsync();
             }
             else
             {
-                ViewBag.TotalPois = await _context.Pois.CountAsync(p => p.VendorId == user.Id);
+                ViewBag.TotalPois = await _context.Pois.CountAsync(p => p.VendorId == user.Id && p.ApprovalStatus == "approved");
                 ViewBag.TotalTours = await _context.Tours.CountAsync(t => t.VendorId == user.Id);
                 ViewBag.TotalTranslations = await _context.PoiTranslations
-                    .CountAsync(pt => _context.Pois.Any(p => p.Id == pt.PoiId && p.VendorId == user.Id));
+                    .CountAsync(pt => _context.Pois.Any(p => p.Id == pt.PoiId && p.VendorId == user.Id && p.ApprovalStatus == "approved"));
                 ViewBag.TotalLanguages = await _context.Languages.CountAsync();
             }
 
@@ -57,10 +58,15 @@ namespace SmartTourCMS.Controllers
             {
                 playLogQuery = playLogQuery.Where(l =>
                     l.Poi != null &&
+                    l.Poi.ApprovalStatus == "approved" &&
                     (l.Poi.VendorId == user.Id ||
                      l.Poi.CreatedBy == user.Id ||
                      l.Poi.CreatedBy == user.Email ||
                      l.Poi.CreatedBy == user.UserName));
+            }
+            else
+            {
+                playLogQuery = playLogQuery.Where(l => l.Poi != null && l.Poi.ApprovalStatus == "approved");
             }
 
             // Lấy tổng lượt nghe thật thay vì gán cứng 1250 hay 450
@@ -86,9 +92,17 @@ namespace SmartTourCMS.Controllers
             ViewBag.ChartData = chartData;
 
             var onlineThreshold = DateTime.UtcNow.AddSeconds(-ActiveThresholdSeconds);
-            var devices = await GetDeviceStatusesSafeAsync(onlineThreshold);
-            ViewBag.OnlineDevices = devices.Count(x => x.IsActive);
-            ViewBag.DeviceStatuses = devices;
+            if (isAdmin)
+            {
+                var devices = await GetDeviceStatusesSafeAsync(onlineThreshold);
+                ViewBag.OnlineDevices = devices.Count(x => x.IsActive);
+                ViewBag.DeviceStatuses = devices;
+            }
+            else
+            {
+                ViewBag.OnlineDevices = 0;
+                ViewBag.DeviceStatuses = new List<DeviceStatusViewModel>();
+            }
 
             // --- 3. LẤY 5 TOUR MỚI NHẤT (ĐÃ LỌC QUYỀN) ---
             var tourQuery = _context.Tours.AsQueryable();
@@ -123,10 +137,15 @@ namespace SmartTourCMS.Controllers
             {
                 query = query.Where(l =>
                     l.Poi != null &&
+                    l.Poi.ApprovalStatus == "approved" &&
                     (l.Poi.VendorId == user.Id ||
                      l.Poi.CreatedBy == user.Id ||
                      l.Poi.CreatedBy == user.Email ||
                      l.Poi.CreatedBy == user.UserName));
+            }
+            else
+            {
+                query = query.Where(l => l.Poi != null && l.Poi.ApprovalStatus == "approved");
             }
 
             var data = await query
@@ -150,6 +169,8 @@ namespace SmartTourCMS.Controllers
         {
             var user = await _userManager.GetUserAsync(User);
             if (user == null) return Unauthorized(new { success = false, message = "Unauthorized" });
+            var isAdmin = await _userManager.IsInRoleAsync(user, "Admin");
+            if (!isAdmin) return Forbid();
 
             var onlineThreshold = DateTime.UtcNow.AddSeconds(-ActiveThresholdSeconds);
             var devices = await GetDeviceStatusesSafeAsync(onlineThreshold);

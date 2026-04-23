@@ -1,4 +1,4 @@
-﻿namespace SmartTourApp.Services;
+namespace SmartTourApp.Services;
 
 /// <summary>
 /// LocalizationService — Quản lý tất cả chuỗi tĩnh trong App theo ngôn ngữ audio.
@@ -59,11 +59,11 @@ public class LocalizationService
     public string NearestBadge => T("📍 Gần bạn nhất", "📍 Nearest to you", "📍 最寄り", "📍 最近", "📍 가장 가까운");
     public string ListenNow => T("🎧  Nghe ngay", "🎧  Listen now", "🎧  今すぐ聴く", "🎧  立即收听", "🎧  지금 듣기");
     public string NowPlaying => T("🔊  Đang phát...", "🔊  Playing...", "🔊  再生中...", "🔊  播放中...", "🔊  재생 중...");
-    public string NearbyPlaces => T("Địa điểm gần bạn", "Nearby Places", "近くのスポット", "附近景点", "주변 장소");
-    public string ExploreAround => T("Khám phá các điểm tham quan xung quanh", "Explore attractions around you", "周辺の観光スポットを探索", "探索周边景点", "주변 명소 탐색");
-    public string ViewAll => T("Xem tất cả →", "View all →", "すべて見る →", "查看全部 →", "전체 보기 →");
-    public string Places => T("Địa điểm", "Places", "スポット", "景点", "장소");
-    public string Journeys => T("Hành trình", "Journeys", "旅程", "行程", "여정");
+    public string SearchPoiPlaceholder => T("Tìm địa điểm...", "Search places...", "場所を検索...", "搜索地点...", "장소 검색...");
+    public string FilterAllDistance => T("Tất cả", "All", "すべて", "全部", "전체");
+    public string FilterDistance1Km => T("< 1km", "< 1km", "< 1km", "< 1km", "< 1km");
+    public string FilterDistance3Km => T("< 3km", "< 3km", "< 3km", "< 3km", "< 3km");
+    public string FilterDistance5Km => T("< 5km", "< 5km", "< 5km", "< 5km", "< 5km");
     public string Rating => T("Đánh giá", "Rating", "評価", "评分", "평점");
     public string DistanceM => T("{0} m", "{0} m", "{0} m", "{0} 米", "{0} m");
     public string DistanceKm => T("Cách bạn {0} m", "{0} m away", "距離 {0} m", "距离 {0} 米", "{0} m 거리");

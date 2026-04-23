@@ -10,12 +10,12 @@ namespace SmartTourBackend.Controllers
     public class AudioController : ControllerBase
     {
         private readonly AppDbContext _context;
-        private readonly IVoiceService _voiceService;
+        private readonly IAudioPipelineQueue _queue;
 
-        public AudioController(AppDbContext context, IVoiceService voiceService)
+        public AudioController(AppDbContext context, IAudioPipelineQueue queue)
         {
             _context = context;
-            _voiceService = voiceService;
+            _queue = queue;
         }
 
         // GET: /api/audio/poi/47
@@ -65,38 +65,25 @@ namespace SmartTourBackend.Controllers
                 ? translations.Where(t => string.IsNullOrWhiteSpace(t.AudioUrl)).ToList()
                 : translations;
 
-            var ok = 0;
-            var failed = 0;
+            var queuedJobs = new List<long>();
             foreach (var t in candidates)
             {
                 var script = string.IsNullOrWhiteSpace(t.TtsScript) ? t.Description : t.TtsScript!;
-                if (string.IsNullOrWhiteSpace(script))
-                {
-                    failed++;
-                    continue;
-                }
-
+                if (string.IsNullOrWhiteSpace(script)) continue;
                 var voiceLang = ResolveVoiceLanguageCode(t.Language?.Code);
-                var url = await _voiceService.GenerateAndUploadAudio(script, voiceLang);
-                if (string.IsNullOrWhiteSpace(url))
-                {
-                    failed++;
-                    continue;
-                }
-
-                t.AudioUrl = url;
-                ok++;
+                var jobId = await _queue.EnqueueAsync(
+                    "full_regenerate",
+                    new AudioJobPayload(script, voiceLang, poiId, t.Id));
+                queuedJobs.Add(jobId);
             }
-
-            await _context.SaveChangesAsync();
 
             return Ok(new
             {
                 success = true,
                 poiId,
                 processed = candidates.Count,
-                generated = ok,
-                failed
+                queued = queuedJobs.Count,
+                jobIds = queuedJobs
             });
         }
 
@@ -116,19 +103,16 @@ namespace SmartTourBackend.Controllers
                 return BadRequest(new { success = false, message = "Bản dịch không có nội dung để tạo audio." });
 
             var voiceLang = ResolveVoiceLanguageCode(t.Language?.Code);
-            var url = await _voiceService.GenerateAndUploadAudio(script, voiceLang);
-            if (string.IsNullOrWhiteSpace(url))
-                return StatusCode(500, new { success = false, message = "Tạo audio thất bại. Kiểm tra TTS/Cloudinary config." });
-
-            t.AudioUrl = url;
-            await _context.SaveChangesAsync();
+            var jobId = await _queue.EnqueueAsync(
+                "tts_only",
+                new AudioJobPayload(script, voiceLang, t.PoiId, t.Id));
 
             return Ok(new
             {
                 success = true,
                 translationId = t.Id,
                 languageCode = t.Language?.Code,
-                audioUrl = t.AudioUrl
+                jobId
             });
         }
 

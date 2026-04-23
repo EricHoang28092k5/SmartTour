@@ -1,4 +1,4 @@
-﻿using SmartTour.Services;
+using SmartTour.Services;
 using SmartTour.Shared.Models;
 using SmartTourApp.Services;
 
@@ -81,6 +81,7 @@ public class PoiDetailAudioManager
         exo.OnDuration += d =>
         {
             currentDuration = d;
+            tracker.UpdateExpectedDuration(d);
             OnDuration?.Invoke(d);
         };
 #endif
@@ -347,6 +348,7 @@ public class PoiDetailAudioManager
         IsPlaying = true;
         tracker.StartSession(poi.Id, 0, 0);
         var estimatedSec = script.Length / 5.0;
+        tracker.UpdateExpectedDuration(estimatedSec);
         OnDuration?.Invoke(estimatedSec);
         try
         {
@@ -423,7 +425,7 @@ public class PoiDetailAudioManager
     {
         IsPlaying = false;
         _isStreamingCloudinary = false;
-        tracker.StopSession();
+        tracker.StopSession(true);
         coordinator.NotifyStop(AudioSource.DetailManual);
 #if ANDROID
         exo.Stop();

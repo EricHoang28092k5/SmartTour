@@ -1,6 +1,8 @@
-﻿using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SmartTourBackend.Models;
+using SmartTourBackend.Services;
 
 namespace SmartTourBackend.Controllers
 {
@@ -10,15 +12,21 @@ namespace SmartTourBackend.Controllers
     {
         private readonly UserManager<IdentityUser> _userManager;
         private readonly RoleManager<IdentityRole> _roleManager;
+        private readonly IJwtTokenService _jwtTokenService;
 
-        public AuthController(UserManager<IdentityUser> userManager, RoleManager<IdentityRole> roleManager)
+        public AuthController(
+            UserManager<IdentityUser> userManager,
+            RoleManager<IdentityRole> roleManager,
+            IJwtTokenService jwtTokenService)
         {
             _userManager = userManager;
             _roleManager = roleManager;
+            _jwtTokenService = jwtTokenService;
         }
 
         // --- 1. ĐĂNG KÝ TÀI KHOẢN (Cho khách trên Mobile App) ---
         // POST: api/auth/register
+        [AllowAnonymous]
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] RegisterModel model)
         {
@@ -51,6 +59,7 @@ namespace SmartTourBackend.Controllers
 
         // --- 2. ĐĂNG NHẬP ---
         // POST: api/auth/login
+        [AllowAnonymous]
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginModel model)
         {
@@ -65,6 +74,7 @@ namespace SmartTourBackend.Controllers
                     return Unauthorized(new { success = false, message = "Tài khoản của bác đã bị khóa!" });
 
                 var userRoles = await _userManager.GetRolesAsync(user);
+                var (token, expiresAtUtc) = await _jwtTokenService.CreateTokenAsync(user, userRoles);
 
                 return Ok(new
                 {
@@ -74,7 +84,10 @@ namespace SmartTourBackend.Controllers
                     {
                         userId = user.Id,
                         email = user.Email,
-                        roles = userRoles
+                        roles = userRoles,
+                        tokenType = "Bearer",
+                        accessToken = token,
+                        expiresAtUtc
                     }
                 });
             }
@@ -82,8 +95,29 @@ namespace SmartTourBackend.Controllers
             return Unauthorized(new { success = false, message = "Email hoặc mật khẩu không chính xác!" });
         }
 
+        [AllowAnonymous]
+        [HttpPost("device-token")]
+        public async Task<IActionResult> DeviceToken([FromBody] DeviceTokenRequest? req)
+        {
+            var pseudoUser = new IdentityUser
+            {
+                Id = $"device:{(req?.DeviceId ?? Guid.NewGuid().ToString("N"))}",
+                UserName = req?.DeviceId ?? "device",
+                Email = "device@smarttour.local"
+            };
+            var (token, expiresAtUtc) = await _jwtTokenService.CreateTokenAsync(pseudoUser, new List<string> { "User" });
+            return Ok(new
+            {
+                success = true,
+                tokenType = "Bearer",
+                accessToken = token,
+                expiresAtUtc
+            });
+        }
+
         // --- 3. LẤY THÔNG TIN CÁ NHÂN (PROFILE) ---
         // GET: api/auth/user/{id}
+        [Authorize]
         [HttpGet("user/{id}")]
         public async Task<IActionResult> GetUserProfile(string id)
         {
@@ -110,6 +144,7 @@ namespace SmartTourBackend.Controllers
 
         // --- 4. LẤY DANH SÁCH TOÀN BỘ KHÁCH HÀNG (USER) ---
         // GET: api/auth/customers
+        [Authorize(Roles = "Admin")]
         [HttpGet("customers")]
         public async Task<IActionResult> GetAllCustomers()
         {
@@ -134,5 +169,10 @@ namespace SmartTourBackend.Controllers
                 data = result
             });
         }
+    }
+
+    public class DeviceTokenRequest
+    {
+        public string? DeviceId { get; set; }
     }
 }

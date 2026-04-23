@@ -1,0 +1,46 @@
+@model List<SmartTour.Shared.Models.Poi>
+@{
+    ViewData["Title"] = "POI chờ duyệt";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h3>POI chờ duyệt</h3>
+    <a asp-action="Index" class="btn btn-outline-secondary">Quay lại danh sách</a>
+</div>
+
+<table class="table table-striped table-bordered">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Tên</th>
+            <th>Vendor</th>
+            <th>Tạo lúc</th>
+            <th>Trạng thái</th>
+            <th>Hành động</th>
+        </tr>
+    </thead>
+    <tbody>
+    @foreach (var poi in Model)
+    {
+        <tr>
+            <td>@poi.Id</td>
+            <td>@poi.Name</td>
+            <td>@poi.VendorId</td>
+            <td>@poi.CreatedAt.ToLocalTime()</td>
+            <td><span class="badge bg-warning text-dark">@poi.ApprovalStatus</span></td>
+            <td>
+                <form asp-action="ApprovePoi" method="post" class="d-inline">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="id" value="@poi.Id" />
+                    <button type="submit" class="btn btn-sm btn-success">Duyệt</button>
+                </form>
+                <form asp-action="RejectPoi" method="post" class="d-inline">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="id" value="@poi.Id" />
+                    <button type="submit" class="btn btn-sm btn-danger">Từ chối</button>
+                </form>
+            </td>
+        </tr>
+    }
+    </tbody>
+</table>

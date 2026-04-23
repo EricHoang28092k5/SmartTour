@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SmartTourBackend.Data;
 using SmartTour.Shared.Models;
@@ -18,17 +18,42 @@ namespace SmartTourBackend.Controllers
 
         // --- 1. Lấy danh sách toàn bộ địa điểm ---
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Poi>>> GetPois([FromQuery] string? lang = null)
+        public async Task<ActionResult<IEnumerable<Poi>>> GetPois(
+            [FromQuery] string? lang = null,
+            [FromQuery] string? q = null,
+            [FromQuery] double? lat = null,
+            [FromQuery] double? lng = null,
+            [FromQuery] double? maxDistanceKm = null)
         {
             var requestedLang = NormalizeTranslateLanguageCode(lang);
             var pois = await _context.Pois
                 .AsNoTracking()
+                .Where(p => p.IsActive && p.ApprovalStatus == "approved")
                 .Include(p => p.AudioFiles)
                 .Include(p => p.PoiImages)
                 .Include(p => p.Foods)
                     .ThenInclude(f => f.FoodTranslations)
                         .ThenInclude(ft => ft.Language)
                 .ToListAsync();
+
+            if (!string.IsNullOrWhiteSpace(q))
+            {
+                var keyword = q.Trim().ToLowerInvariant();
+                pois = pois
+                    .Where(p =>
+                        (p.Name ?? string.Empty).ToLowerInvariant().Contains(keyword) ||
+                        (p.Description ?? string.Empty).ToLowerInvariant().Contains(keyword))
+                    .ToList();
+            }
+
+            if (lat.HasValue && lng.HasValue && maxDistanceKm.HasValue && maxDistanceKm.Value > 0)
+            {
+                pois = pois.Where(p =>
+                {
+                    var dist = DistanceKm(lat.Value, lng.Value, p.Lat, p.Lng);
+                    return dist <= maxDistanceKm.Value;
+                }).ToList();
+            }
 
             foreach (var poi in pois)
             {
@@ -186,6 +211,19 @@ namespace SmartTourBackend.Controllers
             var normalized = code.Trim().ToLowerInvariant();
             var dashIndex = normalized.IndexOf('-');
             return dashIndex > 0 ? normalized[..dashIndex] : normalized;
+        }
+
+        private static double DistanceKm(double lat1, double lon1, double lat2, double lon2)
+        {
+            const double r = 6371.0;
+            static double ToRad(double deg) => deg * Math.PI / 180.0;
+            var dLat = ToRad(lat2 - lat1);
+            var dLon = ToRad(lon2 - lon1);
+            var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2)
+                    + Math.Cos(ToRad(lat1)) * Math.Cos(ToRad(lat2))
+                    * Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
+            var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+            return r * c;
         }
     }
 

@@ -1,4 +1,5 @@
-﻿using System.Net.Http.Json;
+using System.Net.Http.Json;
+using System.Net.Http.Headers;
 using Microsoft.Maui.Devices;
 using Microsoft.Maui.Storage;
 using SmartTour.Shared.Models;
@@ -10,6 +11,8 @@ public class ApiService
 {
     private readonly HttpClient http;
     private readonly LanguageService languageService;
+    private string? _accessToken;
+    private DateTime _tokenExpiryUtc;
 
     public ApiService(HttpClient http, LanguageService languageService)
     {
@@ -21,9 +24,12 @@ public class ApiService
     {
         try
         {
+            await EnsureDeviceTokenAsync();
             var lang = (languageService.Current ?? "en").Trim().ToLowerInvariant();
             var data = await http.GetFromJsonAsync<List<Poi>>($"api/pois?lang={Uri.EscapeDataString(lang)}");
-            return data ?? new List<Poi>();
+            return (data ?? new List<Poi>())
+                .Where(p => p.IsActive && string.Equals(p.ApprovalStatus, "approved", StringComparison.OrdinalIgnoreCase))
+                .ToList();
         }
         catch (Exception ex)
         {
@@ -36,6 +42,7 @@ public class ApiService
     {
         try
         {
+            await EnsureDeviceTokenAsync();
             var lang = (languageService.Current ?? "en").Trim().ToLowerInvariant();
             var tick = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             var res = await http.GetFromJsonAsync<FoodMenuResponse>(
@@ -57,6 +64,7 @@ public class ApiService
     {
         try
         {
+            await EnsureDeviceTokenAsync();
             var tick = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             var res = await http.GetFromJsonAsync<FoodMenuResponse>(
                 $"api/foods/menu/{poiId}?lang={Uri.EscapeDataString(lang)}&t={tick}");
@@ -79,6 +87,7 @@ public class ApiService
     {
         try
         {
+            await EnsureDeviceTokenAsync();
             return await http.GetFromJsonAsync<PoiAudioResponse>($"api/audio/poi/{poiId}");
         }
         catch (Exception ex)
@@ -114,11 +123,52 @@ public class ApiService
 
     public async Task PostPlayLog(PlayLog log)
     {
+        await EnsureDeviceTokenAsync();
         await http.PostAsJsonAsync("api/pois/playlog", log);
+    }
+
+    public async Task<PoiSearchResponse?> SearchPois(string? keyword, double? lat = null, double? lng = null, double? maxDistanceKm = null)
+    {
+        await EnsureDeviceTokenAsync();
+        var lang = (languageService.Current ?? "en").Trim().ToLowerInvariant();
+        var query = new List<string> { $"lang={Uri.EscapeDataString(lang)}" };
+        if (!string.IsNullOrWhiteSpace(keyword)) query.Add($"q={Uri.EscapeDataString(keyword.Trim())}");
+        if (lat.HasValue && lng.HasValue && maxDistanceKm.HasValue)
+        {
+            query.Add($"lat={lat.Value}");
+            query.Add($"lng={lng.Value}");
+            query.Add($"maxDistanceKm={maxDistanceKm.Value}");
+        }
+        var path = $"api/pois?{string.Join("&", query)}";
+        var data = await http.GetFromJsonAsync<List<Poi>>(path);
+        var filtered = (data ?? new List<Poi>())
+            .Where(p => p.IsActive && string.Equals(p.ApprovalStatus, "approved", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        return new PoiSearchResponse { Success = true, Data = filtered };
+    }
+
+    public async Task<ListenEventResult?> PostPoiAudioListenAsync(
+        int poiId,
+        int durationSeconds,
+        string deviceId,
+        int? totalDurationSeconds = null,
+        bool completedNaturally = false)
+    {
+        await EnsureDeviceTokenAsync();
+        var res = await http.PostAsJsonAsync("api/analytics/poi-audio-listen", new
+        {
+            poiId,
+            durationSeconds,
+            deviceId,
+            totalDurationSeconds,
+            completedNaturally
+        });
+        return await res.Content.ReadFromJsonAsync<ListenEventResult>();
     }
 
     public async Task PostPresenceHeartbeatAsync()
     {
+        await EnsureDeviceTokenAsync();
         var deviceId = GetOrCreatePresenceDeviceId();
 
         var payload = new
@@ -142,6 +192,7 @@ public class ApiService
 
     public async Task PostPresenceOfflineAsync()
     {
+        await EnsureDeviceTokenAsync();
         var deviceId = GetOrCreatePresenceDeviceId();
         try
         {
@@ -170,6 +221,7 @@ public class ApiService
 
     public async Task PostHeatmapEntry(HeatmapEntryDto dto)
     {
+        await EnsureDeviceTokenAsync();
         try { await http.PostAsJsonAsync("api/heatmap/entry", dto); }
         catch (Exception ex)
         {
@@ -179,6 +231,7 @@ public class ApiService
 
     public async Task<HeatmapResponse?> GetHeatmap()
     {
+        await EnsureDeviceTokenAsync();
         try { return await http.GetFromJsonAsync<HeatmapResponse>("api/heatmap"); }
         catch (Exception ex)
         {
@@ -193,11 +246,13 @@ public class ApiService
 
     public async Task PostRouteSession(RouteSessionDto dto)
     {
+        await EnsureDeviceTokenAsync();
         await http.PostAsJsonAsync("api/routes/session", dto);
     }
 
     public async Task<RouteAnalyticsResponse?> GetPopularRoutes()
     {
+        await EnsureDeviceTokenAsync();
         try { return await http.GetFromJsonAsync<RouteAnalyticsResponse>("api/routes/popular"); }
         catch (Exception ex)
         {
@@ -283,5 +338,41 @@ public class ApiService
         public string PoiSequence { get; set; } = "";
         public int Count { get; set; }
         public double AvgDurationMinutes { get; set; }
+    }
+
+    public class PoiSearchResponse
+    {
+        public bool Success { get; set; }
+        public List<Poi> Data { get; set; } = new();
+    }
+
+    public class ListenEventResult
+    {
+        public bool Accepted { get; set; }
+        public string? Reason { get; set; }
+    }
+
+    private async Task EnsureDeviceTokenAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(_accessToken) && DateTime.UtcNow < _tokenExpiryUtc.AddSeconds(-30))
+            return;
+
+        var deviceId = GetOrCreatePresenceDeviceId();
+        var response = await http.PostAsJsonAsync("api/auth/device-token", new { deviceId });
+        var token = await response.Content.ReadFromJsonAsync<DeviceTokenResponse>();
+        if (!string.IsNullOrWhiteSpace(token?.AccessToken))
+        {
+            _accessToken = token.AccessToken;
+            _tokenExpiryUtc = token.ExpiresAtUtc;
+            http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
+        }
+    }
+
+    private sealed class DeviceTokenResponse
+    {
+        public bool Success { get; set; }
+        public string TokenType { get; set; } = "Bearer";
+        public string AccessToken { get; set; } = string.Empty;
+        public DateTime ExpiresAtUtc { get; set; }
     }
 }
