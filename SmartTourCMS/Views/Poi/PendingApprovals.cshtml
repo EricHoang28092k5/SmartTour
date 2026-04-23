@@ -1,6 +1,7 @@
-@model List<SmartTour.Shared.Models.Poi>
+@model List<SmartTourCMS.Models.PoiPendingApprovalRowViewModel>
 @{
     ViewData["Title"] = "POI chờ duyệt";
+    var requestTypeFilter = (ViewBag.RequestTypeFilter as string) ?? "";
 }
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -8,12 +9,31 @@
     <a asp-action="Index" class="btn btn-outline-secondary">Quay lại danh sách</a>
 </div>
 
+<form method="get" class="row g-2 align-items-end mb-3">
+    <div class="col-md-3">
+        <label class="form-label">Lọc loại yêu cầu</label>
+        <select class="form-select" name="requestType">
+            <option value="" selected="@(string.IsNullOrWhiteSpace(requestTypeFilter))">Tất cả</option>
+            <option value="create" selected="@(requestTypeFilter == "create")">Tạo mới</option>
+            <option value="edit" selected="@(requestTypeFilter == "edit")">Sửa</option>
+        </select>
+    </div>
+    <div class="col-md-2">
+        <button class="btn btn-primary w-100" type="submit">Lọc</button>
+    </div>
+    <div class="col-md-2">
+        <a asp-action="PendingApprovals" class="btn btn-outline-secondary w-100">Xóa lọc</a>
+    </div>
+</form>
+
 <table class="table table-striped table-bordered">
     <thead>
         <tr>
             <th>ID</th>
+            <th>Loại yêu cầu</th>
             <th>Tên</th>
             <th>Vendor</th>
+            <th>Script</th>
             <th>Tạo lúc</th>
             <th>Trạng thái</th>
             <th>Hành động</th>
@@ -24,11 +44,56 @@
     {
         <tr>
             <td>@poi.Id</td>
+            <td>
+                @if (poi.RequestType == "edit")
+                {
+                    <span class="badge bg-info">Sửa</span>
+                }
+                else
+                {
+                    <span class="badge bg-primary">Tạo mới</span>
+                }
+            </td>
             <td>@poi.Name</td>
-            <td>@poi.VendorId</td>
+            <td>@poi.VendorEmail</td>
+            <td style="max-width:320px;">
+                <div style="max-height:140px; overflow:auto; white-space:pre-wrap;">@poi.ScriptPreview</div>
+            </td>
             <td>@poi.CreatedAt.ToLocalTime()</td>
             <td><span class="badge bg-warning text-dark">@poi.ApprovalStatus</span></td>
             <td>
+                @if (poi.RequestType == "edit" && poi.ChangedFields.Any())
+                {
+                    var modalId = $"changesModal_{poi.Id}";
+                    <button type="button" class="btn btn-sm btn-info text-white mb-1" data-bs-toggle="modal" data-bs-target="#@modalId">
+                        Xem thay đổi
+                    </button>
+                    <div class="modal fade" id="@modalId" tabindex="-1" aria-hidden="true">
+                        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">Chi tiết thay đổi POI #@poi.Id</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    @foreach (var c in poi.ChangedFields)
+                                    {
+                                        <div class="mb-3 border rounded p-2">
+                                            <div class="fw-bold">@c.Field</div>
+                                            <div><span class="text-danger">Giá trị cũ:</span></div>
+                                            <div class="small text-muted mb-2" style="white-space: pre-wrap;">@c.OldValue</div>
+                                            <div><span class="text-success">Giá trị mới:</span></div>
+                                            <div class="small" style="white-space: pre-wrap;">@c.NewValue</div>
+                                        </div>
+                                    }
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
                 <form asp-action="ApprovePoi" method="post" class="d-inline">
                     @Html.AntiForgeryToken()
                     <input type="hidden" name="id" value="@poi.Id" />

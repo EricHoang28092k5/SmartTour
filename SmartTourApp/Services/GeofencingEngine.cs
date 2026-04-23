@@ -15,10 +15,11 @@ public class GeofencingEngine
 
     public Poi? FindBestPoi(Location user, List<Poi> pois)
     {
-        var candidates = new List<(Poi poi, double dist)>();
+        var candidates = new List<(Poi poi, double dist, int queryIndex)>();
 
-        foreach (var poi in pois)
+        for (var i = 0; i < pois.Count; i++)
         {
+            var poi = pois[i];
             var meters =
                 Location.CalculateDistance(
                     user,
@@ -35,7 +36,7 @@ public class GeofencingEngine
                         continue;
                 }
 
-                candidates.Add((poi, meters));
+                candidates.Add((poi, meters, i));
             }
             else
             {
@@ -48,19 +49,33 @@ public class GeofencingEngine
         if (!candidates.Any())
             return null;
 
-        // =====================================================
-        // 🔥 FIX CHÍNH: chọn POI gần nhất
-        // =====================================================
-        var minDist = candidates.Min(x => x.dist);
+        // 1) Ưu tiên POI Premium
+        var premiumCandidates = candidates.Where(x => x.poi.IsPremium).ToList();
+        var shortlisted = premiumCandidates.Count > 0 ? premiumCandidates : candidates;
 
-        var closestPois = candidates
-            .Where(x => Math.Abs(x.dist - minDist) <= DISTANCE_TIE_TOLERANCE_METERS)
-            .Select(x => x.poi)
+        // 2) Nếu còn nhiều POI thì ưu tiên popularity (heatmap) cao nhất
+        Dictionary<int, int> popularitySnapshot;
+        lock (poiPopularity)
+        {
+            popularitySnapshot = new Dictionary<int, int>(poiPopularity);
+        }
+
+        var maxPopularity = shortlisted.Max(x => popularitySnapshot.TryGetValue(x.poi.Id, out var sum) ? sum : 0);
+        var mostPopular = shortlisted
+            .Where(x => (popularitySnapshot.TryGetValue(x.poi.Id, out var sum) ? sum : 0) == maxPopularity)
             .ToList();
 
-        var best = closestPois.Count == 1
-            ? closestPois.First()
-            : PickByPopularityThenRandom(closestPois);
+        // 3) Nếu popularity bằng nhau thì chọn gần nhất
+        var minDist = mostPopular.Min(x => x.dist);
+        var closest = mostPopular
+            .Where(x => Math.Abs(x.dist - minDist) <= DISTANCE_TIE_TOLERANCE_METERS)
+            .ToList();
+
+        // 4) Nếu vẫn bằng nhau thì lấy POI đầu tiên theo thứ tự query
+        var best = closest
+            .OrderBy(x => x.queryIndex)
+            .Select(x => x.poi)
+            .First();
 
         // =====================================================
         // 🔥 chỉ trigger nếu chưa active
@@ -86,25 +101,6 @@ public class GeofencingEngine
                 poiPopularity[kv.Key] = kv.Value;
             }
         }
-    }
-
-    private Poi PickByPopularityThenRandom(List<Poi> tiedPois)
-    {
-        if (tiedPois.Count == 1) return tiedPois[0];
-
-        Dictionary<int, int> popularitySnapshot;
-        lock (poiPopularity)
-        {
-            popularitySnapshot = new Dictionary<int, int>(poiPopularity);
-        }
-
-        var maxPopularity = tiedPois.Max(p => popularitySnapshot.TryGetValue(p.Id, out var sum) ? sum : 0);
-        var topPois = tiedPois
-            .Where(p => (popularitySnapshot.TryGetValue(p.Id, out var sum) ? sum : 0) == maxPopularity)
-            .ToList();
-
-        if (topPois.Count == 1) return topPois[0];
-        return topPois[Random.Shared.Next(topPois.Count)];
     }
 
     // 🔥 RESET giữ nguyên

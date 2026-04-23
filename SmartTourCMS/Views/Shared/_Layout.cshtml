@@ -88,16 +88,14 @@
                     <i class="fa-solid fa-play me-2"></i> Lịch sử nghe
                 </a>
             </li>
-            <li class="nav-item">
-                <a class="nav-link @(ViewContext.RouteData.Values["Controller"]?.ToString() == "ScriptRequest" ? "active" : "")" asp-controller="ScriptRequest" asp-action="Index">
-                    <i class="fa-solid fa-file-signature me-2"></i> Yêu cầu script
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link @(ViewContext.RouteData.Values["Controller"]?.ToString() == "Premium" ? "active" : "")" asp-controller="Premium" asp-action="Index">
-                    <i class="fa-solid fa-crown me-2"></i> Nâng cấp Premium
-                </a>
-            </li>
+            @if (User.IsInRole("Vendor"))
+            {
+                <li class="nav-item">
+                    <a class="nav-link @(ViewContext.RouteData.Values["Controller"]?.ToString() == "Premium" ? "active" : "")" asp-controller="Premium" asp-action="Index">
+                        <i class="fa-solid fa-crown me-2"></i> Nâng cấp Premium
+                    </a>
+                </li>
+            }
 
             @if (User.IsInRole("Admin"))
             {
@@ -110,11 +108,6 @@
                 <li class="nav-item">
                     <a class="nav-link @(ViewContext.RouteData.Values["Controller"]?.ToString() == "Heatmap" ? "active" : "")" asp-controller="Heatmap" asp-action="Index">
                         <i class="fa-solid fa-fire me-2" style="color: #e74c3c;"></i> Bản đồ nhiệt (Heatmap)
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link @(ViewContext.RouteData.Values["Action"]?.ToString() == "Pending" ? "active" : "")" asp-controller="ScriptRequest" asp-action="Pending">
-                        <i class="fa-solid fa-list-check me-2"></i> Duyệt script
                     </a>
                 </li>
             }

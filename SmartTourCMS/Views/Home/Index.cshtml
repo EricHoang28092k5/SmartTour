@@ -85,9 +85,12 @@
                     <a href="/Poi/Create" class="btn btn-outline-primary w-100 mb-2 text-start">
                         <i class="fa-solid fa-plus"></i> Thêm địa điểm mới
                     </a>
-                    <a href="/Premium/Index" class="btn btn-outline-warning w-100 mb-2 text-start">
-                        <i class="fa-solid fa-crown"></i> Nâng cấp Premium (MoMo)
-                    </a>
+                    @if (User.IsInRole("Vendor"))
+                    {
+                        <a href="/Premium/Index" class="btn btn-outline-warning w-100 mb-2 text-start">
+                            <i class="fa-solid fa-crown"></i> Nâng cấp Premium (MoMo)
+                        </a>
+                    }
                     @if (User.IsInRole("Admin"))
                     {
                         <a href="/Heatmap/Index" class="btn btn-outline-danger w-100 mb-2 text-start">

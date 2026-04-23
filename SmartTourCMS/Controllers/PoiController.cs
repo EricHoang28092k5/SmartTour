@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using SmartTour.Shared.Models;
 using SmartTourBackend.Data;
 using SmartTourBackend.Services;
+using SmartTourCMS.Models;
 using System.Globalization; // Bắt buộc phải có cho vụ lột dấu tiếng Việt
 using System.Text;
 using System.Text.Json;
@@ -112,6 +113,7 @@ namespace SmartTourCMS.Controllers
             poi.ApprovedAt = isAdmin ? DateTime.UtcNow : null;
             poi.ApprovedByUserId = isAdmin ? user?.Id : null;
             poi.CreatedBy = user?.Email ?? user?.UserName ?? user?.Id;
+            poi.ApprovalNote = isAdmin ? null : JsonSerializer.Serialize(new PendingPoiApprovalNote { RequestType = "create" });
 
             // 1. Upload ảnh lên Cloudinary
             if (imageFile != null)
@@ -180,21 +182,39 @@ namespace SmartTourCMS.Controllers
             try
             {
                 poi.VendorId = existing.VendorId;
+                if (!isAdmin)
+                {
+                    // Vendor sửa POI sẽ chuyển về pending để Admin duyệt.
+                    var note = new PendingPoiApprovalNote
+                    {
+                        RequestType = "edit",
+                        Original = SnapshotFromPoi(existing)
+                    };
+                    poi.ApprovalStatus = "pending";
+                    poi.IsActive = false;
+                    poi.ApprovedAt = null;
+                    poi.ApprovedByUserId = null;
+                    poi.ApprovalNote = JsonSerializer.Serialize(note);
+                    _context.Update(poi);
+                    await _context.SaveChangesAsync();
+                    TempData["success"] = "POI đã gửi yêu cầu chỉnh sửa. Chờ Admin duyệt.";
+                    return RedirectToAction(nameof(Index));
+                }
+
                 poi.ApprovalStatus = existing.ApprovalStatus;
                 poi.ApprovedAt = existing.ApprovedAt;
                 poi.ApprovedByUserId = existing.ApprovedByUserId;
+                poi.ApprovalNote = existing.ApprovalNote;
                 _context.Update(poi);
 
-                // Chỉ tạo/làm mới bản dịch khi POI đã được duyệt.
+                // Admin sửa trực tiếp: nếu đổi nội dung thì làm mới translation/audio.
                 if (poi.ApprovalStatus == "approved" && poi.Description != existing.Description)
                 {
                     var oldTrans = _context.PoiTranslations.Where(t => t.PoiId == id);
                     _context.PoiTranslations.RemoveRange(oldTrans);
                     var missing = await CreateTranslationsAndAudio(poi);
                     if (missing > 0)
-                    {
                         TempData["AudioWarning"] = $"Không tạo được audio cho {missing} bản dịch. Kiểm tra AZURE_SPEECH_KEY và Cloudinary.";
-                    }
                 }
 
                 await _context.SaveChangesAsync();
@@ -205,13 +225,54 @@ namespace SmartTourCMS.Controllers
 
         [Authorize(Roles = "Admin")]
         [HttpGet]
-        public async Task<IActionResult> PendingApprovals()
+        public async Task<IActionResult> PendingApprovals(string? requestType = null)
         {
             var pending = await _context.Pois
                 .Where(p => p.ApprovalStatus == "pending")
                 .OrderByDescending(p => p.CreatedAt)
                 .ToListAsync();
-            return View(pending);
+
+            var vendorIds = pending
+                .Where(p => !string.IsNullOrWhiteSpace(p.VendorId))
+                .Select(p => p.VendorId!)
+                .Distinct()
+                .ToList();
+            var vendorEmailMap = new Dictionary<string, string>();
+            foreach (var vid in vendorIds)
+            {
+                var user = await _userManager.FindByIdAsync(vid);
+                vendorEmailMap[vid] = user?.Email ?? user?.UserName ?? vid;
+            }
+
+            var rows = pending.Select(p =>
+            {
+                var note = ParseApprovalNote(p.ApprovalNote);
+                var requestType = note?.RequestType == "edit" ? "edit" : "create";
+                var script = string.IsNullOrWhiteSpace(p.TtsScript) ? p.Description : p.TtsScript ?? string.Empty;
+                return new PoiPendingApprovalRowViewModel
+                {
+                    Id = p.Id,
+                    Name = p.Name,
+                    VendorEmail = !string.IsNullOrWhiteSpace(p.VendorId) && vendorEmailMap.TryGetValue(p.VendorId, out var email) ? email : "-",
+                    CreatedAt = p.CreatedAt,
+                    ApprovalStatus = p.ApprovalStatus,
+                    RequestType = requestType,
+                    ScriptPreview = script,
+                    ChangedFields = BuildChangedFields(note, p)
+                };
+            }).ToList();
+
+            if (!string.IsNullOrWhiteSpace(requestType))
+            {
+                var normalized = requestType.Trim().ToLowerInvariant();
+                if (normalized is "create" or "edit")
+                {
+                    rows = rows.Where(r => string.Equals(r.RequestType, normalized, StringComparison.OrdinalIgnoreCase)).ToList();
+                }
+            }
+
+            ViewBag.RequestTypeFilter = requestType?.Trim().ToLowerInvariant();
+            return View(rows);
         }
 
         [Authorize(Roles = "Admin")]
@@ -229,14 +290,29 @@ namespace SmartTourCMS.Controllers
             poi.ApprovedAt = DateTime.UtcNow;
             poi.ApprovedByUserId = admin?.Id;
 
-            var existingTranslations = await _context.PoiTranslations.AnyAsync(t => t.PoiId == poi.Id);
-            if (!existingTranslations)
+            var note = ParseApprovalNote(poi.ApprovalNote);
+            var isEditRequest = note?.RequestType == "edit";
+            var shouldRebuildTranslation = false;
+            if (isEditRequest && note?.Original is not null)
             {
+                shouldRebuildTranslation = !string.Equals(note.Original.Description, poi.Description, StringComparison.Ordinal) ||
+                                           !string.Equals(note.Original.TtsScript, poi.TtsScript, StringComparison.Ordinal);
+            }
+
+            var existingTranslations = await _context.PoiTranslations.AnyAsync(t => t.PoiId == poi.Id);
+            if (!existingTranslations || shouldRebuildTranslation)
+            {
+                if (shouldRebuildTranslation)
+                {
+                    var oldTrans = _context.PoiTranslations.Where(t => t.PoiId == poi.Id);
+                    _context.PoiTranslations.RemoveRange(oldTrans);
+                }
                 var missingAudio = await CreateTranslationsAndAudio(poi);
                 if (missingAudio > 0)
                     TempData["AudioWarning"] = $"POI được duyệt nhưng còn {missingAudio} bản dịch chưa có audio.";
             }
 
+            poi.ApprovalNote = null;
             await _context.SaveChangesAsync();
             TempData["success"] = "Đã duyệt POI thành công.";
             return RedirectToAction(nameof(PendingApprovals));
@@ -251,11 +327,24 @@ namespace SmartTourCMS.Controllers
             if (poi == null) return NotFound();
             if (poi.ApprovalStatus != "pending") return RedirectToAction(nameof(PendingApprovals));
 
-            poi.ApprovalStatus = "rejected";
-            poi.IsActive = false;
-            poi.ApprovalNote = null;
+            var note = ParseApprovalNote(poi.ApprovalNote);
+            if (note?.RequestType == "edit" && note.Original is not null)
+            {
+                // Từ chối chỉnh sửa: hoàn nguyên về bản đã duyệt trước đó.
+                ApplySnapshot(poi, note.Original);
+                poi.ApprovalStatus = "approved";
+                poi.IsActive = true;
+                poi.ApprovalNote = null;
+                TempData["success"] = "Đã từ chối chỉnh sửa và hoàn nguyên POI về bản trước.";
+            }
+            else
+            {
+                poi.ApprovalStatus = "rejected";
+                poi.IsActive = false;
+                poi.ApprovalNote = null;
+                TempData["success"] = "Đã từ chối POI.";
+            }
             await _context.SaveChangesAsync();
-            TempData["success"] = "Đã từ chối POI.";
             return RedirectToAction(nameof(PendingApprovals));
         }
 
@@ -515,6 +604,103 @@ namespace SmartTourCMS.Controllers
 
             return stringBuilder.ToString().Normalize(NormalizationForm.FormC)
                 .Replace("đ", "d").Replace("Đ", "D");
+        }
+
+        private static PendingPoiApprovalNote? ParseApprovalNote(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return null;
+            try
+            {
+                return JsonSerializer.Deserialize<PendingPoiApprovalNote>(raw);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static PoiApprovalSnapshot SnapshotFromPoi(Poi poi)
+        {
+            return new PoiApprovalSnapshot
+            {
+                Name = poi.Name,
+                Description = poi.Description,
+                TtsScript = poi.TtsScript,
+                Lat = poi.Lat,
+                Lng = poi.Lng,
+                Radius = poi.Radius,
+                ImageUrl = poi.ImageUrl,
+                Priority = poi.Priority,
+                OpenTime = poi.OpenTime,
+                CloseTime = poi.CloseTime,
+                CategoryId = poi.CategoryId
+            };
+        }
+
+        private static void ApplySnapshot(Poi poi, PoiApprovalSnapshot s)
+        {
+            poi.Name = s.Name;
+            poi.Description = s.Description;
+            poi.TtsScript = s.TtsScript;
+            poi.Lat = s.Lat;
+            poi.Lng = s.Lng;
+            poi.Radius = s.Radius;
+            poi.ImageUrl = s.ImageUrl;
+            poi.Priority = s.Priority;
+            poi.OpenTime = s.OpenTime;
+            poi.CloseTime = s.CloseTime;
+            poi.CategoryId = s.CategoryId;
+        }
+
+        private static List<PoiFieldChangeViewModel> BuildChangedFields(PendingPoiApprovalNote? note, Poi poi)
+        {
+            if (note?.RequestType != "edit" || note.Original is null) return [];
+            var old = note.Original;
+            var changed = new List<PoiFieldChangeViewModel>();
+            AddChanged(changed, "Tên", old.Name, poi.Name);
+            AddChanged(changed, "Mô tả", old.Description, poi.Description);
+            AddChanged(changed, "Script", old.TtsScript ?? string.Empty, poi.TtsScript ?? string.Empty);
+            AddChanged(changed, "Vĩ độ", old.Lat.ToString(CultureInfo.InvariantCulture), poi.Lat.ToString(CultureInfo.InvariantCulture));
+            AddChanged(changed, "Kinh độ", old.Lng.ToString(CultureInfo.InvariantCulture), poi.Lng.ToString(CultureInfo.InvariantCulture));
+            AddChanged(changed, "Bán kính", old.Radius.ToString(CultureInfo.InvariantCulture), poi.Radius.ToString(CultureInfo.InvariantCulture));
+            AddChanged(changed, "Ảnh đại diện", old.ImageUrl, poi.ImageUrl);
+            AddChanged(changed, "Ưu tiên", old.Priority.ToString(CultureInfo.InvariantCulture), poi.Priority.ToString(CultureInfo.InvariantCulture));
+            AddChanged(changed, "Mở cửa", old.OpenTime?.ToString() ?? "", poi.OpenTime?.ToString() ?? "");
+            AddChanged(changed, "Đóng cửa", old.CloseTime?.ToString() ?? "", poi.CloseTime?.ToString() ?? "");
+            AddChanged(changed, "Danh mục", old.CategoryId?.ToString() ?? "", poi.CategoryId?.ToString() ?? "");
+            return changed;
+        }
+
+        private static void AddChanged(List<PoiFieldChangeViewModel> list, string field, string oldValue, string newValue)
+        {
+            if (string.Equals(oldValue, newValue, StringComparison.Ordinal)) return;
+            list.Add(new PoiFieldChangeViewModel
+            {
+                Field = field,
+                OldValue = oldValue,
+                NewValue = newValue
+            });
+        }
+
+        private sealed class PendingPoiApprovalNote
+        {
+            public string RequestType { get; set; } = "create";
+            public PoiApprovalSnapshot? Original { get; set; }
+        }
+
+        private sealed class PoiApprovalSnapshot
+        {
+            public string Name { get; set; } = string.Empty;
+            public string Description { get; set; } = string.Empty;
+            public string? TtsScript { get; set; }
+            public double Lat { get; set; }
+            public double Lng { get; set; }
+            public int Radius { get; set; }
+            public string ImageUrl { get; set; } = string.Empty;
+            public int Priority { get; set; }
+            public TimeSpan? OpenTime { get; set; }
+            public TimeSpan? CloseTime { get; set; }
+            public int? CategoryId { get; set; }
         }
     }
 }

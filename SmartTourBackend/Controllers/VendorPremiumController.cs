@@ -59,65 +59,125 @@ public class VendorPremiumController : ControllerBase
     [HttpPost("create-payment")]
     public async Task<IActionResult> CreatePayment([FromBody] CreatePremiumPaymentRequest dto)
     {
-        if (dto.PoiId <= 0) return BadRequest(new { success = false, message = "Invalid poiId." });
-
-        var settings = ReadSettings();
-        if (!settings.IsConfigured)
-            return BadRequest(new { success = false, message = "MoMo is not configured." });
-
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
         if (string.IsNullOrWhiteSpace(userId)) return Unauthorized(new { success = false, message = "Unauthenticated." });
 
-        var poi = await _db.Pois.FirstOrDefaultAsync(p => p.Id == dto.PoiId);
-        if (poi == null) return NotFound(new { success = false, message = "POI not found." });
-
         var isAdmin = User.IsInRole("Admin");
-        if (!isAdmin && !string.Equals(poi.VendorId, userId, StringComparison.Ordinal))
+        return await CreatePaymentCore(dto.PoiId, dto.Months, dto.Amount, userId, isAdmin);
+    }
+
+    // CMS proxy endpoint: dùng internal key để gọi backend API từ web MVC
+    [AllowAnonymous]
+    [HttpPost("create-payment-cms")]
+    public async Task<IActionResult> CreatePaymentFromCms([FromBody] CmsCreatePremiumPaymentRequest dto)
+    {
+        if (dto.PoiId <= 0) return BadRequest(new { success = false, message = "Invalid poiId." });
+        if (string.IsNullOrWhiteSpace(dto.VendorUserId))
+            return BadRequest(new { success = false, message = "Invalid vendorUserId." });
+
+        var internalKey = Request.Headers["X-Internal-Key"].FirstOrDefault() ?? string.Empty;
+        var expected = _config["Admin:ApiKey"] ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(expected) || !string.Equals(internalKey, expected, StringComparison.Ordinal))
+            return Unauthorized(new { success = false, message = "Invalid internal key." });
+
+        return await CreatePaymentCore(dto.PoiId, dto.Months, dto.Amount, dto.VendorUserId.Trim(), false);
+    }
+
+    private async Task<IActionResult> CreatePaymentCore(int poiId, int months, int amountRaw, string actorUserId, bool actorIsAdmin)
+    {
+        if (poiId <= 0) return BadRequest(new { success = false, message = "Invalid poiId." });
+
+        var settings = ReadSettings();
+        if (!settings.IsConfigured)
+            return BadRequest(new { success = false, message = $"MoMo is not configured. Missing: {string.Join(", ", settings.GetMissingFields())}" });
+
+        var poi = await _db.Pois.FirstOrDefaultAsync(p => p.Id == poiId);
+        if (poi == null) return NotFound(new { success = false, message = "POI not found." });
+        if (!actorIsAdmin && !string.Equals(poi.VendorId, actorUserId, StringComparison.Ordinal))
             return Forbid();
 
-        var amount = dto.Amount > 0 ? dto.Amount : settings.DefaultAmount;
-        var months = dto.Months > 0 ? dto.Months : settings.DefaultMonths;
+        var amount = amountRaw > 0 ? amountRaw : settings.DefaultAmount;
+        var durationMonths = months;
+        if (durationMonths < 0) durationMonths = settings.DefaultMonths;
         var requestId = $"REQ{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
-        var orderId = $"PREM-{dto.PoiId}-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}";
-        var orderInfo = $"Nang cap premium POI {dto.PoiId} ({months} thang)";
-        var extraData = JsonSerializer.Serialize(new PremiumExtraData(dto.PoiId, userId, months));
+        var orderId = $"PREM-{poiId}-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}";
+        var orderInfo = durationMonths == 0
+            ? $"Nang cap premium POI {poiId} (goi tuan)"
+            : $"Nang cap premium POI {poiId} ({durationMonths} thang)";
+        var extraDataRaw = JsonSerializer.Serialize(new PremiumExtraData(poiId, actorUserId, durationMonths));
+        var extraData = Convert.ToBase64String(Encoding.UTF8.GetBytes(extraDataRaw));
 
-        var rawSignature = BuildCreateSignatureString(
-            settings.AccessKey,
-            amount,
-            extraData,
-            settings.IpnUrl,
-            orderId,
-            orderInfo,
-            settings.PartnerCode,
-            settings.RedirectUrl,
-            requestId,
-            settings.RequestType);
+        var signature = settings.UseLegacyAllInOne
+            ? Sign(
+                BuildLegacyCreateSignatureString(
+                    settings.PartnerCode,
+                    settings.AccessKey,
+                    requestId,
+                    amount,
+                    orderId,
+                    orderInfo,
+                    settings.RedirectUrl,
+                    settings.IpnUrl,
+                    extraData),
+                settings.SecretKey)
+            : Sign(
+                BuildCreateSignatureString(
+                    settings.AccessKey,
+                    amount,
+                    extraData,
+                    settings.IpnUrl,
+                    orderId,
+                    orderInfo,
+                    settings.PartnerCode,
+                    settings.RedirectUrl,
+                    requestId,
+                    settings.RequestType),
+                settings.SecretKey);
 
-        var signature = Sign(rawSignature, settings.SecretKey);
-        var payload = new
+        object payload;
+        if (settings.UseLegacyAllInOne)
         {
-            partnerCode = settings.PartnerCode,
-            partnerName = "SmartTour",
-            storeId = "SmartTour",
-            requestId,
-            amount = amount.ToString(),
-            orderId,
-            orderInfo,
-            redirectUrl = settings.RedirectUrl,
-            ipnUrl = settings.IpnUrl,
-            lang = "vi",
-            extraData,
-            requestType = settings.RequestType,
-            signature
-        };
+            payload = new
+            {
+                accessKey = settings.AccessKey,
+                partnerCode = settings.PartnerCode,
+                requestType = settings.RequestType,
+                notifyUrl = settings.IpnUrl,
+                returnUrl = settings.RedirectUrl,
+                orderId,
+                amount = amount.ToString(),
+                orderInfo,
+                requestId,
+                extraData,
+                signature
+            };
+        }
+        else
+        {
+            payload = new
+            {
+                partnerCode = settings.PartnerCode,
+                partnerName = "SmartTour",
+                storeId = "SmartTour",
+                requestId,
+                amount = amount.ToString(),
+                orderId,
+                orderInfo,
+                redirectUrl = settings.RedirectUrl,
+                ipnUrl = settings.IpnUrl,
+                lang = "vi",
+                extraData,
+                requestType = settings.RequestType,
+                signature
+            };
+        }
 
         var order = new VendorPremiumOrder
         {
             OrderId = orderId,
             RequestId = requestId,
-            PoiId = dto.PoiId,
-            VendorUserId = poi.VendorId ?? userId,
+            PoiId = poiId,
+            VendorUserId = poi.VendorId ?? actorUserId,
             Amount = amount,
             Provider = "momo",
             Status = "pending",
@@ -248,10 +308,27 @@ public class VendorPremiumController : ControllerBase
                     ? poi.PremiumExpiresAt.Value
                     : now;
 
-                // MVP: mỗi giao dịch cộng thêm 30 ngày premium.
+                var durationMonths = settings.DefaultMonths;
+                if (!string.IsNullOrWhiteSpace(extraData))
+                {
+                    try
+                    {
+                        var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(extraData));
+                        var extra = JsonSerializer.Deserialize<PremiumExtraData>(decoded);
+                        if (extra is not null)
+                            durationMonths = extra.Months;
+                    }
+                    catch
+                    {
+                        // Fallback mặc định nếu không giải mã được extraData
+                    }
+                }
+
                 poi.IsPremium = true;
                 poi.PremiumActivatedAt ??= now;
-                poi.PremiumExpiresAt = start.AddDays(30);
+                poi.PremiumExpiresAt = durationMonths == 0
+                    ? start.AddDays(7)
+                    : start.AddMonths(Math.Max(1, durationMonths));
             }
         }
         else
@@ -276,6 +353,7 @@ public class VendorPremiumController : ControllerBase
             RedirectUrl = section["RedirectUrl"] ?? Environment.GetEnvironmentVariable("MOMO_REDIRECT_URL") ?? string.Empty,
             IpnUrl = section["IpnUrl"] ?? Environment.GetEnvironmentVariable("MOMO_IPN_URL") ?? string.Empty,
             RequestType = section["RequestType"] ?? "captureWallet",
+            UseLegacyAllInOne = bool.TryParse(section["UseLegacyAllInOne"], out var useLegacy) && useLegacy,
             DefaultAmount = int.TryParse(section["DefaultAmount"], out var amount) ? amount : 49000,
             DefaultMonths = int.TryParse(section["DefaultMonths"], out var months) ? months : 1
         };
@@ -294,6 +372,21 @@ public class VendorPremiumController : ControllerBase
         string requestType)
     {
         return $"accessKey={accessKey}&amount={amount}&extraData={extraData}&ipnUrl={ipnUrl}&orderId={orderId}&orderInfo={orderInfo}&partnerCode={partnerCode}&redirectUrl={redirectUrl}&requestId={requestId}&requestType={requestType}";
+    }
+
+    // Theo mẫu tài liệu All-In-One legacy: partnerCode&accessKey&requestId...
+    private static string BuildLegacyCreateSignatureString(
+        string partnerCode,
+        string accessKey,
+        string requestId,
+        long amount,
+        string orderId,
+        string orderInfo,
+        string returnUrl,
+        string notifyUrl,
+        string extraData)
+    {
+        return $"partnerCode={partnerCode}&accessKey={accessKey}&requestId={requestId}&amount={amount}&orderId={orderId}&orderInfo={orderInfo}&returnUrl={returnUrl}&notifyUrl={notifyUrl}&extraData={extraData}";
     }
 
     private static string BuildIpnSignatureString(
@@ -349,6 +442,7 @@ public class VendorPremiumController : ControllerBase
         public string RedirectUrl { get; init; } = string.Empty;
         public string IpnUrl { get; init; } = string.Empty;
         public string RequestType { get; init; } = "captureWallet";
+        public bool UseLegacyAllInOne { get; init; }
         public int DefaultAmount { get; init; } = 49000;
         public int DefaultMonths { get; init; } = 1;
         public bool IsConfigured =>
@@ -358,6 +452,16 @@ public class VendorPremiumController : ControllerBase
             !string.IsNullOrWhiteSpace(SecretKey) &&
             !string.IsNullOrWhiteSpace(RedirectUrl) &&
             !string.IsNullOrWhiteSpace(IpnUrl);
+
+        public IEnumerable<string> GetMissingFields()
+        {
+            if (string.IsNullOrWhiteSpace(Endpoint)) yield return "MoMo:Endpoint";
+            if (string.IsNullOrWhiteSpace(PartnerCode)) yield return "MoMo:PartnerCode";
+            if (string.IsNullOrWhiteSpace(AccessKey)) yield return "MoMo:AccessKey";
+            if (string.IsNullOrWhiteSpace(SecretKey)) yield return "MoMo:SecretKey";
+            if (string.IsNullOrWhiteSpace(RedirectUrl)) yield return "MoMo:RedirectUrl";
+            if (string.IsNullOrWhiteSpace(IpnUrl)) yield return "MoMo:IpnUrl";
+        }
     }
 }
 
@@ -371,6 +475,14 @@ public class CreatePremiumPaymentRequest
     public int PoiId { get; set; }
     public int Months { get; set; } = 1;
     public int Amount { get; set; }
+}
+
+public class CmsCreatePremiumPaymentRequest
+{
+    public int PoiId { get; set; }
+    public int Months { get; set; } = 1;
+    public int Amount { get; set; }
+    public string VendorUserId { get; set; } = string.Empty;
 }
 
 public record PremiumExtraData(int PoiId, string VendorUserId, int Months);
