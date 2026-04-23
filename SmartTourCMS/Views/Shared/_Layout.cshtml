@@ -93,6 +93,11 @@
                     <i class="fa-solid fa-file-signature me-2"></i> Yêu cầu script
                 </a>
             </li>
+            <li class="nav-item">
+                <a class="nav-link @(ViewContext.RouteData.Values["Controller"]?.ToString() == "Premium" ? "active" : "")" asp-controller="Premium" asp-action="Index">
+                    <i class="fa-solid fa-crown me-2"></i> Nâng cấp Premium
+                </a>
+            </li>
 
             @if (User.IsInRole("Admin"))
             {

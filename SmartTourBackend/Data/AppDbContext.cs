@@ -33,6 +33,7 @@ namespace SmartTourBackend.Data
         public DbSet<PoiAudioListenEvent> PoiAudioListenEvents { get; set; }
         public DbSet<AudioPipelineJob> AudioPipelineJobs { get; set; }
         public DbSet<ScriptChangeRequest> ScriptChangeRequests { get; set; }
+        public DbSet<VendorPremiumOrder> VendorPremiumOrders { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -106,6 +107,19 @@ namespace SmartTourBackend.Data
                 entity.Property(e => e.ApprovalStatus).HasMaxLength(20).HasDefaultValue("approved");
                 entity.Property(e => e.ApprovedByUserId).HasMaxLength(128);
                 entity.HasIndex(e => e.ApprovalStatus);
+            });
+
+            modelBuilder.Entity<VendorPremiumOrder>(entity =>
+            {
+                entity.ToTable("vendor_premium_orders");
+                entity.Property(e => e.OrderId).HasMaxLength(64);
+                entity.Property(e => e.RequestId).HasMaxLength(64);
+                entity.Property(e => e.VendorUserId).HasMaxLength(128);
+                entity.Property(e => e.Currency).HasMaxLength(8);
+                entity.Property(e => e.Provider).HasMaxLength(32);
+                entity.Property(e => e.Status).HasMaxLength(20);
+                entity.HasIndex(e => e.OrderId).IsUnique();
+                entity.HasIndex(e => new { e.PoiId, e.Status, e.CreatedAt });
             });
         }
     }

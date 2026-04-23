@@ -21,6 +21,9 @@ namespace SmartTour.Shared.Models
         public string? ApprovedByUserId { get; set; }
         public DateTime? ApprovedAt { get; set; }
         public string? ApprovalNote { get; set; }
+        public bool IsPremium { get; set; } = false;
+        public DateTime? PremiumActivatedAt { get; set; }
+        public DateTime? PremiumExpiresAt { get; set; }
 
         [Ignore]
         public bool IsNearest { get; set; }

@@ -1,0 +1,37 @@
+@model SmartTourCMS.Models.PremiumCheckoutViewModel
+@{
+    ViewData["Title"] = "Thanh toán Premium";
+}
+
+<div class="container py-3">
+    <div class="card shadow-sm border-0 mx-auto" style="max-width: 760px;">
+        <div class="card-header bg-white fw-bold">
+            <i class="fa-solid fa-money-bill-wave me-2 text-success"></i>Thanh toán Premium qua MoMo
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-7">
+                    <p class="mb-1"><strong>POI:</strong> @Model.PoiName</p>
+                    <p class="mb-1"><strong>Gói:</strong> @Model.PackageName</p>
+                    <p class="mb-1"><strong>Số tiền:</strong> @Model.AmountVnd.ToString("N0")đ</p>
+                    <p class="mb-3"><strong>Mã đơn:</strong> <code>@Model.OrderId</code></p>
+
+                    <a href="@Model.PayUrl" target="_blank" class="btn btn-primary mb-2">
+                        <i class="fa-solid fa-up-right-from-square me-2"></i>Mở MoMo để thanh toán
+                    </a>
+                    <div class="text-muted small">
+                        Sau khi thanh toán thành công, MoMo sẽ gọi IPN để hệ thống tự động kích hoạt premium.
+                    </div>
+                </div>
+                <div class="col-md-5 text-center">
+                    <img src="@Model.QrImageUrl" alt="MoMo QR" class="img-fluid border rounded p-2 bg-white" />
+                    <div class="small text-muted mt-2">Quét QR bằng app MoMo</div>
+                </div>
+            </div>
+        </div>
+        <div class="card-footer bg-white d-flex justify-content-between">
+            <a class="btn btn-outline-secondary" asp-action="Index" asp-route-poiId="@Model.PoiId">Quay lại chọn gói</a>
+            <a class="btn btn-success" href="/payment/return?orderId=@Model.OrderId">Tôi đã thanh toán, kiểm tra trạng thái</a>
+        </div>
+    </div>
+</div>

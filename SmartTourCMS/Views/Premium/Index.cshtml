@@ -1,0 +1,75 @@
+@model SmartTourCMS.Models.PremiumPageViewModel
+@{
+    ViewData["Title"] = "Nâng cấp Premium";
+}
+
+<div class="container py-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3 class="mb-0"><i class="fa-solid fa-crown text-warning me-2"></i>Nâng cấp POI lên Premium</h3>
+        <a class="btn btn-outline-secondary" asp-controller="Home" asp-action="Index">Về Dashboard</a>
+    </div>
+
+    @if (TempData["Error"] is string error && !string.IsNullOrWhiteSpace(error))
+    {
+        <div class="alert alert-danger">@error</div>
+    }
+
+    @if (Model.Pois.Count == 0)
+    {
+        <div class="alert alert-info">Bạn chưa có POI nào được duyệt để nâng cấp premium.</div>
+    }
+    else
+    {
+        <form method="post" asp-action="CreatePayment">
+            @Html.AntiForgeryToken()
+
+            <div class="card shadow-sm border-0 mb-3">
+                <div class="card-header bg-white fw-bold">1) Chọn POI</div>
+                <div class="card-body">
+                    <select class="form-select" name="poiId" required>
+                        @foreach (var poi in Model.Pois)
+                        {
+                            var selected = Model.SelectedPoiId.HasValue && Model.SelectedPoiId.Value == poi.PoiId;
+                            <option value="@poi.PoiId" selected="@(selected ? "selected" : null)">
+                                @poi.PoiName
+                                @(poi.IsPremium && poi.PremiumExpiresAt.HasValue
+                                    ? $" - Premium đến {poi.PremiumExpiresAt.Value:dd/MM/yyyy}"
+                                    : "")
+                            </option>
+                        }
+                    </select>
+                </div>
+            </div>
+
+            <div class="card shadow-sm border-0 mb-3">
+                <div class="card-header bg-white fw-bold">2) Chọn gói</div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        @foreach (var pkg in Model.Packages)
+                        {
+                            <div class="col-md-4">
+                                <label class="card h-100 border-2">
+                                    <div class="card-body">
+                                        <div class="form-check mb-2">
+                                            <input class="form-check-input" type="radio" name="packageCode" value="@pkg.Code"
+                                                   checked="@(pkg.Code == Model.SelectedPackageCode ? "checked" : null)" />
+                                            <span class="fw-bold ms-1">@pkg.Name</span>
+                                        </div>
+                                        <div class="display-6 text-primary">@pkg.AmountVnd.ToString("N0")đ</div>
+                                        <div class="text-muted small mt-2">@pkg.Description</div>
+                                    </div>
+                                </label>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-grid d-md-flex justify-content-md-end">
+                <button class="btn btn-warning btn-lg" type="submit">
+                    <i class="fa-solid fa-qrcode me-2"></i>Tạo QR / Link thanh toán MoMo
+                </button>
+            </div>
+        </form>
+    }
+</div>

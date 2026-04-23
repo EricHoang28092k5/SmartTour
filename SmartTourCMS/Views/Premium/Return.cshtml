@@ -1,0 +1,39 @@
+@model SmartTourCMS.Models.PremiumReturnViewModel
+@{
+    ViewData["Title"] = "Kết quả thanh toán";
+}
+
+<div class="container py-4">
+    <div class="card shadow-sm border-0 mx-auto" style="max-width: 680px;">
+        <div class="card-body text-center">
+            @if (Model.IsPaid)
+            {
+                <div class="display-4 text-success mb-3"><i class="fa-solid fa-circle-check"></i></div>
+                <h4 class="text-success">Thanh toán thành công</h4>
+            }
+            else
+            {
+                <div class="display-4 text-warning mb-3"><i class="fa-solid fa-hourglass-half"></i></div>
+                <h4 class="text-warning">Đang chờ xác nhận</h4>
+            }
+
+            <p class="mb-1">@Model.Message</p>
+            @if (!string.IsNullOrWhiteSpace(Model.OrderId))
+            {
+                <p class="text-muted small">Mã đơn: <code>@Model.OrderId</code></p>
+            }
+
+            @if (Model.Poi != null)
+            {
+                <div class="mt-3 text-start border rounded p-3 bg-light">
+                    <div><strong>POI:</strong> @Model.Poi.Name</div>
+                    <div><strong>Premium:</strong> @(Model.Poi.IsPremium ? "Có" : "Chưa")</div>
+                    <div><strong>Hết hạn:</strong> @(Model.Poi.PremiumExpiresAt?.ToString("dd/MM/yyyy HH:mm") ?? "-")</div>
+                </div>
+            }
+        </div>
+        <div class="card-footer bg-white d-flex justify-content-center">
+            <a class="btn btn-primary" asp-controller="Premium" asp-action="Index">Về trang Premium</a>
+        </div>
+    </div>
+</div>
