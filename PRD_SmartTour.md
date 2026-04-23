@@ -511,8 +511,8 @@ flowchart TB
     C14([Update Food])
     C15([Delete Food])
     C16([View Online Devices])
-    C17([Create Premium Payment (MoMo)])
-    C18([Handle MoMo Return/IPN])
+    C17([Create Premium Payment MoMo])
+    C18([Handle MoMo Return and IPN])
 
     V --> C1
     V --> C2
