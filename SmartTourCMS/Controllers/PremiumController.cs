@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SmartTourBackend.Data;
 using SmartTourCMS.Models;
+using SmartTour.Shared.Models;
 
 namespace SmartTourCMS.Controllers;
 
@@ -138,7 +139,9 @@ public class PremiumController : Controller
                 PayUrl = payUrl,
                 Deeplink = deeplink,
                 QrCodeUrl = qrCodeUrl,
-                QrImageUrl = $"https://quickchart.io/qr?text={Uri.EscapeDataString(qrSource!)}&size=300"
+                QrImageUrl = $"https://quickchart.io/qr?text={Uri.EscapeDataString(qrSource!)}&size=300",
+                StatusApiUrl = Url.Action(nameof(GetPaymentStatus), "Premium", new { orderId }, Request.Scheme) ?? string.Empty,
+                ReturnUrl = Url.Action(nameof(PaymentReturn), "Premium", new { orderId }, Request.Scheme) ?? $"/payment/return?orderId={Uri.EscapeDataString(orderId)}"
             };
             return View("Checkout", vm);
         }
@@ -171,8 +174,74 @@ public class PremiumController : Controller
             OrderId = order.OrderId,
             IsPaid = isPaid,
             Message = message,
-            Poi = poi
+            Poi = poi,
+            PaidAt = order.PaidAt,
+            StatusApiUrl = Url.Action(nameof(GetPaymentStatus), "Premium", new { orderId = order.OrderId }, Request.Scheme) ?? string.Empty
         });
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetPaymentStatus(string orderId, bool forceProviderCheck = false)
+    {
+        if (string.IsNullOrWhiteSpace(orderId))
+            return BadRequest(new { success = false, message = "Thiếu orderId." });
+
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(userId))
+            return Unauthorized(new { success = false, message = "Chưa đăng nhập." });
+
+        var order = await _db.VendorPremiumOrders.AsNoTracking().FirstOrDefaultAsync(x => x.OrderId == orderId);
+        if (order == null) return NotFound(new { success = false, message = "Không tìm thấy giao dịch." });
+
+        var isAdmin = User.IsInRole("Admin");
+        if (!isAdmin && !string.Equals(order.VendorUserId, userId, StringComparison.Ordinal))
+            return Forbid();
+
+        var apiSettings = ReadBackendApiSettings(_config);
+        if (!apiSettings.IsConfigured)
+        {
+            return Ok(new
+            {
+                success = true,
+                data = new
+                {
+                    orderId = order.OrderId,
+                    status = order.Status,
+                    paidAt = order.PaidAt
+                }
+            });
+        }
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"{apiSettings.BaseUrl.TrimEnd('/')}/api/vendor/premium/order-status-cms");
+            request.Headers.Add("X-Internal-Key", apiSettings.InternalKey);
+            request.Content = JsonContent.Create(new CmsPremiumOrderStatusRequest
+            {
+                OrderId = orderId.Trim(),
+                VendorUserId = order.VendorUserId,
+                ForceProviderCheck = forceProviderCheck
+            });
+
+            using var response = await Http.SendAsync(request);
+            var raw = await response.Content.ReadAsStringAsync();
+            if (!response.IsSuccessStatusCode)
+            {
+                return StatusCode((int)response.StatusCode, new { success = false, message = "Backend API status lỗi.", providerResponse = raw });
+            }
+
+            using var doc = JsonDocument.Parse(raw);
+            var root = doc.RootElement;
+            var ok = root.TryGetProperty("success", out var successEl) && successEl.GetBoolean();
+            if (!ok || !root.TryGetProperty("data", out var dataEl))
+                return BadRequest(new { success = false, message = "Backend API trả dữ liệu không hợp lệ." });
+
+            return Ok(new { success = true, data = dataEl.Clone() });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { success = false, message = $"Không kết nối được Backend API premium: {ex.Message}" });
+        }
     }
 
     private static List<PremiumPackageOption> BuildPackages(IConfiguration config)
@@ -240,5 +309,12 @@ public class PremiumController : Controller
         public int Months { get; set; }
         public int Amount { get; set; }
         public string VendorUserId { get; set; } = string.Empty;
+    }
+
+    private sealed class CmsPremiumOrderStatusRequest
+    {
+        public string OrderId { get; set; } = string.Empty;
+        public string VendorUserId { get; set; } = string.Empty;
+        public bool ForceProviderCheck { get; set; }
     }
 }

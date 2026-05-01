@@ -18,6 +18,7 @@
     <h2><i class="fa-solid fa-map-location-dot text-primary"></i> Quản lý địa điểm</h2>
     <div class="d-flex gap-2">
         <form id="poiSearchForm" asp-action="Index" method="get" class="input-group">
+            <input type="hidden" name="tab" value="@((ViewBag.CurrentTab as string) ?? "active")" />
             <span class="input-group-text bg-white border-end-0"><i class="fa-solid fa-magnifying-glass text-muted"></i></span>
             <input id="poiSearchInput" type="text" name="search" value="@ViewBag.CurrentSearch" class="form-control border-start-0" placeholder="Tìm tên địa điểm..." />
             <button type="submit" class="btn btn-outline-secondary">Tìm</button>
@@ -33,6 +34,33 @@
         }
     </div>
 </div>
+
+@{
+    var isAdminView = ViewBag.IsAdmin != null && (bool)ViewBag.IsAdmin;
+    var currentTab = (ViewBag.CurrentTab as string) ?? "active";
+}
+
+@if (!isAdminView)
+{
+    <ul class="nav nav-tabs mb-3">
+        <li class="nav-item">
+            <a class="nav-link @(currentTab == "active" ? "active" : "")"
+               asp-action="Index"
+               asp-route-search="@ViewBag.CurrentSearch"
+               asp-route-tab="active">
+                Hoạt động
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link @(currentTab == "archive" ? "active" : "")"
+               asp-action="Index"
+               asp-route-search="@ViewBag.CurrentSearch"
+               asp-route-tab="archive">
+                Đã từ chối / Lưu trữ
+            </a>
+        </li>
+    </ul>
+}
 
 @* 2. BẢNG DỮ LIỆU *@
 <div class="card shadow border-0 mb-4">
@@ -57,6 +85,9 @@
             <tbody>
                 @foreach (var item in Model)
                 {
+                    var rowNow = DateTime.UtcNow;
+                    var rowPremiumActive = item.IsPremium && item.PremiumExpiresAt.HasValue && item.PremiumExpiresAt.Value > rowNow;
+                    var rowRemainingDays = rowPremiumActive ? (item.PremiumExpiresAt!.Value - rowNow).TotalDays : -1;
                     <tr>
                         <td class="ps-3">
                             @if (!string.IsNullOrEmpty(item.ImageUrl))
@@ -72,7 +103,22 @@
                                 </div>
                             }
                         </td>
-                        <td><strong>@item.Name</strong></td>
+                        <td>
+                            <div><strong>@item.Name</strong></div>
+                            @if (rowPremiumActive)
+                            {
+                                var remainingDays = (int)Math.Ceiling(rowRemainingDays);
+                                var expiryClass = remainingDays < 3 ? "text-warning" : "text-muted";
+                                <div class="small @expiryClass mt-1">
+                                    <i class="fa-solid fa-crown text-warning me-1"></i>
+                                    Premium đến: @item.PremiumExpiresAt.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                                </div>
+                            }
+                            else if (!isAdminView)
+                            {
+                                <div class="small text-muted mt-1">Bản cơ bản</div>
+                            }
+                        </td>
                         <td>
                             @if (item.ApprovalStatus == "approved")
                             {
@@ -85,6 +131,17 @@
                             else
                             {
                                 <span class="badge bg-warning text-dark">Chờ duyệt</span>
+                            }
+                            @if (rowPremiumActive)
+                            {
+                                <span class="badge bg-warning text-dark ms-1"
+                                      title="Hết hạn lúc @item.PremiumExpiresAt!.Value.ToLocalTime().ToString("HH:mm dd/MM/yyyy")">
+                                    Premium
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary ms-1">Cơ bản</span>
                             }
                         </td>
                         <td>
@@ -138,6 +195,18 @@
                                     <i class="fa-solid fa-pen"></i>
                                 </a>
 
+                                @if (!isAdmin)
+                                {
+                                    if (rowPremiumActive && rowRemainingDays <= 3)
+                                    {
+                                        <a class="btn btn-sm btn-outline-warning me-1"
+                                           href="/Premium?poiId=@item.Id"
+                                           title="Gia hạn Premium">
+                                            <i class="fa-solid fa-rotate-right"></i>
+                                        </a>
+                                    }
+                                }
+
                                 <form asp-action="Delete" asp-route-id="@item.Id" method="post" style="display:inline;" onsubmit="return confirm('Bác có chắc chắn muốn xóa tận gốc địa điểm này không?');">
                                     @Html.AntiForgeryToken()
                                     <button type="submit" class="btn btn-danger btn-sm">
@@ -167,7 +236,7 @@
     
     @* THANH PHÂN TRANG THÊM VÀO ĐÂY *@
     <div class="card-footer bg-white d-flex justify-content-center pt-3 pb-1 border-top-0">
-        @Html.PagedListPager(Model, page => Url.Action("Index", new { page = page, search = ViewBag.CurrentSearch }), new PagedListRenderOptions
+        @Html.PagedListPager(Model, page => Url.Action("Index", new { page = page, search = ViewBag.CurrentSearch, tab = ViewBag.CurrentTab }), new PagedListRenderOptions
         {
             LiElementClasses = new string[] { "page-item" },
             PageClasses = new string[] { "page-link" }

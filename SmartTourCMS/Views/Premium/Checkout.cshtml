@@ -20,7 +20,10 @@
                         <i class="fa-solid fa-up-right-from-square me-2"></i>Mở MoMo để thanh toán
                     </a>
                     <div class="text-muted small">
-                        Sau khi thanh toán thành công, MoMo sẽ gọi IPN để hệ thống tự động kích hoạt premium.
+                        Sau khi thanh toán thành công, hệ thống sẽ tự kiểm tra và tự động chuyển sang màn hình thành công.
+                    </div>
+                    <div id="autoStatus" class="small text-muted mt-2">
+                        Đang chờ xác nhận thanh toán...
                     </div>
                 </div>
                 <div class="col-md-5 text-center">
@@ -31,7 +34,73 @@
         </div>
         <div class="card-footer bg-white d-flex justify-content-between">
             <a class="btn btn-outline-secondary" asp-action="Index" asp-route-poiId="@Model.PoiId">Quay lại chọn gói</a>
-            <a class="btn btn-success" href="/payment/return?orderId=@Model.OrderId">Tôi đã thanh toán, kiểm tra trạng thái</a>
+            <a class="btn btn-success" href="@Model.ReturnUrl">Tôi đã thanh toán, kiểm tra trạng thái</a>
         </div>
     </div>
 </div>
+
+@section Scripts {
+    <script>
+        (function () {
+            const statusText = document.getElementById('autoStatus');
+            const statusApiUrl = '@Model.StatusApiUrl';
+            const returnUrl = '@Model.ReturnUrl';
+            const pollingIntervalMs = @Model.PollingIntervalMs;
+            if (!statusApiUrl || !returnUrl) return;
+
+            let attempts = 0;
+            let forceCheck = false;
+            let stopped = false;
+
+            async function pollStatus() {
+                if (stopped) return;
+                attempts += 1;
+                if (attempts >= 8) {
+                    forceCheck = true;
+                }
+
+                try {
+                    const url = new URL(statusApiUrl, window.location.origin);
+                    url.searchParams.set('forceProviderCheck', forceCheck ? 'true' : 'false');
+                    const response = await fetch(url.toString(), {
+                        method: 'GET',
+                        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                    });
+                    const result = await response.json();
+                    if (!response.ok || !result.success || !result.data) {
+                        throw new Error(result.message || 'Không đọc được trạng thái thanh toán.');
+                    }
+
+                    if (result.data.status === 'paid') {
+                        if (statusText) {
+                            statusText.classList.remove('text-muted');
+                            statusText.classList.add('text-success');
+                            statusText.textContent = 'Thanh toán thành công. Đang chuyển trang...';
+                        }
+                        stopped = true;
+                        window.location.href = returnUrl;
+                        return;
+                    }
+
+                    if (statusText) {
+                        statusText.classList.remove('text-success');
+                        statusText.classList.add('text-muted');
+                        statusText.textContent = forceCheck
+                            ? 'Đang đồng bộ trạng thái từ MoMo...'
+                            : 'Đang chờ xác nhận thanh toán...';
+                    }
+                } catch (error) {
+                    if (statusText) {
+                        statusText.classList.remove('text-success');
+                        statusText.classList.add('text-warning');
+                        statusText.textContent = 'Kết nối kiểm tra trạng thái đang chậm. Bạn có thể bấm nút kiểm tra thủ công.';
+                    }
+                }
+
+                setTimeout(pollStatus, pollingIntervalMs);
+            }
+
+            setTimeout(pollStatus, pollingIntervalMs);
+        })();
+    </script>
+}

@@ -37,7 +37,7 @@ namespace SmartTourCMS.Controllers
         }
 
         // --- DANH SÁCH POI VÀ TÌM KIẾM KHÔNG DẤU ---
-        public async Task<IActionResult> Index(string? search, int? page)
+        public async Task<IActionResult> Index(string? search, int? page, string? tab = null)
         {
             var user = await _userManager.GetUserAsync(User);
             if (user == null) return RedirectToAction("Login", "Account");
@@ -68,6 +68,20 @@ namespace SmartTourCMS.Controllers
                     RemoveDiacritics(p.Name.ToLower()).Contains(keyword) ||
                     (p.Description != null && RemoveDiacritics(p.Description.ToLower()).Contains(keyword))
                 ).ToList();
+            }
+
+            if (!isAdmin)
+            {
+                var currentTab = string.Equals(tab, "archive", StringComparison.OrdinalIgnoreCase) ? "archive" : "active";
+                poiList = currentTab == "archive"
+                    ? poiList.Where(p => p.ApprovalStatus == "rejected").ToList()
+                    : poiList.Where(p => p.ApprovalStatus != "rejected").ToList();
+
+                ViewBag.CurrentTab = currentTab;
+            }
+            else
+            {
+                ViewBag.CurrentTab = "active";
             }
 
             const int pageSize = 10;

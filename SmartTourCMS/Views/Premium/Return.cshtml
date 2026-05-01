@@ -22,6 +22,12 @@
             {
                 <p class="text-muted small">Mã đơn: <code>@Model.OrderId</code></p>
             }
+            <div id="returnStatusHint" class="small text-muted mb-2">
+                @if (!Model.IsPaid)
+                {
+                    <text>Trang này sẽ tự động làm mới trạng thái sau vài giây.</text>
+                }
+            </div>
 
             @if (Model.Poi != null)
             {
@@ -32,8 +38,93 @@
                 </div>
             }
         </div>
-        <div class="card-footer bg-white d-flex justify-content-center">
+        <div class="card-footer bg-white d-flex justify-content-center gap-2">
+            @if (!Model.IsPaid)
+            {
+                <button id="forceCheckButton" type="button" class="btn btn-success">
+                    Kiểm tra trạng thái
+                </button>
+            }
             <a class="btn btn-primary" asp-controller="Premium" asp-action="Index">Về trang Premium</a>
         </div>
     </div>
 </div>
+
+@section Scripts {
+    @if (!Model.IsPaid && !string.IsNullOrWhiteSpace(Model.StatusApiUrl))
+    {
+        <script>
+            (function () {
+                const statusApiUrl = '@Model.StatusApiUrl';
+                const orderId = '@Model.OrderId';
+                const pollingIntervalMs = @Model.PollingIntervalMs;
+                const statusHint = document.getElementById('returnStatusHint');
+                const forceCheckButton = document.getElementById('forceCheckButton');
+                let stop = false;
+
+                async function checkStatus(forceProviderCheck) {
+                    const url = new URL(statusApiUrl, window.location.origin);
+                    url.searchParams.set('orderId', orderId);
+                    url.searchParams.set('forceProviderCheck', forceProviderCheck ? 'true' : 'false');
+                    const response = await fetch(url.toString(), {
+                        method: 'GET',
+                        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                    });
+                    const result = await response.json();
+                    if (!response.ok || !result.success || !result.data) {
+                        throw new Error(result.message || 'Không đọc được trạng thái.');
+                    }
+
+                    if (result.data.status === 'paid') {
+                        if (statusHint) {
+                            statusHint.classList.remove('text-muted', 'text-warning');
+                            statusHint.classList.add('text-success');
+                            statusHint.textContent = 'Đã xác nhận giao dịch thành công. Đang tải lại trang...';
+                        }
+                        stop = true;
+                        window.location.reload();
+                    }
+                }
+
+                async function poll() {
+                    if (stop) return;
+                    try {
+                        await checkStatus(false);
+                    } catch {
+                        if (statusHint) {
+                            statusHint.classList.remove('text-muted');
+                            statusHint.classList.add('text-warning');
+                            statusHint.textContent = 'Đang gặp chậm kết nối. Bạn có thể bấm "Kiểm tra trạng thái".';
+                        }
+                    }
+
+                    setTimeout(poll, pollingIntervalMs);
+                }
+
+                if (forceCheckButton) {
+                    forceCheckButton.addEventListener('click', async function () {
+                        forceCheckButton.disabled = true;
+                        try {
+                            await checkStatus(true);
+                            if (statusHint) {
+                                statusHint.classList.remove('text-warning');
+                                statusHint.classList.add('text-muted');
+                                statusHint.textContent = 'Đã gửi yêu cầu kiểm tra trực tiếp tới MoMo.';
+                            }
+                        } catch {
+                            if (statusHint) {
+                                statusHint.classList.remove('text-muted');
+                                statusHint.classList.add('text-warning');
+                                statusHint.textContent = 'Kiểm tra trực tiếp chưa thành công. Vui lòng thử lại sau vài giây.';
+                            }
+                        } finally {
+                            forceCheckButton.disabled = false;
+                        }
+                    });
+                }
+
+                setTimeout(poll, pollingIntervalMs);
+            })();
+        </script>
+    }
+}

@@ -56,6 +56,19 @@ public class VendorPremiumController : ControllerBase
         });
     }
 
+    [HttpPost("order-status")]
+    public async Task<IActionResult> GetOrderStatus([FromBody] PremiumOrderStatusRequest dto)
+    {
+        if (string.IsNullOrWhiteSpace(dto.OrderId))
+            return BadRequest(new { success = false, message = "Invalid orderId." });
+
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(userId)) return Unauthorized(new { success = false, message = "Unauthenticated." });
+
+        var isAdmin = User.IsInRole("Admin");
+        return await GetOrderStatusCore(dto.OrderId.Trim(), dto.ForceProviderCheck, userId, isAdmin);
+    }
+
     [HttpPost("create-payment")]
     public async Task<IActionResult> CreatePayment([FromBody] CreatePremiumPaymentRequest dto)
     {
@@ -83,6 +96,23 @@ public class VendorPremiumController : ControllerBase
         return await CreatePaymentCore(dto.PoiId, dto.Months, dto.Amount, dto.VendorUserId.Trim(), false);
     }
 
+    [AllowAnonymous]
+    [HttpPost("order-status-cms")]
+    public async Task<IActionResult> GetOrderStatusFromCms([FromBody] CmsPremiumOrderStatusRequest dto)
+    {
+        if (string.IsNullOrWhiteSpace(dto.OrderId))
+            return BadRequest(new { success = false, message = "Invalid orderId." });
+        if (string.IsNullOrWhiteSpace(dto.VendorUserId))
+            return BadRequest(new { success = false, message = "Invalid vendorUserId." });
+
+        var internalKey = Request.Headers["X-Internal-Key"].FirstOrDefault() ?? string.Empty;
+        var expected = _config["Admin:ApiKey"] ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(expected) || !string.Equals(internalKey, expected, StringComparison.Ordinal))
+            return Unauthorized(new { success = false, message = "Invalid internal key." });
+
+        return await GetOrderStatusCore(dto.OrderId.Trim(), dto.ForceProviderCheck, dto.VendorUserId.Trim(), false);
+    }
+
     private async Task<IActionResult> CreatePaymentCore(int poiId, int months, int amountRaw, string actorUserId, bool actorIsAdmin)
     {
         if (poiId <= 0) return BadRequest(new { success = false, message = "Invalid poiId." });
@@ -100,7 +130,7 @@ public class VendorPremiumController : ControllerBase
         var durationMonths = months;
         if (durationMonths < 0) durationMonths = settings.DefaultMonths;
         var requestId = $"REQ{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
-        var orderId = $"PREM-{poiId}-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}";
+        var orderId = $"PREM-{poiId}-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}-M{Math.Max(0, durationMonths)}";
         var orderInfo = durationMonths == 0
             ? $"Nang cap premium POI {poiId} (goi tuan)"
             : $"Nang cap premium POI {poiId} ({durationMonths} thang)";
@@ -300,39 +330,14 @@ public class VendorPremiumController : ControllerBase
 
         if (resultCode == 0)
         {
+            var shouldApplyBenefit = !string.Equals(order.Status, "paid", StringComparison.OrdinalIgnoreCase);
             order.Status = "paid";
-            order.PaidAt = DateTime.UtcNow;
+            order.PaidAt ??= DateTime.UtcNow;
             order.MoMoTransId = transId;
 
-            var poi = await _db.Pois.FirstOrDefaultAsync(p => p.Id == order.PoiId);
-            if (poi != null)
+            if (shouldApplyBenefit)
             {
-                var now = DateTime.UtcNow;
-                var start = poi.PremiumExpiresAt.HasValue && poi.PremiumExpiresAt > now
-                    ? poi.PremiumExpiresAt.Value
-                    : now;
-
-                var durationMonths = settings.DefaultMonths;
-                if (!string.IsNullOrWhiteSpace(extraData))
-                {
-                    try
-                    {
-                        var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(extraData));
-                        var extra = JsonSerializer.Deserialize<PremiumExtraData>(decoded);
-                        if (extra is not null)
-                            durationMonths = extra.Months;
-                    }
-                    catch
-                    {
-                        // Fallback mặc định nếu không giải mã được extraData
-                    }
-                }
-
-                poi.IsPremium = true;
-                poi.PremiumActivatedAt ??= now;
-                poi.PremiumExpiresAt = durationMonths == 0
-                    ? start.AddDays(7)
-                    : start.AddMonths(Math.Max(1, durationMonths));
+                await ApplyPremiumBenefitAsync(order, settings, extraData);
             }
         }
         else
@@ -343,6 +348,147 @@ public class VendorPremiumController : ControllerBase
 
         await _db.SaveChangesAsync();
         return Ok(new { resultCode = 0, message = "ok" });
+    }
+
+    private async Task<IActionResult> GetOrderStatusCore(string orderId, bool forceProviderCheck, string actorUserId, bool actorIsAdmin)
+    {
+        var settings = ReadSettings();
+        var order = await _db.VendorPremiumOrders.FirstOrDefaultAsync(x => x.OrderId == orderId);
+        if (order == null) return NotFound(new { success = false, message = "Order not found." });
+
+        if (!actorIsAdmin && !string.Equals(order.VendorUserId, actorUserId, StringComparison.Ordinal))
+            return Forbid();
+
+        var isPaid = string.Equals(order.Status, "paid", StringComparison.OrdinalIgnoreCase);
+        if (!isPaid && forceProviderCheck && settings.CanQueryStatus)
+            await SyncOrderFromMoMoAsync(order, settings);
+
+        var poi = await _db.Pois.AsNoTracking().FirstOrDefaultAsync(x => x.Id == order.PoiId);
+        var now = DateTime.UtcNow;
+        var poiActive = poi != null && poi.IsPremium && poi.PremiumExpiresAt.HasValue && poi.PremiumExpiresAt.Value > now;
+        return Ok(new
+        {
+            success = true,
+            data = new
+            {
+                orderId = order.OrderId,
+                status = order.Status,
+                paidAt = order.PaidAt,
+                poiId = order.PoiId,
+                isPremium = poiActive,
+                premiumExpiresAt = poi?.PremiumExpiresAt,
+                remainingDays = poiActive ? Math.Max(0, (int)Math.Ceiling((poi!.PremiumExpiresAt!.Value - now).TotalDays)) : 0,
+                lastError = order.LastError
+            }
+        });
+    }
+
+    private async Task SyncOrderFromMoMoAsync(VendorPremiumOrder order, PremiumSettings settings)
+    {
+        if (!settings.CanQueryStatus)
+            return;
+
+        var requestId = $"QRY-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+        var rawSignature = $"accessKey={settings.AccessKey}&orderId={order.OrderId}&partnerCode={settings.PartnerCode}&requestId={requestId}";
+        var signature = Sign(rawSignature, settings.SecretKey);
+        var payload = new
+        {
+            partnerCode = settings.PartnerCode,
+            requestId,
+            orderId = order.OrderId,
+            lang = "vi",
+            signature
+        };
+
+        try
+        {
+            using var response = await Http.PostAsJsonAsync(settings.QueryEndpoint, payload);
+            var body = await response.Content.ReadAsStringAsync();
+            if (!response.IsSuccessStatusCode)
+            {
+                order.UpdatedAt = DateTime.UtcNow;
+                order.LastError = $"query_status_failed:{body}";
+                await _db.SaveChangesAsync();
+                return;
+            }
+
+            using var doc = JsonDocument.Parse(body);
+            var root = doc.RootElement;
+            var resultCode = root.TryGetProperty("resultCode", out var resultCodeEl) ? resultCodeEl.GetInt32() : -1;
+            if (resultCode != 0)
+            {
+                order.UpdatedAt = DateTime.UtcNow;
+                var message = root.TryGetProperty("message", out var msgEl) ? msgEl.GetString() : "query result not paid";
+                order.LastError = message;
+                await _db.SaveChangesAsync();
+                return;
+            }
+
+            var transId = root.TryGetProperty("transId", out var transEl) && transEl.TryGetInt64(out var value) ? value : order.MoMoTransId;
+            var extraData = root.TryGetProperty("extraData", out var extraEl) ? extraEl.GetString() ?? string.Empty : string.Empty;
+            var shouldApplyBenefit = !string.Equals(order.Status, "paid", StringComparison.OrdinalIgnoreCase);
+            order.Status = "paid";
+            order.PaidAt ??= DateTime.UtcNow;
+            order.MoMoTransId = transId;
+            order.UpdatedAt = DateTime.UtcNow;
+            order.RawIpnPayload = body;
+            if (shouldApplyBenefit)
+                await ApplyPremiumBenefitAsync(order, settings, extraData);
+
+            await _db.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            order.UpdatedAt = DateTime.UtcNow;
+            order.LastError = $"query_status_exception:{ex.Message}";
+            await _db.SaveChangesAsync();
+        }
+    }
+
+    private async Task ApplyPremiumBenefitAsync(VendorPremiumOrder order, PremiumSettings settings, string? extraData)
+    {
+        var poi = await _db.Pois.FirstOrDefaultAsync(p => p.Id == order.PoiId);
+        if (poi == null) return;
+
+        var now = DateTime.UtcNow;
+        var start = poi.PremiumExpiresAt.HasValue && poi.PremiumExpiresAt > now
+            ? poi.PremiumExpiresAt.Value
+            : now;
+        var durationMonths = ExtractDurationMonths(extraData, order.OrderId, settings.DefaultMonths);
+
+        poi.IsPremium = true;
+        poi.PremiumActivatedAt ??= now;
+        poi.PremiumExpiresAt = durationMonths == 0
+            ? start.AddDays(7)
+            : start.AddMonths(Math.Max(1, durationMonths));
+    }
+
+    private static int ExtractDurationMonths(string? extraData, string orderId, int fallbackMonths)
+    {
+        if (!string.IsNullOrWhiteSpace(extraData))
+        {
+            try
+            {
+                var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(extraData));
+                var extra = JsonSerializer.Deserialize<PremiumExtraData>(decoded);
+                if (extra is not null)
+                    return Math.Max(0, extra.Months);
+            }
+            catch
+            {
+                // fallback parse from orderId or default
+            }
+        }
+
+        var markerIndex = orderId.LastIndexOf("-M", StringComparison.OrdinalIgnoreCase);
+        if (markerIndex >= 0)
+        {
+            var raw = orderId[(markerIndex + 2)..];
+            if (int.TryParse(raw, out var months))
+                return Math.Max(0, months);
+        }
+
+        return Math.Max(0, fallbackMonths);
     }
 
     private PremiumSettings ReadSettings()
@@ -356,6 +502,9 @@ public class VendorPremiumController : ControllerBase
             SecretKey = section["SecretKey"] ?? Environment.GetEnvironmentVariable("MOMO_SECRET_KEY") ?? string.Empty,
             RedirectUrl = section["RedirectUrl"] ?? Environment.GetEnvironmentVariable("MOMO_REDIRECT_URL") ?? string.Empty,
             IpnUrl = section["IpnUrl"] ?? Environment.GetEnvironmentVariable("MOMO_IPN_URL") ?? string.Empty,
+            QueryEndpoint = ResolveQueryEndpoint(
+                section["QueryEndpoint"] ?? Environment.GetEnvironmentVariable("MOMO_QUERY_ENDPOINT"),
+                section["Endpoint"] ?? Environment.GetEnvironmentVariable("MOMO_ENDPOINT") ?? string.Empty),
             RequestType = section["RequestType"] ?? "captureWallet",
             UseLegacyAllInOne = bool.TryParse(section["UseLegacyAllInOne"], out var useLegacy) && useLegacy,
             DefaultAmount = int.TryParse(section["DefaultAmount"], out var amount) ? amount : 49000,
@@ -445,10 +594,16 @@ public class VendorPremiumController : ControllerBase
         public string SecretKey { get; init; } = string.Empty;
         public string RedirectUrl { get; init; } = string.Empty;
         public string IpnUrl { get; init; } = string.Empty;
+        public string QueryEndpoint { get; init; } = string.Empty;
         public string RequestType { get; init; } = "captureWallet";
         public bool UseLegacyAllInOne { get; init; }
         public int DefaultAmount { get; init; } = 49000;
         public int DefaultMonths { get; init; } = 1;
+        public bool CanQueryStatus =>
+            !string.IsNullOrWhiteSpace(QueryEndpoint) &&
+            !string.IsNullOrWhiteSpace(PartnerCode) &&
+            !string.IsNullOrWhiteSpace(AccessKey) &&
+            !string.IsNullOrWhiteSpace(SecretKey);
         public bool IsConfigured =>
             !string.IsNullOrWhiteSpace(Endpoint) &&
             !string.IsNullOrWhiteSpace(PartnerCode) &&
@@ -466,6 +621,21 @@ public class VendorPremiumController : ControllerBase
             if (string.IsNullOrWhiteSpace(RedirectUrl)) yield return "MoMo:RedirectUrl";
             if (string.IsNullOrWhiteSpace(IpnUrl)) yield return "MoMo:IpnUrl";
         }
+    }
+
+    private static string ResolveQueryEndpoint(string? configuredQueryEndpoint, string createEndpoint)
+    {
+        if (!string.IsNullOrWhiteSpace(configuredQueryEndpoint))
+            return configuredQueryEndpoint;
+        if (string.IsNullOrWhiteSpace(createEndpoint))
+            return string.Empty;
+
+        // MoMo v2 default: create endpoint ".../api/create" -> query endpoint ".../api/query"
+        var normalized = createEndpoint.Trim();
+        if (normalized.EndsWith("/create", StringComparison.OrdinalIgnoreCase))
+            return normalized[..^("/create".Length)] + "/query";
+
+        return string.Empty;
     }
 }
 
@@ -487,6 +657,19 @@ public class CmsCreatePremiumPaymentRequest
     public int Months { get; set; } = 1;
     public int Amount { get; set; }
     public string VendorUserId { get; set; } = string.Empty;
+}
+
+public class PremiumOrderStatusRequest
+{
+    public string OrderId { get; set; } = string.Empty;
+    public bool ForceProviderCheck { get; set; }
+}
+
+public class CmsPremiumOrderStatusRequest
+{
+    public string OrderId { get; set; } = string.Empty;
+    public string VendorUserId { get; set; } = string.Empty;
+    public bool ForceProviderCheck { get; set; }
 }
 
 public record PremiumExtraData(int PoiId, string VendorUserId, int Months);

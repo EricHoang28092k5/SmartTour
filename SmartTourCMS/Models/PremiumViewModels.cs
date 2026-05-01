@@ -41,6 +41,9 @@ public class PremiumCheckoutViewModel
     public string? QrCodeUrl { get; set; }
     public string CheckoutUrl => !string.IsNullOrWhiteSpace(Deeplink) ? Deeplink! : PayUrl;
     public string QrImageUrl { get; set; } = string.Empty;
+    public string StatusApiUrl { get; set; } = string.Empty;
+    public string ReturnUrl { get; set; } = string.Empty;
+    public int PollingIntervalMs { get; set; } = 2500;
 }
 
 public class PremiumReturnViewModel
@@ -49,4 +52,7 @@ public class PremiumReturnViewModel
     public bool IsPaid { get; set; }
     public string Message { get; set; } = string.Empty;
     public Poi? Poi { get; set; }
+    public DateTime? PaidAt { get; set; }
+    public string StatusApiUrl { get; set; } = string.Empty;
+    public int PollingIntervalMs { get; set; } = 2500;
 }
