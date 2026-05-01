@@ -4,9 +4,11 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using SmartTour.Shared.Models;
 using SmartTourBackend.Data;
+using SmartTourBackend.Services;
 
 namespace SmartTourBackend.Controllers;
 
@@ -18,11 +20,13 @@ public class VendorPremiumController : ControllerBase
     private static readonly HttpClient Http = new();
     private readonly AppDbContext _db;
     private readonly IConfiguration _config;
+    private readonly IMoMoPaymentQueueService _paymentQueue;
 
-    public VendorPremiumController(AppDbContext db, IConfiguration config)
+    public VendorPremiumController(AppDbContext db, IConfiguration config, IMoMoPaymentQueueService paymentQueue)
     {
         _db = db;
         _config = config;
+        _paymentQueue = paymentQueue;
     }
 
     [HttpPost("status")]
@@ -70,6 +74,7 @@ public class VendorPremiumController : ControllerBase
     }
 
     [HttpPost("create-payment")]
+    [EnableRateLimiting("MoMoCreatePaymentPolicy")]
     public async Task<IActionResult> CreatePayment([FromBody] CreatePremiumPaymentRequest dto)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
@@ -82,6 +87,7 @@ public class VendorPremiumController : ControllerBase
     // CMS proxy endpoint: dùng internal key để gọi backend API từ web MVC
     [AllowAnonymous]
     [HttpPost("create-payment-cms")]
+    [EnableRateLimiting("MoMoCreatePaymentPolicy")]
     public async Task<IActionResult> CreatePaymentFromCms([FromBody] CmsCreatePremiumPaymentRequest dto)
     {
         if (dto.PoiId <= 0) return BadRequest(new { success = false, message = "Invalid poiId." });
@@ -129,78 +135,38 @@ public class VendorPremiumController : ControllerBase
         var amount = amountRaw > 0 ? amountRaw : settings.DefaultAmount;
         var durationMonths = months;
         if (durationMonths < 0) durationMonths = settings.DefaultMonths;
-        var requestId = $"REQ{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
-        var orderId = $"PREM-{poiId}-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}-M{Math.Max(0, durationMonths)}";
-        var orderInfo = durationMonths == 0
-            ? $"Nang cap premium POI {poiId} (goi tuan)"
-            : $"Nang cap premium POI {poiId} ({durationMonths} thang)";
-        var extraDataRaw = JsonSerializer.Serialize(new PremiumExtraData(poiId, actorUserId, durationMonths));
-        var extraData = Convert.ToBase64String(Encoding.UTF8.GetBytes(extraDataRaw));
+        var now = DateTime.UtcNow;
+        var existing = await _db.VendorPremiumOrders
+            .Where(x => x.PoiId == poiId &&
+                        x.VendorUserId == (poi.VendorId ?? actorUserId) &&
+                        x.CreatedAt >= now.AddMinutes(-2) &&
+                        (x.Status == "queued" || x.Status == "creating_provider" || x.Status == "awaiting_payment"))
+            .OrderByDescending(x => x.CreatedAt)
+            .FirstOrDefaultAsync();
 
-        var signature = settings.UseLegacyAllInOne
-            ? Sign(
-                BuildLegacyCreateSignatureString(
-                    settings.PartnerCode,
-                    settings.AccessKey,
-                    requestId,
-                    amount,
-                    orderId,
-                    orderInfo,
-                    settings.RedirectUrl,
-                    settings.IpnUrl,
-                    extraData),
-                settings.SecretKey)
-            : Sign(
-                BuildCreateSignatureString(
-                    settings.AccessKey,
-                    amount,
-                    extraData,
-                    settings.IpnUrl,
-                    orderId,
-                    orderInfo,
-                    settings.PartnerCode,
-                    settings.RedirectUrl,
-                    requestId,
-                    settings.RequestType),
-                settings.SecretKey);
+        if (existing != null)
+        {
+            var existingPayment = ParseCreatePaymentPayload(existing.RawIpnPayload);
+            return Ok(new
+            {
+                success = true,
+                queued = existing.Status != "awaiting_payment",
+                message = "Đang có đơn gần đây, trả về đơn cũ để tránh tạo trùng khi tải cao.",
+                data = new
+                {
+                    orderId = existing.OrderId,
+                    requestId = existing.RequestId,
+                    amount = existing.Amount,
+                    status = existing.Status,
+                    payUrl = existingPayment.payUrl,
+                    deeplink = existingPayment.deeplink,
+                    qrCodeUrl = existingPayment.qrCodeUrl
+                }
+            });
+        }
 
-        object payload;
-        if (settings.UseLegacyAllInOne)
-        {
-            payload = new
-            {
-                accessKey = settings.AccessKey,
-                partnerCode = settings.PartnerCode,
-                requestType = settings.RequestType,
-                notifyUrl = settings.IpnUrl,
-                returnUrl = settings.RedirectUrl,
-                orderId,
-                amount = amount.ToString(),
-                orderInfo,
-                requestId,
-                extraData,
-                signature
-            };
-        }
-        else
-        {
-            payload = new
-            {
-                partnerCode = settings.PartnerCode,
-                partnerName = "SmartTour",
-                storeId = "SmartTour",
-                requestId,
-                amount = amount.ToString(),
-                orderId,
-                orderInfo,
-                redirectUrl = settings.RedirectUrl,
-                ipnUrl = settings.IpnUrl,
-                lang = "vi",
-                extraData,
-                requestType = settings.RequestType,
-                signature
-            };
-        }
+        var requestId = $"REQ{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}-{Random.Shared.Next(1000, 9999)}";
+        var orderId = $"PREM-{poiId}-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}-{Random.Shared.Next(1000, 9999)}-M{Math.Max(0, durationMonths)}";
 
         var order = new VendorPremiumOrder
         {
@@ -216,57 +182,28 @@ public class VendorPremiumController : ControllerBase
         _db.VendorPremiumOrders.Add(order);
         await _db.SaveChangesAsync();
 
-        try
-        {
-            using var response = await Http.PostAsJsonAsync(settings.Endpoint, payload);
-            var body = await response.Content.ReadAsStringAsync();
-            if (!response.IsSuccessStatusCode)
-            {
-                order.Status = "failed";
-                order.LastError = body;
-                order.UpdatedAt = DateTime.UtcNow;
-                await _db.SaveChangesAsync();
-                return BadRequest(new { success = false, message = "MoMo create-payment failed.", providerResponse = body });
-            }
-
-            using var doc = JsonDocument.Parse(body);
-            var root = doc.RootElement;
-            var resultCode = root.TryGetProperty("resultCode", out var resultCodeEl) ? resultCodeEl.GetInt32() : -1;
-            var payUrl = root.TryGetProperty("payUrl", out var payUrlEl) ? payUrlEl.GetString() : null;
-            var deeplink = root.TryGetProperty("deeplink", out var deeplinkEl) ? deeplinkEl.GetString() : null;
-            var qrCodeUrl = root.TryGetProperty("qrCodeUrl", out var qrCodeUrlEl) ? qrCodeUrlEl.GetString() : null;
-
-            if (resultCode != 0 || (string.IsNullOrWhiteSpace(payUrl) && string.IsNullOrWhiteSpace(deeplink) && string.IsNullOrWhiteSpace(qrCodeUrl)))
-            {
-                order.Status = "failed";
-                order.LastError = body;
-                order.UpdatedAt = DateTime.UtcNow;
-                await _db.SaveChangesAsync();
-                return BadRequest(new { success = false, message = "MoMo did not return payUrl.", providerResponse = body });
-            }
-
-            return Ok(new
-            {
-                success = true,
-                data = new
-                {
-                    orderId,
-                    requestId,
-                    amount,
-                    payUrl,
-                    deeplink,
-                    qrCodeUrl
-                }
-            });
-        }
-        catch (Exception ex)
+        if (!_paymentQueue.TryEnqueue(new MoMoCreatePaymentJob(orderId)))
         {
             order.Status = "failed";
-            order.LastError = ex.Message;
+            order.LastError = "queue_full";
             order.UpdatedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync();
-            return BadRequest(new { success = false, message = "Unable to call MoMo.", error = ex.Message });
+            return StatusCode(429, new { success = false, message = "Server đang bận, vui lòng thử lại sau vài giây." });
         }
+
+        return Accepted(new
+        {
+            success = true,
+            queued = true,
+            message = "Đã xếp hàng tạo thanh toán, vui lòng gọi order-status để lấy payUrl.",
+            data = new
+            {
+                orderId,
+                requestId,
+                amount,
+                status = "queued"
+            }
+        });
     }
 
     [AllowAnonymous]
@@ -366,6 +303,7 @@ public class VendorPremiumController : ControllerBase
         var poi = await _db.Pois.AsNoTracking().FirstOrDefaultAsync(x => x.Id == order.PoiId);
         var now = DateTime.UtcNow;
         var poiActive = poi != null && poi.IsPremium && poi.PremiumExpiresAt.HasValue && poi.PremiumExpiresAt.Value > now;
+        var paymentPayload = ParseCreatePaymentPayload(order.RawIpnPayload);
         return Ok(new
         {
             success = true,
@@ -378,9 +316,32 @@ public class VendorPremiumController : ControllerBase
                 isPremium = poiActive,
                 premiumExpiresAt = poi?.PremiumExpiresAt,
                 remainingDays = poiActive ? Math.Max(0, (int)Math.Ceiling((poi!.PremiumExpiresAt!.Value - now).TotalDays)) : 0,
-                lastError = order.LastError
+                lastError = order.LastError,
+                payUrl = paymentPayload.payUrl,
+                deeplink = paymentPayload.deeplink,
+                qrCodeUrl = paymentPayload.qrCodeUrl
             }
         });
+    }
+
+    private static (string? payUrl, string? deeplink, string? qrCodeUrl) ParseCreatePaymentPayload(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return (null, null, null);
+
+        try
+        {
+            using var doc = JsonDocument.Parse(raw);
+            var root = doc.RootElement;
+            var payUrl = root.TryGetProperty("payUrl", out var payEl) ? payEl.GetString() : null;
+            var deeplink = root.TryGetProperty("deeplink", out var deeplinkEl) ? deeplinkEl.GetString() : null;
+            var qrCodeUrl = root.TryGetProperty("qrCodeUrl", out var qrEl) ? qrEl.GetString() : null;
+            return (payUrl, deeplink, qrCodeUrl);
+        }
+        catch
+        {
+            return (null, null, null);
+        }
     }
 
     private async Task SyncOrderFromMoMoAsync(VendorPremiumOrder order, PremiumSettings settings)
@@ -672,4 +633,3 @@ public class CmsPremiumOrderStatusRequest
     public bool ForceProviderCheck { get; set; }
 }
 
-public record PremiumExtraData(int PoiId, string VendorUserId, int Months);

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using SmartTour.Shared.Models;
 using SmartTourBackend.Data;
+using SmartTourBackend.Services;
 
 namespace SmartTourBackend.Controllers;
 
@@ -12,11 +13,12 @@ namespace SmartTourBackend.Controllers;
 public class AnalyticsController : ControllerBase
 {
     private readonly AppDbContext _db;
-    private static readonly TimeSpan DuplicateWindow = TimeSpan.FromSeconds(15);
+    private readonly IAudioListenIngestionService _ingestion;
 
-    public AnalyticsController(AppDbContext db)
+    public AnalyticsController(AppDbContext db, IAudioListenIngestionService ingestion)
     {
         _db = db;
+        _ingestion = ingestion;
     }
 
     [Authorize]
@@ -33,28 +35,11 @@ public class AnalyticsController : ControllerBase
         if (!IsQualifiedListen(dto.DurationSeconds, dto.TotalDurationSeconds, dto.CompletedNaturally))
             return Ok(new { accepted = false, reason = "listen_threshold_not_reached" });
 
-        var now = DateTime.UtcNow;
-        var cutoff = now.Subtract(DuplicateWindow);
+        var accepted = _ingestion.TryEnqueue(dto.PoiId, dto.DurationSeconds, dto.DeviceId, out var reason);
+        if (!accepted)
+            return Ok(new { accepted = false, reason });
 
-        var isDuplicate = await _db.PoiAudioListenEvents.AnyAsync(x =>
-            x.PoiId == dto.PoiId &&
-            x.DeviceId == dto.DeviceId &&
-            x.CreatedAt >= cutoff);
-
-        if (isDuplicate)
-            return Ok(new { accepted = false, reason = "duplicate_window_15s" });
-
-        var evt = new PoiAudioListenEvent
-        {
-            PoiId = dto.PoiId,
-            DurationSeconds = dto.DurationSeconds,
-            DeviceId = dto.DeviceId,
-            CreatedAt = now
-        };
-
-        _db.PoiAudioListenEvents.Add(evt);
-        await _db.SaveChangesAsync();
-        return Ok(new { accepted = true });
+        return Ok(new { accepted = true, queued = true });
     }
 
     [Authorize(Roles = "Admin")]

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using SmartTourBackend.Models;
 using SmartTourBackend.Services;
 
@@ -13,15 +14,18 @@ namespace SmartTourBackend.Controllers
         private readonly UserManager<IdentityUser> _userManager;
         private readonly RoleManager<IdentityRole> _roleManager;
         private readonly IJwtTokenService _jwtTokenService;
+        private readonly IDeviceTokenCacheService _deviceTokenCache;
 
         public AuthController(
             UserManager<IdentityUser> userManager,
             RoleManager<IdentityRole> roleManager,
-            IJwtTokenService jwtTokenService)
+            IJwtTokenService jwtTokenService,
+            IDeviceTokenCacheService deviceTokenCache)
         {
             _userManager = userManager;
             _roleManager = roleManager;
             _jwtTokenService = jwtTokenService;
+            _deviceTokenCache = deviceTokenCache;
         }
 
         // --- 1. ĐĂNG KÝ TÀI KHOẢN (Cho khách trên Mobile App) ---
@@ -96,16 +100,21 @@ namespace SmartTourBackend.Controllers
         }
 
         [AllowAnonymous]
+        [EnableRateLimiting("DeviceTokenPolicy")]
         [HttpPost("device-token")]
         public async Task<IActionResult> DeviceToken([FromBody] DeviceTokenRequest? req)
         {
-            var pseudoUser = new IdentityUser
-            {
-                Id = $"device:{(req?.DeviceId ?? Guid.NewGuid().ToString("N"))}",
-                UserName = req?.DeviceId ?? "device",
-                Email = "device@smarttour.local"
-            };
-            var (token, expiresAtUtc) = await _jwtTokenService.CreateTokenAsync(pseudoUser, new List<string> { "User" });
+            var deviceId = string.IsNullOrWhiteSpace(req?.DeviceId)
+                ? Guid.NewGuid().ToString("N")
+                : req!.DeviceId!.Trim();
+
+            if (deviceId.Length > 128)
+                return BadRequest(new { success = false, message = "deviceId quá dài." });
+
+            var (token, expiresAtUtc) = await _deviceTokenCache.GetOrCreateAsync(
+                deviceId,
+                pseudoUser => _jwtTokenService.CreateTokenAsync(pseudoUser, new List<string> { "User" }));
+
             return Ok(new
             {
                 success = true,

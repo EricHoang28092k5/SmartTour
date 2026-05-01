@@ -109,6 +109,42 @@ builder.Services.AddRateLimiter(options =>
                 QueueLimit = 0
             });
     });
+
+    options.AddPolicy("DeviceTokenPolicy", context =>
+    {
+        var key = context.Connection.RemoteIpAddress?.ToString();
+        if (string.IsNullOrWhiteSpace(key))
+            key = "unknown";
+
+        return RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: key,
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 60,
+                Window = TimeSpan.FromSeconds(10),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            });
+    });
+
+    options.AddPolicy("MoMoCreatePaymentPolicy", context =>
+    {
+        var userId = context.User?.Identity?.Name;
+        if (string.IsNullOrWhiteSpace(userId))
+            userId = context.Connection.RemoteIpAddress?.ToString();
+        if (string.IsNullOrWhiteSpace(userId))
+            userId = "unknown";
+
+        return RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: userId,
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 20,
+                Window = TimeSpan.FromSeconds(10),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            });
+    });
 });
 
 // Cloudinary + VoiceService cho API audio.
@@ -134,9 +170,18 @@ builder.Services.AddSingleton(new Cloudinary(cloudinaryAccount));
 builder.Services.AddScoped<IVoiceService, VoiceService>();
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IAudioPipelineQueue, AudioPipelineQueue>();
+builder.Services.AddSingleton<AudioListenIngestionService>();
+builder.Services.AddSingleton<IAudioListenIngestionService>(sp => sp.GetRequiredService<AudioListenIngestionService>());
+builder.Services.AddSingleton<IAudioListenIngestionQueue>(sp => sp.GetRequiredService<AudioListenIngestionService>());
+builder.Services.AddSingleton<IDeviceTokenCacheService, DeviceTokenCacheService>();
+builder.Services.AddSingleton<MoMoPaymentQueueService>();
+builder.Services.AddSingleton<IMoMoPaymentQueueService>(sp => sp.GetRequiredService<MoMoPaymentQueueService>());
+builder.Services.AddSingleton<IMoMoPaymentQueueReader>(sp => sp.GetRequiredService<MoMoPaymentQueueService>());
 builder.Services.AddSingleton<IAdminKeyValidator, AdminKeyValidator>();
 builder.Services.AddSingleton<RequestMetrics>();
 builder.Services.AddHostedService<AudioPipelineWorker>();
+builder.Services.AddHostedService<AudioListenIngestionWorker>();
+builder.Services.AddHostedService<MoMoPaymentWorker>();
 
 var app = builder.Build();
 
