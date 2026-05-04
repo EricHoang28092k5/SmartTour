@@ -2,8 +2,8 @@
 
 | Thuộc tính | Giá trị |
 | --- | --- |
-| **Phiên bản tài liệu** | **7.1** |
-| **Ngày cập nhật** | **2026-04-17** |
+| **Phiên bản tài liệu** | **7.2** |
+| **Ngày cập nhật** | **2026-05-04** |
 | **Trạng thái** | Đồng bộ với mã nguồn trong repo (đã bổ sung các chức năng mới) |
 | **Mục đích** | Mô tả yêu cầu sản phẩm; bám sát chức năng đã triển khai và chuẩn hóa tài liệu để báo cáo đồ án. |
 
@@ -513,6 +513,9 @@ flowchart TB
     C16([View Online Devices])
     C17([Create Premium Payment MoMo])
     C18([Handle MoMo Return and IPN])
+    C19([Poll/Confirm Payment Order Status])
+    C20([Queue MoMo Create Payment Worker])
+    C21([Queue Audio Listen Ingestion])
 
     V --> C1
     V --> C2
@@ -547,6 +550,11 @@ flowchart TB
     AD --> C16
     AD --> C17
     AD --> C18
+    AD --> C19
+    AD --> C20
+    AD --> C21
+    V --> C19
+    V --> C20
 ```
 
 ## 12. Sequence diagram
@@ -934,6 +942,83 @@ sequenceDiagram
     end
 ```
 
+### 12.28 Xếp hàng tạo thanh toán MoMo và xử lý nền
+```mermaid
+sequenceDiagram
+    actor U as Staff
+    participant CMS as PremiumController
+    participant API as VendorPremiumController
+    participant Q as MoMoPaymentQueue
+    participant W as MoMoPaymentWorker
+    participant MOMO as MoMoGateway
+    participant DB as PostgreSQL
+    U->>CMS: Bấm tạo thanh toán Premium
+    CMS->>API: POST /api/vendor/premium/create-payment-cms
+    API->>DB: Insert VendorPremiumOrder (pending)
+    API->>Q: TryEnqueue(orderId)
+    alt Queue full
+      API->>DB: Mark failed (queue_full)
+      API-->>CMS: 429 server busy
+    else Enqueue thành công
+      API-->>CMS: 202 Accepted (queued=true)
+      W->>Q: Read job
+      W->>DB: Update status creating_provider
+      W->>MOMO: POST create payment
+      alt MoMo trả payUrl/deeplink/qrCodeUrl hợp lệ
+        W->>DB: Update status awaiting_payment + lưu payload
+      else MoMo lỗi
+        W->>DB: Update status failed + LastError
+      end
+    end
+```
+
+### 12.29 CMS polling trạng thái đơn Premium và đối soát provider
+```mermaid
+sequenceDiagram
+    actor U as Staff
+    participant RET as Return/Checkout Page
+    participant CMS as PremiumController
+    participant API as VendorPremiumController
+    participant MOMO as MoMoGateway
+    participant DB as PostgreSQL
+    loop Polling định kỳ
+      RET->>CMS: GET /Premium/GetPaymentStatus?orderId=...
+      CMS->>API: POST /api/vendor/premium/order-status-cms
+      API->>DB: Load VendorPremiumOrder
+      alt forceProviderCheck = true và chưa paid
+        API->>MOMO: POST query status
+        MOMO-->>API: resultCode + transId
+        API->>DB: Sync trạng thái paid/failed
+      end
+      API->>DB: Đọc Poi premium state
+      API-->>CMS: status + payUrl + premiumExpiresAt
+      CMS-->>RET: JSON trạng thái mới
+    end
+```
+
+### 12.30 Ghi nhận lượt nghe audio qua hàng đợi ingestion
+```mermaid
+sequenceDiagram
+    actor APP as MobileApp
+    participant API as AnalyticsController
+    participant ING as AudioListenIngestionService
+    participant Q as ChannelQueue
+    participant W as AudioListenIngestionWorker
+    participant DB as PostgreSQL
+    APP->>API: POST /api/analytics/poi-audio-listen
+    API->>API: Validate payload + threshold nghe
+    API->>ING: TryEnqueue(poiId, duration, deviceId)
+    alt duplicate_window_15s hoặc queue_full
+      ING-->>API: accepted=false + reason
+      API-->>APP: accepted=false
+    else accepted
+      ING->>Q: Push event
+      API-->>APP: accepted=true, queued=true
+      W->>Q: Read batch events
+      W->>DB: Bulk insert PoiAudioListenEvents
+    end
+```
+
 ## 13. Activity diagram
 ### 13.1 Đăng nhập và phân quyền (Admin)
 ```mermaid
@@ -1203,6 +1288,53 @@ flowchart TD
     F --> G
 ```
 
+### 13.28 Queue tạo thanh toán MoMo
+```mermaid
+flowchart TD
+    A[User bấm tạo payment] --> B[API tạo order pending]
+    B --> C{TryEnqueue thành công?}
+    C -- Không --> D[Order failed queue_full + trả 429]
+    C -- Có --> E[Trả queued cho CMS]
+    E --> F[Worker lấy job]
+    F --> G[Gọi MoMo create]
+    G --> H{MoMo trả URL hợp lệ?}
+    H -- Có --> I[Order awaiting_payment]
+    H -- Không --> J[Order failed + LastError]
+    I --> K[Kết thúc]
+    J --> K
+    D --> K
+```
+
+### 13.29 Polling trạng thái đơn Premium
+```mermaid
+flowchart TD
+    A[Checkout/Return poll status] --> B[CMS gọi order-status-cms]
+    B --> C[API đọc order]
+    C --> D{Force provider check?}
+    D -- Có --> E[Gọi MoMo query]
+    E --> F[Sync paid or failed]
+    D -- Không --> G[Giữ trạng thái DB]
+    F --> H[Trả status + premium info]
+    G --> H
+    H --> I[UI cập nhật trạng thái]
+```
+
+### 13.30 Queue ingestion lượt nghe audio
+```mermaid
+flowchart TD
+    A[App gửi poi-audio-listen] --> B[Validate payload + ngưỡng nghe]
+    B --> C{Qua dedup 15s?}
+    C -- Không --> D[Reject duplicate]
+    C -- Có --> E{Queue còn chỗ?}
+    E -- Không --> F[Reject queue full]
+    E -- Có --> G[Accept queued=true]
+    G --> H[Worker gom batch]
+    H --> I[Insert PoiAudioListenEvents]
+    D --> J[Kết thúc]
+    F --> J
+    I --> J
+```
+
 ## 14. Data Flow Diagram (DFD Level 1)
 ```mermaid
 flowchart LR
@@ -1306,6 +1438,18 @@ flowchart LR
 - `POST /Premium/CreatePayment`
 - `GET /payment/return`
 - `POST /payment/momo-ipn`
+- `GET /Premium/GetPaymentStatus?orderId=...&forceProviderCheck=...`
+- `POST /api/vendor/premium/create-payment`
+- `POST /api/vendor/premium/create-payment-cms`
+- `POST /api/vendor/premium/order-status`
+- `POST /api/vendor/premium/order-status-cms`
+
+### 16.7 Auth/Device Token
+- `POST /api/auth/device-token`
+
+### 16.8 Analytics Ingestion
+- `POST /api/analytics/poi-audio-listen`
+- `GET /api/analytics/poi-audio-listen-stats`
 
 ## 17. Bảo mật và phân quyền
 - Dùng Identity để xác thực và phân quyền role `Admin`, `Vendor`.
@@ -1363,3 +1507,4 @@ Checklist nghiệm thu theo chức năng:
 | 6.2 | 2026-04-09 | Bổ sung đầy đủ mô hình chức năng Food: CRUD ở Use Case, Sequence, Activity, DFD, UI, API và nghiệm thu |
 | 7.0 | 2026-04-16 | Cập nhật lại UML bám sát code hiện tại: Use Case có include/extend + actor icon, tách Sequence/Activity theo từng chức năng, vẽ lại ERD theo bảng đang dùng |
 | 7.1 | 2026-04-17 | Bổ sung chức năng mới còn thiếu: Device Presence (online/offline), Premium MoMo (create payment + IPN), cập nhật Use Case + Sequence + Activity + API + Checklist nghiệm thu |
+| 7.2 | 2026-05-04 | Bổ sung mô hình mới theo commit gần đây: queue tạo payment MoMo, polling/đối soát order status, queue ingestion audio listen; cập nhật API tương ứng |
