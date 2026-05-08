@@ -12,8 +12,15 @@ using System.Linq;
 namespace SmartTourCMS.Controllers
 {
     [Authorize(Roles = "Admin,Vendor")]
+    /// <summary>
+    /// Dashboard CMS:
+    /// - Tổng hợp số liệu POI/Tour/Translation theo quyền
+    /// - Cấp dữ liệu chart lượt nghe
+    /// - Theo dõi thiết bị online/offline theo heartbeat
+    /// </summary>
     public class HomeController : Controller
     {
+        // Thiết bị được xem là online nếu heartbeat trong vòng 20 giây.
         private const int ActiveThresholdSeconds = 20;
         private readonly ILogger<HomeController> _logger;
         private readonly AppDbContext _context;
@@ -56,6 +63,7 @@ namespace SmartTourCMS.Controllers
 
             if (!isAdmin)
             {
+                // Vendor chỉ thấy log thuộc POI của mình (nhiều điều kiện để tương thích dữ liệu cũ).
                 playLogQuery = playLogQuery.Where(l =>
                     l.Poi != null &&
                     l.Poi.ApprovalStatus == "approved" &&
@@ -91,6 +99,7 @@ namespace SmartTourCMS.Controllers
 
             ViewBag.ChartData = chartData;
 
+            // Mốc online = hiện tại - ngưỡng heartbeat.
             var onlineThreshold = DateTime.UtcNow.AddSeconds(-ActiveThresholdSeconds);
             if (isAdmin)
             {
@@ -126,38 +135,41 @@ namespace SmartTourCMS.Controllers
         [Route("api/cms-dashboard/poi-stats")]
         public async Task<IActionResult> GetDashboardPoiStats()
         {
+            // xác định danh tính để show là view dashboard
             var user = await _userManager.GetUserAsync(User);
             if (user == null) return Unauthorized(new { success = false, message = "Unauthorized" });
 
             var isAdmin = await _userManager.IsInRoleAsync(user, "Admin");
             var isVendor = await _userManager.IsInRoleAsync(user, "Vendor");
-
+            //
             var query = _context.PlayLog.Include(l => l.Poi).AsQueryable();
             if (isVendor || !isAdmin)
             {
                 query = query.Where(l =>
                     l.Poi != null &&
-                    l.Poi.ApprovalStatus == "approved" &&
+                    l.Poi.ApprovalStatus == "approved" &&          //chỉ lấy địa điểm đã duyệt
                     (l.Poi.VendorId == user.Id ||
                      l.Poi.CreatedBy == user.Id ||
                      l.Poi.CreatedBy == user.Email ||
                      l.Poi.CreatedBy == user.UserName));
+                //kiểm tra cácc tầng để chắc rằng poi thuộc sỡ hữu người vendor đó
             }
             else
             {
-                query = query.Where(l => l.Poi != null && l.Poi.ApprovalStatus == "approved");
+                query = query.Where(l => l.Poi != null && l.Poi.ApprovalStatus == "approved"); //admin được đi hết
+
             }
 
             var data = await query
                 .Where(l => l.Poi != null)
-                .GroupBy(l => l.Poi.Name)
+                .GroupBy(l => l.Poi.Name) //nhóm theo tên địa điểm
                 .Select(g => new
                 {
                     poiName = g.Key,
-                    totalPlays = g.Count()
+                    totalPlays = g.Count() //đếm số lượt nghe
                 })
-                .OrderByDescending(x => x.totalPlays)
-                .Take(10)
+                .OrderByDescending(x => x.totalPlays) //sắp xếp từ cao xuống thấp
+                .Take(10) //chỉ lấy 10 địa đi
                 .ToListAsync();
 
             return Ok(new { success = true, data });
@@ -165,16 +177,16 @@ namespace SmartTourCMS.Controllers
 
         [HttpGet]
         [Route("api/cms-dashboard/device-status")]
-        public async Task<IActionResult> GetDeviceStatus()
+        public async Task<IActionResult> GetDeviceStatus() // API để dashboard gọi lấy trạng thái thiết bị online/offline
         {
-            var user = await _userManager.GetUserAsync(User);
-            if (user == null) return Unauthorized(new { success = false, message = "Unauthorized" });
+            var user = await _userManager.GetUserAsync(User); // Xác định danh tính để đảm bảo chỉ admin mới được xem trạng thái thiết bị. Vendor không được xem.
+            if (user == null) return Unauthorized(new { success = false, message = "Unauthorized" }); // Nếu không xác định được user thì trả về lỗi 401 Unauthorized.
             var isAdmin = await _userManager.IsInRoleAsync(user, "Admin");
-            if (!isAdmin) return Forbid();
+            if (!isAdmin) return Forbid(); // Nếu user không phải admin thì trả về lỗi 403 Forbidden vì họ không có quyền truy cập API này.
 
-            var onlineThreshold = DateTime.UtcNow.AddSeconds(-ActiveThresholdSeconds);
-            var devices = await GetDeviceStatusesSafeAsync(onlineThreshold);
-            return Ok(new
+            var onlineThreshold = DateTime.UtcNow.AddSeconds(-ActiveThresholdSeconds); // Tính mốc thời gian để xác định thiết bị nào được xem là online (ví dụ: nếu ActiveThresholdSeconds = 20 thì mốc sẽ là thời điểm hiện tại trừ đi 20 giây, tức là những thiết bị có LastSeenUtc sau mốc này sẽ được xem là online).
+            var devices = await GetDeviceStatusesSafeAsync(onlineThreshold); // Gọi hàm lấy trạng thái thiết bị một cách an toàn, tránh lỗi nếu bảng DevicePresences chưa tồn tại hoặc có vấn đề kết nối cơ sở dữ liệu. Hàm này sẽ trả về danh sách các thiết bị cùng với cờ IsActive đã được tính toán dựa trên mốc thời gian onlineThreshold.
+            return Ok(new // Trả về kết quả dưới dạng JSON, bao gồm:
             {
                 success = true,
                 thresholdSeconds = ActiveThresholdSeconds,
@@ -188,30 +200,31 @@ namespace SmartTourCMS.Controllers
         {
             return View(new SmartTourCMS.Models.ErrorViewModel
             {
-                RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier
+                RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier       // Trả về RequestId để tiện cho việc debug khi có lỗi xảy ra.
             });
         }
 
-        private async Task<List<DeviceStatusViewModel>> GetDeviceStatusesSafeAsync(DateTime onlineThresholdUtc)
+        private async Task<List<DeviceStatusViewModel>> GetDeviceStatusesSafeAsync(DateTime onlineThresholdUtc) // Hàm này sẽ cố gắng lấy danh sách trạng thái thiết bị từ cơ sở dữ liệu, nhưng sẽ bắt lỗi nếu có vấn đề (như bảng chưa tồn tại) và trả về một danh sách rỗng thay vì làm sập ứng dụng.
         {
             try
             {
-                return await _context.DevicePresences
+                return await _context.DevicePresences // Truy cập vào bảng DevicePresences để lấy thông tin về các thiết bị đã kết nối.
                     .AsNoTracking()
                     .OrderByDescending(d => d.LastSeenUtc)
-                    .Take(300)
+                    .Take(300) // Giới hạn để dashboard nhẹ, tránh render quá tải.
                     .Select(d => new DeviceStatusViewModel
                     {
                         DeviceId = d.DeviceId,
-                        IpAddress = d.IpAddress,
+                        IpAddress = d.IpAddress+"ngu lon the",
                         DeviceModel = d.DeviceModel,
                         Platform = d.Platform,
                         OsVersion = d.OsVersion,
                         AppVersion = d.AppVersion,
                         UserAgent = d.UserAgent,
                         LastSeenUtc = d.LastSeenUtc,
+                        // IsActive là cờ tính động, không lưu cứng trong DB.
                         IsActive = d.LastSeenUtc >= onlineThresholdUtc
-                    })
+                    }) // Chuyển đổi dữ liệu từ entity DevicePresence sang view model DeviceStatusViewModel, đồng thời tính toán cờ IsActive dựa trên mốc thời gian onlineThresholdUtc.
                     .ToListAsync();
             }
             catch (Exception ex)

@@ -8,6 +8,12 @@ using SmartTourBackend.Data;
 namespace SmartTourCMS.Controllers
 {
     [Authorize(Roles = "Admin,Vendor")]
+    /// <summary>
+    /// Quản lý bản dịch POI:
+    /// - Vendor chỉ xem/sửa dữ liệu thuộc POI của mình
+    /// - Admin có toàn quyền
+    /// - Chỉnh script/audio trực tiếp bị chặn cho Vendor (đi qua ScriptRequest)
+    /// </summary>
     public class TranslationController : Controller
     {
         private readonly AppDbContext _context;
@@ -25,7 +31,7 @@ namespace SmartTourCMS.Controllers
             var poi = await _context.Pois.FindAsync(poiId);
             if (poi == null) return NotFound();
 
-            // BẢO MẬT: Phải là Admin hoặc đúng chủ của POI mới được xem danh sách dịch
+            // Bảo mật theo ownership, tránh vendor xem POI vendor khác.
             var user = await _userManager.GetUserAsync(User);
             if (!await _userManager.IsInRoleAsync(user, "Admin") && poi.VendorId != user.Id)
             {
@@ -65,7 +71,7 @@ namespace SmartTourCMS.Controllers
             var poi = await _context.Pois.FindAsync(translation.PoiId);
             if (poi == null) return NotFound();
 
-            // BẢO MẬT: Tránh hacker chọc ngoáy truyền poiId của người khác vào form
+            // Chặn trường hợp giả mạo poiId từ form post.
             var user = await _userManager.GetUserAsync(User);
             if (!await _userManager.IsInRoleAsync(user, "Admin") && poi.VendorId != user.Id) return Forbid();
 
@@ -128,6 +134,7 @@ namespace SmartTourCMS.Controllers
             if (!isAdmin && existingTranslation.Poi.VendorId != user.Id) return Forbid();
             if (!isAdmin)
             {
+                // Quy ước dự án: Vendor không sửa script trực tiếp để đảm bảo quy trình duyệt.
                 TempData["Error"] = "Vendor không được chỉnh trực tiếp script/audio. Vui lòng gửi yêu cầu tại mục Yêu cầu script.";
                 return RedirectToAction("Index", "ScriptRequest");
             }

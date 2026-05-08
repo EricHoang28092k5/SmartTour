@@ -10,6 +10,12 @@ using SmartTourBackend.Data;
 namespace SmartTourCMS.Controllers
 {
     [Authorize(Roles = "Admin,Vendor")]
+    /// <summary>
+    /// Quản lý Tour:
+    /// - CRUD Tour + mapping TourPoi theo thứ tự OrderIndex
+    /// - Tự tạo TourTranslation theo danh sách ngôn ngữ
+    /// - Lọc quyền: Vendor chỉ thao tác tour của mình
+    /// </summary>
     public class TourController : Controller
     {
         private readonly AppDbContext _context;
@@ -63,11 +69,11 @@ namespace SmartTourCMS.Controllers
         {
             if (ModelState.IsValid)
             {
-                // 1. Lưu Tour xuống để lấy ID trước
+                // Lưu tour trước để có TourId, sau đó mới map được các TourPoi con.
                 _context.Tours.Add(tour);
                 await _context.SaveChangesAsync();
 
-                // 2. Lấy đống ID trong cái rổ ráp vào bảng TourPoi 
+                // Map POI vào tour theo thứ tự chọn (OrderIndex dùng cho hiển thị lộ trình).
                 if (tour.SelectedPoiIds != null && tour.SelectedPoiIds.Any())
                 {
                     int stt = 1;
@@ -90,6 +96,7 @@ namespace SmartTourCMS.Controllers
                 // ==========================================
                 // 3. AUTO TRANSLATE TÊN VÀ MÔ TẢ (Anh, Hàn, Nhật)
                 // ==========================================
+                // Lấy ngôn ngữ từ DB để luôn đồng bộ với cấu hình hệ thống.
                 var targetLanguages = await _context.Languages
                                                          .Select(l => l.Code)
                                                          .ToListAsync();
@@ -136,7 +143,8 @@ namespace SmartTourCMS.Controllers
             if (id == null) return NotFound();
 
             var tour = await _context.Tours
-                .Include(t => t.TourTranslations) // BÙA KÉO BẢN DỊCH LÊN: ĐÉO CÓ DÒNG NÀY LÀ MÙ MẮT NHÉ
+                // Include để view Details có đủ dữ liệu dịch, tránh query lặp lại.
+                .Include(t => t.TourTranslations)
                 .Include(t => t.TourPois.OrderBy(tp => tp.OrderIndex))
                     .ThenInclude(tp => tp.Poi)
                 .FirstOrDefaultAsync(m => m.Id == id);
@@ -175,6 +183,7 @@ namespace SmartTourCMS.Controllers
             {
                 try
                 {
+                    // Chuẩn hóa UTC để đồng nhất khi so sánh/sort giữa app và server.
                     tour.CreatedAt = DateTime.SpecifyKind(tour.CreatedAt, DateTimeKind.Utc);
                     _context.Update(tour);
 

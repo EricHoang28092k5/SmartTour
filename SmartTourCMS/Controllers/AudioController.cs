@@ -11,6 +11,11 @@ using SmartTourBackend.Data;
 namespace SmartTourCMS.Controllers
 {
     [Authorize(Roles = "Admin,Vendor")]
+    /// <summary>
+    /// Controller này giữ route cũ để tương thích điều hướng,
+    /// nhưng nghiệp vụ upload audio thủ công đã bị tắt.
+    /// Audio hiện được tạo theo translation/pipeline.
+    /// </summary>
     public class AudioController : Controller
     {
         private readonly AppDbContext _context;
@@ -22,7 +27,7 @@ namespace SmartTourCMS.Controllers
             _context = context;
             _userManager = userManager;
 
-            // Cách tốt hơn: Đọc từ appsettings.json hoặc Environment cho linh hoạt
+            // Vẫn khởi tạo Cloudinary để không phá constructor cũ, dù luồng upload đã disable.
             var account = new Account(
                 configuration["Cloudinary:CloudName"] ?? Environment.GetEnvironmentVariable("CLOUDINARY_CLOUD_NAME"),
                 configuration["Cloudinary:ApiKey"] ?? Environment.GetEnvironmentVariable("CLOUDINARY_API_KEY"),

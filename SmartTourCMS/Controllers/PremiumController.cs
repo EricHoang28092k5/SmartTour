@@ -10,6 +10,12 @@ using SmartTour.Shared.Models;
 namespace SmartTourCMS.Controllers;
 
 [Authorize(Roles = "Admin,Vendor")]
+/// <summary>
+/// Luồng Premium trên CMS:
+/// - Hiển thị POI đủ điều kiện nâng cấp
+/// - Tạo thanh toán qua backend proxy (internal key)
+/// - Poll trạng thái order và hiển thị trang return
+/// </summary>
 public class PremiumController : Controller
 {
     private static readonly HttpClient Http = new();
@@ -60,6 +66,7 @@ public class PremiumController : Controller
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
         if (string.IsNullOrWhiteSpace(userId)) return RedirectToAction("Login", "Account");
 
+        // CMS không gọi MoMo trực tiếp: gọi backend API để tập trung verify/signature một nơi.
         var apiSettings = ReadBackendApiSettings(_config);
         if (!apiSettings.IsConfigured)
         {
@@ -89,6 +96,7 @@ public class PremiumController : Controller
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, $"{apiSettings.BaseUrl.TrimEnd('/')}/api/vendor/premium/create-payment-cms");
+            // Internal key giúp backend phân biệt call nội bộ từ CMS.
             request.Headers.Add("X-Internal-Key", apiSettings.InternalKey);
             request.Content = JsonContent.Create(new CmsCreatePremiumPaymentRequest
             {
@@ -119,6 +127,7 @@ public class PremiumController : Controller
             var payUrl = dataEl.TryGetProperty("payUrl", out var payUrlEl) ? payUrlEl.GetString() ?? string.Empty : string.Empty;
             var deeplink = dataEl.TryGetProperty("deeplink", out var deeplinkEl) ? deeplinkEl.GetString() : null;
             var qrCodeUrl = dataEl.TryGetProperty("qrCodeUrl", out var qrCodeUrlEl) ? qrCodeUrlEl.GetString() : null;
+            // Ưu tiên deeplink (mobile wallet), fallback payUrl (web checkout).
             var checkoutUrl = !string.IsNullOrWhiteSpace(deeplink) ? deeplink : payUrl;
             var qrSource = !string.IsNullOrWhiteSpace(qrCodeUrl) ? qrCodeUrl : checkoutUrl;
             if (string.IsNullOrWhiteSpace(orderId) || string.IsNullOrWhiteSpace(checkoutUrl))
@@ -215,6 +224,7 @@ public class PremiumController : Controller
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, $"{apiSettings.BaseUrl.TrimEnd('/')}/api/vendor/premium/order-status-cms");
+            // forceProviderCheck=true cho phép backend query MoMo realtime thay vì chỉ đọc DB local.
             request.Headers.Add("X-Internal-Key", apiSettings.InternalKey);
             request.Content = JsonContent.Create(new CmsPremiumOrderStatusRequest
             {

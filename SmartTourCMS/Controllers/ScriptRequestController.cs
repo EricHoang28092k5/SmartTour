@@ -8,6 +8,12 @@ using SmartTourBackend.Data;
 namespace SmartTourCMS.Controllers;
 
 [Authorize(Roles = "Admin,Vendor")]
+/// <summary>
+/// Quy trình yêu cầu đổi script:
+/// - Vendor gửi request chỉnh TTS script
+/// - Admin duyệt/từ chối
+/// - Khi duyệt thì đẩy job vào AudioPipeline để tạo audio mới
+/// </summary>
 public class ScriptRequestController : Controller
 {
     private readonly AppDbContext _db;
@@ -27,6 +33,7 @@ public class ScriptRequestController : Controller
 
         IQueryable<ScriptChangeRequest> q = _db.ScriptChangeRequests.AsQueryable();
         if (!await _userManager.IsInRoleAsync(user, "Admin"))
+            // Vendor chỉ xem request do chính mình tạo.
             q = q.Where(x => x.CreatedByUserId == user.Id);
 
         var data = await q.OrderByDescending(x => x.CreatedAt).Take(200).ToListAsync();
@@ -72,7 +79,7 @@ public class ScriptRequestController : Controller
             PoiId = poiId,
             LanguageCode = string.IsNullOrWhiteSpace(languageCode) ? "en" : languageCode.Trim().ToLowerInvariant(),
             NewScript = newScript.Trim(),
-            Status = "pending",
+            Status = "pending", // Trạng thái đầu vào: chờ admin duyệt.
             CreatedByUserId = user.Id,
             CreatedAt = DateTime.UtcNow
         });
@@ -112,6 +119,7 @@ public class ScriptRequestController : Controller
             return RedirectToAction(nameof(Pending));
         }
 
+        // Duyệt request = cập nhật script + tạo job pipeline tạo audio mới.
         translation.TtsScript = req.NewScript;
         req.Status = "approved";
         req.ReviewedAt = DateTime.UtcNow;

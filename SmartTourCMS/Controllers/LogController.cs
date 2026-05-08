@@ -7,6 +7,11 @@ using SmartTourBackend.Data;
 namespace SmartTourCMS.Controllers
 {
     [Authorize(Roles = "Admin,Vendor")]
+    /// <summary>
+    /// Màn hình log vận hành:
+    /// - Log vị trí đã tắt theo cấu hình rút gọn
+    /// - Log nghe audio (PlayLog) có phân quyền theo role
+    /// </summary>
     public class LogController : Controller
     {
         private readonly AppDbContext _context;
@@ -38,11 +43,10 @@ namespace SmartTourCMS.Controllers
             var isAdmin = await _userManager.IsInRoleAsync(user, "Admin");
             var isVendor = await _userManager.IsInRoleAsync(user, "Vendor");
 
-            // Khởi tạo câu truy vấn cơ bản
+            // Query gốc cho bảng log nghe audio.
             var query = _context.PlayLog.Include(l => l.Poi).AsQueryable();
 
-            // Nếu user có role Vendor (kể cả lỡ gán thêm Admin), vẫn chỉ xem log POI của vendor đó.
-            // Chỉ Admin thuần mới được xem toàn bộ.
+            // Nếu có role Vendor thì vẫn ép lọc theo ownership để tránh nhìn thấy log ngoài phạm vi.
             if (isVendor || !isAdmin)
             {
                 query = query.Where(l =>

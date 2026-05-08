@@ -10,6 +10,11 @@ namespace SmartTourCMS.Controllers
 {
     // Bùa chú: Chỉ Trùm cuối (Admin) mới được quyền thêm/sửa Danh mục
     [Authorize(Roles = "Admin")]
+    /// <summary>
+    /// Quản lý danh mục POI:
+    /// - Danh sách category
+    /// - Tạo category mới và upload icon lên Cloudinary
+    /// </summary>
     public class CategoryController : Controller
     {
         private readonly AppDbContext _context;
@@ -34,8 +39,6 @@ namespace SmartTourCMS.Controllers
         // --- 3. TẠO MỚI (POST) - CÓ UP ẢNH ICON LÊN CLOUDINARY ---
         [HttpPost]
         [ValidateAntiForgeryToken]
-        // --- 3. TẠO MỚI (POST) - CÓ UP ẢNH ICON LÊN CLOUDINARY ---
-        [HttpPost]
         public async Task<IActionResult> Create(Category category, IFormFile? iconFile)
         {
             if (ModelState.IsValid)
@@ -52,7 +55,7 @@ namespace SmartTourCMS.Controllers
                     category.IconUrl = uploadResult.SecureUrl.ToString();
                 }
 
-                // Nếu không nhập mã màu thì gán mặc định màu xám
+                // Đặt màu mặc định để UI không bị null style.
                 if (string.IsNullOrEmpty(category.ColorCode))
                 {
                     category.ColorCode = "#808080";

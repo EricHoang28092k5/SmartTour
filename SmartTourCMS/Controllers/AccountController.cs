@@ -5,6 +5,12 @@ using SmartTourCMS.Models;
 
 namespace SmartTourCMS.Controllers
 {
+    /// <summary>
+    /// Controller xử lý vòng đời đăng nhập CMS:
+    /// - Login/Logout bằng ASP.NET Identity cookie
+    /// - Điều hướng AccessDenied khi sai quyền
+    /// - Đổi mật khẩu cho user đang đăng nhập
+    /// </summary>
     public class AccountController : Controller
     {
         private readonly SignInManager<IdentityUser> _signInManager;
@@ -37,6 +43,8 @@ namespace SmartTourCMS.Controllers
             }
 
             // Thực hiện đăng nhập
+            // isPersistent=true: giữ cookie đăng nhập sau khi đóng/mở trình duyệt.
+            // lockoutOnFailure=false: không tự khóa tài khoản khi nhập sai liên tục.
             var result = await _signInManager.PasswordSignInAsync(username, password, isPersistent: true, lockoutOnFailure: false);
 
             if (result.Succeeded)
@@ -44,6 +52,7 @@ namespace SmartTourCMS.Controllers
                 // Nếu có link cũ (ReturnUrl) thì quay lại đó, không thì về Home
                 if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
                 {
+                    // Url.IsLocalUrl để chặn open redirect (redirect ra domain ngoài).
                     return Redirect(returnUrl);
                 }
                 return RedirectToAction("Index", "Home");

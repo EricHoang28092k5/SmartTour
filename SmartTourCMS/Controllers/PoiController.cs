@@ -16,6 +16,12 @@ using X.PagedList.Extensions;
 namespace SmartTourCMS.Controllers
 {
     [Authorize(Roles = "Admin,Vendor")]
+    /// <summary>
+    /// Quản lý POI trên CMS:
+    /// - CRUD POI có phân quyền Admin/Vendor
+    /// - Luồng duyệt POI (pending/approved/rejected)
+    /// - Tạo lại translation/audio và xử lý script
+    /// </summary>
     public class PoiController : Controller
     {
         private readonly AppDbContext _context;
@@ -57,7 +63,7 @@ namespace SmartTourCMS.Controllers
                 query = query.Where(p => p.VendorId == user.Id);
             }
 
-            // Ép nó lấy dữ liệu ra List trước (để C# so sánh không dấu)
+            // Chủ động ToList trước vì RemoveDiacritics không translate được sang SQL.
             var poiList = await query.OrderByDescending(p => p.Id).ToListAsync();
 
             if (!string.IsNullOrWhiteSpace(search))
@@ -83,7 +89,7 @@ namespace SmartTourCMS.Controllers
             {
                 ViewBag.CurrentTab = "active";
             }
-
+            //ViewBag.CountPoi = poiList.Count;
             const int pageSize = 10;
             var pageNumber = page ?? 1;
             var pagedList = poiList.ToPagedList(pageNumber, pageSize);
@@ -198,7 +204,7 @@ namespace SmartTourCMS.Controllers
                 poi.VendorId = existing.VendorId;
                 if (!isAdmin)
                 {
-                    // Vendor sửa POI sẽ chuyển về pending để Admin duyệt.
+                    // Vendor không được sửa "live": phải tạo snapshot + chuyển pending.
                     var note = new PendingPoiApprovalNote
                     {
                         RequestType = "edit",
@@ -221,7 +227,7 @@ namespace SmartTourCMS.Controllers
                 poi.ApprovalNote = existing.ApprovalNote;
                 _context.Update(poi);
 
-                // Admin sửa trực tiếp: nếu đổi nội dung thì làm mới translation/audio.
+                // Admin sửa trực tiếp: nếu nội dung đổi, xóa bản dịch cũ để rebuild tránh lệch audio/script.
                 if (poi.ApprovalStatus == "approved" && poi.Description != existing.Description)
                 {
                     var oldTrans = _context.PoiTranslations.Where(t => t.PoiId == id);
@@ -366,6 +372,7 @@ namespace SmartTourCMS.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> RegenerateTranslationAudios(int poiId)
         {
+            //phan quyen
             var poi = await _context.Pois.AsNoTracking().FirstOrDefaultAsync(p => p.Id == poiId);
             if (poi == null) return NotFound();
 
@@ -373,7 +380,8 @@ namespace SmartTourCMS.Controllers
             if (user == null) return RedirectToAction("Login", "Account");
             var isAdmin = await _userManager.IsInRoleAsync(user, "Admin");
             if (!isAdmin && poi.VendorId != user.Id) return Forbid();
-
+            //
+            //Lấy toàn bộ danh sách các bản dịch của POI này.
             var translations = await _context.PoiTranslations
                 .Where(t => t.PoiId == poiId)
                 .ToListAsync();
@@ -389,17 +397,17 @@ namespace SmartTourCMS.Controllers
             {
                 if (!string.IsNullOrWhiteSpace(t.AudioUrl))
                 {
-                    skipped++;
+                    skipped++;      //kt xem có audio chưa nếu chưa skipp
                     continue;
                 }
 
-                var script = t.TtsScript ?? t.Description;
-                if (string.IsNullOrWhiteSpace(script)) continue;
+                var script = t.TtsScript ?? t.Description; // nếu chưa có tts thì lấy script
+                if (string.IsNullOrWhiteSpace(script)) continue; //lấy scritp
 
                 var langCode = langs.TryGetValue(t.LanguageId, out var lang)
-                    ? ResolveTtsVoiceLanguageCode(lang.Code)
+                    ? ResolveTtsVoiceLanguageCode(lang.Code)     //chuyểnn ngôn ngữ hệ thống sang dạng chuẩn
                     : "vi-VN";
-                var url = await _voiceService.GenerateAndUploadAudio(script, langCode);
+                var url = await _voiceService.GenerateAndUploadAudio(script, langCode); //upload audio
                 if (string.IsNullOrWhiteSpace(url)) missing++;
                 else
                 {
@@ -414,7 +422,7 @@ namespace SmartTourCMS.Controllers
             else
                 TempData["AudioSuccess"] = $"Đã tạo audio cho {generated} bản dịch thiếu. Bỏ qua {skipped} bản dịch đã có audio.";
 
-            return RedirectToAction("Index", "Translation", new { poiId });
+            return RedirectToAction("Index", "Translation", new { poiId }); // quay vêf bản dịch để thấy kq
         }
 
         [HttpPost]
@@ -432,7 +440,7 @@ namespace SmartTourCMS.Controllers
 
             try
             {
-                // Dọn dữ liệu liên quan (ĐÃ XÓA TOUR VÀ ROUTE THEO YÊU CẦU CỦA MÀY)
+                // Xóa theo thứ tự phụ thuộc để tránh FK conflict khi không bật cascade đầy đủ.
                 var poiTranslations = _context.PoiTranslations.Where(x => x.PoiId == id);
                 var poiImages = _context.PoiImages.Where(x => x.PoiId == id);
                 var foods = _context.Food.Where(x => x.PoiId == id);
@@ -465,6 +473,7 @@ namespace SmartTourCMS.Controllers
         {
             var languages = await GetOrderedLanguagesAsync();
 
+            // Luôn đảm bảo có EN để app có fallback đọc ổn định.
             if (!languages.Any(l => NormalizeTranslateLanguageCode(l.Code) == "en"))
             {
                 var enLang = new Language { Name = "English", Code = "en" };
@@ -482,7 +491,7 @@ namespace SmartTourCMS.Controllers
                 var item = await BuildPoiTranslationAsync(poi, baseScript, sourceLang, lang);
                 translatedItems.Add(item);
 
-                // Nghỉ 500ms chống Google block
+                // Giãn nhịp gọi translate để giảm bị chặn khi gọi dồn.
                 await Task.Delay(500);
             }
 
@@ -571,6 +580,7 @@ namespace SmartTourCMS.Controllers
                 return text;
             try
             {
+                // Dùng endpoint translate public (gtx), lỗi sẽ fallback text gốc để không chặn luồng tạo POI.
                 var res = await _httpClient.GetStringAsync(
                     $"https://translate.googleapis.com/translate_a/single?client=gtx&sl={Uri.EscapeDataString(sourceLang)}&tl={Uri.EscapeDataString(targetLang)}&dt=t&q={Uri.EscapeDataString(text)}");
                 using var doc = JsonDocument.Parse(res);

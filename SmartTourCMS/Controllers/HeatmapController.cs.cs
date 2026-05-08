@@ -6,6 +6,11 @@ using SmartTourBackend.Data; // Tự sửa namespace nếu của mày khác
 namespace SmartTourCMS.Controllers
 {
     [Authorize(Roles = "Admin")]
+    /// <summary>
+    /// Heatmap CMS:
+    /// - Trả danh sách POI để vẽ marker
+    /// - Trả dữ liệu tương tác tổng hợp để render lớp nhiệt
+    /// </summary>
     public class HeatmapController : Controller
     {
         private readonly AppDbContext _context;
@@ -46,19 +51,19 @@ namespace SmartTourCMS.Controllers
         {
             try
             {
-                // Thay 'PoiInteractions' bằng tên bảng Log của mày
+                // Group theo POI để lấy cường độ heatmap (sum = số lần tương tác).
                 var heatmapData = await (
                     from log in _context.HeatmapEntries
-                    join poi in _context.Pois on log.PoiId equals poi.Id
+                    join poi in _context.Pois on log.PoiId equals poi.Id       //nối bảng heatmapentry với bảng poi để lấy tọa độ và group bằng id lng lat sau đó đặt tên nhóm là g
                     group log by new { poi.Id, poi.Lat, poi.Lng } into g
                     select new
                     {
-                        poiId = g.Key.Id,
+                        poiId = g.Key.Id,     //.key cho những thuộc tính đã group by, ở đây là id lat lng
                         lat = g.Key.Lat,
                         lng = g.Key.Lng,
                         sum = g.Count()
                     }
-                ).ToListAsync();
+                ).ToListAsync(); //thực thi truy vấn và đưa về view dưới dạng list
 
                 return Ok(new { success = true, data = heatmapData });
             }

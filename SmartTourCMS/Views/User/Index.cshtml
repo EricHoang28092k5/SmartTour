@@ -4,7 +4,7 @@
     var pageSize = (int)(ViewBag.PageSize ?? 10);
     var totalItems = (int)(ViewBag.TotalItems ?? 0);
 }
-
+@* <h3> @ViewBag.TotalUser</h3> *@
 <div class="container-fluid mt-4 mb-5">
     <div class="card shadow-lg border-0 rounded-3">
         
@@ -86,7 +86,7 @@
             </div>
         </div>
         <div class="card-footer d-flex justify-content-between align-items-center">
-            <small class="text-muted">Tổng tài khoản: @totalItems</small>
+            @* <small class="text-muted">Tổng tài khoản: @totalItems</small> *@
             <nav aria-label="User pagination">
                 <ul class="pagination pagination-sm mb-0">
                     <li class="page-item @(currentPage <= 1 ? "disabled" : "")">

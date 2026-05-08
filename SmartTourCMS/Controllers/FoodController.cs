@@ -15,6 +15,12 @@ using X.PagedList.Extensions;
 namespace SmartTourCMS.Controllers
 {
     [Authorize(Roles = "Admin,Vendor")]
+    /// <summary>
+    /// Quản lý Food theo POI:
+    /// - CRUD món ăn có phân quyền theo POI owner
+    /// - Tự sinh/đồng bộ FoodTranslation đa ngôn ngữ
+    /// - Hỗ trợ tìm kiếm không dấu + phân trang
+    /// </summary>
     public class FoodController : Controller
     {
         private readonly AppDbContext _context;
@@ -38,7 +44,7 @@ namespace SmartTourCMS.Controllers
 
             var isAdmin = await _userManager.IsInRoleAsync(user, "Admin");
 
-            // Dọn orphan records
+            // Dọn dữ liệu mồ côi (food trỏ POI đã xóa) để tránh lỗi view và query.
             var orphanFoodIds = await _context.Food
                 .Where(f => !_context.Pois.Any(p => p.Id == f.PoiId))
                 .Select(f => f.Id)
@@ -65,7 +71,7 @@ namespace SmartTourCMS.Controllers
                 query = query.Where(f => f.PoiId == poiId.Value);
             }
 
-            // Ép nó lấy dữ liệu ra List trước (để C# so sánh không dấu)
+            // ToList trước để xử lý RemoveDiacritics ở C# (SQL không hiểu hàm custom này).
             var foodList = await query.OrderByDescending(f => f.Id).ToListAsync();
 
             // --- XỬ LÝ TÌM KIẾM KHÔNG DẤU BẰNG C# ---
@@ -82,7 +88,7 @@ namespace SmartTourCMS.Controllers
             int pageSize = 10;
             int pageNumber = page ?? 1;
 
-            // Cắt trang trên cái list đã lột dấu
+            // Phân trang sau lọc không dấu để kết quả hiển thị đúng theo keyword.
             var pagedFoods = foodList.ToPagedList(pageNumber, pageSize);
 
             // Dropdown POI cho bộ lọc
@@ -96,7 +102,7 @@ namespace SmartTourCMS.Controllers
             ViewBag.PoiFilterList = new SelectList(pois, "Id", "Name", poiId);
             ViewBag.CurrentSearch = search;
             ViewBag.CurrentPoiId = poiId;
-
+            //ViewBag.CurrentPoiId = foodList.Count;
             return View(pagedFoods);
         }
 
@@ -362,7 +368,8 @@ namespace SmartTourCMS.Controllers
                     row.UpdatedAt = DateTime.UtcNow;
                 }
 
-                await Task.Delay(250); // Chống block Google Translate
+                // Giảm tần suất gọi API translate để hạn chế throttle.
+                await Task.Delay(250);
             }
 
             await _context.SaveChangesAsync();
