@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using SmartTour.Services;
+using SmartTour.Shared.Models;
 using SmartTourApp.Services;
 using ZXing.Net.Maui;
 using ZXing.Net.Maui.Controls;
@@ -178,6 +180,42 @@ public partial class QrGatePage : ContentPage
                 StatusLabel.Text = "✅ Quét thành công!";
 
                 var services = Application.Current?.Handler?.MauiContext?.Services;
+                if (targetUri != null && TryGetQrPoiId(targetUri, out var qrPoiId))
+                {
+                    var visitApi = services?.GetService<ApiService>();
+                    var locSvc = services?.GetService<LocationService>();
+                    if (visitApi != null)
+                    {
+                        _ = Task.Run(async () =>
+                        {
+                            try
+                            {
+                                double la = 0, ln = 0;
+                                if (locSvc != null)
+                                {
+                                    var gl = await locSvc.GetLocation();
+                                    if (gl != null)
+                                    {
+                                        la = gl.Latitude;
+                                        ln = gl.Longitude;
+                                    }
+                                }
+
+                                await visitApi.PostVisitAsync(
+                                    qrPoiId,
+                                    la,
+                                    ln,
+                                    VisitType.QRCode,
+                                    visitApi.GetOrCreateAnonymousVisitUserId());
+                            }
+                            catch (Exception ex)
+                            {
+                                Debug.WriteLine($"[QrGate] Visit log: {ex.Message}");
+                            }
+                        });
+                    }
+                }
+
                 var poiRepo = services?.GetService<PoiRepository>();
                 var tracking = services?.GetService<TrackingService>();
 
@@ -216,6 +254,19 @@ public partial class QrGatePage : ContentPage
     }
 
     // ── URI helpers (giữ nguyên tên hàm) ─────────────────────────────
+
+    /// <summary>Chỉ POI đơn (smarttour://poi/…), không ghi visit cho tour-only.</summary>
+    private static bool TryGetQrPoiId(Uri uri, out int poiId)
+    {
+        poiId = 0;
+        if (!string.Equals(uri.Scheme, "smarttour", StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (!string.Equals(uri.Host, "poi", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var idStr = uri.AbsolutePath.Trim('/');
+        return int.TryParse(idStr, out poiId) && poiId > 0;
+    }
 
     private static Uri? NormalizeQr(string raw)
     {

@@ -181,6 +181,10 @@ builder.Services.AddSingleton<IAdminKeyValidator, AdminKeyValidator>();
 builder.Services.AddSingleton<RequestMetrics>();
 builder.Services.AddHostedService<AudioPipelineWorker>();
 builder.Services.AddHostedService<AudioListenIngestionWorker>();
+builder.Services.AddSingleton<VisitLogIngestionService>();
+builder.Services.AddSingleton<IVisitLogIngestionService>(sp => sp.GetRequiredService<VisitLogIngestionService>());
+builder.Services.AddSingleton<IVisitLogIngestionQueue>(sp => sp.GetRequiredService<VisitLogIngestionService>());
+builder.Services.AddHostedService<VisitLogWorker>();
 builder.Services.AddHostedService<MoMoPaymentWorker>();
 
 var app = builder.Build();

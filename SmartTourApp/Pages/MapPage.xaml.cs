@@ -361,6 +361,26 @@ public partial class MapPage : ContentPage
         _cardShownForPoiId = poi.Id;
         vm.SelectPoiIcon(poi.Id);
         ShowCardForPoi(poi);
+
+        _ = LogMapClickVisitAsync(poi);
+    }
+
+    private async Task LogMapClickVisitAsync(Poi poi)
+    {
+        try
+        {
+            var loc = currentLocation ?? new Location(poi.Lat, poi.Lng);
+            await api.PostVisitAsync(
+                poi.Id,
+                loc.Latitude,
+                loc.Longitude,
+                VisitType.MapClick,
+                api.GetOrCreateAnonymousVisitUserId());
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Map] Visit log: {ex.Message}");
+        }
     }
 
     private void ShowCardForPoi(Poi poi)

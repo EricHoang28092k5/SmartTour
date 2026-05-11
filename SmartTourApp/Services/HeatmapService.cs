@@ -139,6 +139,19 @@ namespace SmartTourApp.Services
                         Lng = loc.Longitude
                     });
 
+                    var visitUserId = _deviceId.StartsWith("dev_", StringComparison.OrdinalIgnoreCase)
+                        ? _deviceId
+                        : $"dev_{_deviceId}";
+                    try
+                    {
+                        await _api.PostVisitAsync(
+                            poi.Id, loc.Latitude, loc.Longitude, VisitType.Geofence, visitUserId);
+                    }
+                    catch (Exception vx)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Visit log send error: {vx.Message}");
+                    }
+
                     System.Diagnostics.Debug.WriteLine(
                         $"🔥 HEATMAP [{triggerType.ToUpper()}] POI={poi.Id} ({poi.Name})");
                 }

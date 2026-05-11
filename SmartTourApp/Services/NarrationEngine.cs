@@ -1,33 +1,16 @@
-﻿using SmartTour.Services;
+﻿using System.Diagnostics;
+using SmartTour.Services;
 using SmartTour.Shared.Models;
 using SmartTourApp.Data;
 using SmartTourApp.Services;
 using static SmartTour.Services.ApiService;
 
 /// <summary>
-/// NarrationEngine — Engine điều phối toàn bộ luồng phát thuyết minh.
-///
-/// ╔══════════════════════════════════════════════════════════════════╗
-/// ║  FALLBACK LOGIC (Yêu cầu 2)                                     ║
-/// ║  1. Nếu có mạng + AudioUrl → Stream Cloudinary                  ║
-/// ║  2. Mất mạng nửa chừng → Auto-fallback sang TTS (không ngắt)   ║
-/// ║  3. Offline hoặc không có AudioUrl → SQLite Script + TTS        ║
-/// ║                                                                  ║
-/// ║  PRIORITY QUEUE (Yêu cầu 3)                                     ║
-/// ║  - POI gần hơn HOẶC Priority cao hơn → phát trước              ║
-/// ║  - Interrupt: POI cao hơn ngắt POI thấp hơn đang phát          ║
-/// ║  - Cooldown: 10 phút sau khi phát xong                         ║
-/// ║                                                                  ║
-/// ║  OFFLINE (Yêu cầu 4)                                            ║
-/// ║  - Đổi ngôn ngữ → KHÔNG gọi API → query SQLite                 ║
-/// ╚══════════════════════════════════════════════════════════════════╝
+/// NarrationEngine — điều phối thuyết minh: FIFO cho auto (không cắt ngang),
+/// cooldown, không trùng queue/current; user manual ưu tiên (hủy + xóa hàng đợi).
 /// </summary>
 public class NarrationEngine
 {
-    // ══════════════════════════════════════════════════════════════════
-    // DEPENDENCIES
-    // ══════════════════════════════════════════════════════════════════
-
     private readonly TtsService tts;
     private readonly AudioService audio;
     private readonly Database db;
@@ -37,14 +20,7 @@ public class NarrationEngine
     private readonly AudioCoordinator coordinator;
     private readonly OfflineSyncService offlineSync;
 
-    // ══════════════════════════════════════════════════════════════════
-    // STATE
-    // ══════════════════════════════════════════════════════════════════
-
-    /// <summary>Cache TTS scripts trong memory để tránh gọi API/SQLite liên tục.</summary>
     private readonly Dictionary<int, List<TtsDto>> ttsCache = new();
-
-    /// <summary>Cooldown history: poiId → thời điểm phát gần nhất.</summary>
     private readonly Dictionary<int, DateTime> history = new();
 
     private readonly object lockObj = new();
@@ -53,16 +29,13 @@ public class NarrationEngine
     private Poi? currentPoi;
     private int? currentPriority;
 
-    private const int COOLDOWN_MINUTES = 10;
+    private const int COOLDOWN_MINUTES = 5;
 
-    // ── Priority Queue (Yêu cầu 3): hàng đợi POI chờ phát ──
-    private readonly PriorityQueue<QueuedPoi, int> _playQueue = new();
-    private CancellationTokenSource? _queueProcessorCts;
-    private bool _isQueueProcessing = false;
+    private readonly Queue<QueuedPoi> _fifoQueue = new();
+    private readonly HashSet<int> _queuedPoiIds = new();
+    private bool _isQueueProcessing;
 
-    // ══════════════════════════════════════════════════════════════════
-    // CONSTRUCTOR
-    // ══════════════════════════════════════════════════════════════════
+    public event EventHandler<NarrationCompletedEventArgs>? NarrationCompleted;
 
     public NarrationEngine(
         TtsService tts,
@@ -84,91 +57,77 @@ public class NarrationEngine
         this.offlineSync = offlineSync;
     }
 
-    // ══════════════════════════════════════════════════════════════════
-    // PUBLIC: AUTO PLAY (geofencing trigger)
-    // ══════════════════════════════════════════════════════════════════
-
     /// <summary>
-    /// Được gọi bởi TrackingService khi geofencing phát hiện POI mới.
-    ///
-    /// Logic ưu tiên (Yêu cầu 3):
-    ///   - Nếu không có gì đang phát → phát ngay.
-    ///   - Nếu POI mới có priority CAO HƠN → interrupt POI cũ, phát ngay.
-    ///   - Nếu priority BẰNG hoặc THẤP HƠN → enqueue (chờ).
-    ///   - Cooldown: nếu POI này mới phát < 10 phút → bỏ qua hoàn toàn.
+    /// Auto (geofence): không cắt ngang bản đang phát — xếp hàng FIFO; cooldown 5 phút;
+    /// bỏ qua trùng current/queue; khi bỏ qua do cooldown vẫn báo <see cref="NarrationCompleted"/>.
     /// </summary>
     public async Task Play(Poi? poi, Location location, bool force = false)
     {
         if (poi == null) return;
 
-        // ── Cooldown check (Yêu cầu 3) ──
-        if (!force &&
-            history.TryGetValue(poi.Id, out var lastPlayed) &&
-            (DateTime.Now - lastPlayed).TotalMinutes < COOLDOWN_MINUTES)
+        if (!force)
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[Narration] COOLDOWN: POI={poi.Id} ({poi.Name}), " +
-                $"remaining={(COOLDOWN_MINUTES - (DateTime.Now - lastPlayed).TotalMinutes):F1} min");
-            return;
-        }
-
-        int newPriority = -(poi.Priority); // PriorityQueue dùng min-heap, nên negate
-
-        lock (lockObj)
-        {
-            bool currentlyPlaying = currentPoi != null;
-            int existingPriority = currentPriority ?? int.MaxValue;
-
-            // ── Interrupt logic (Yêu cầu 3) ──
-            // POI mới có priority CAO HƠN (số nhỏ hơn) → interrupt
-            if (currentlyPlaying && poi.Priority < (currentPriority ?? int.MaxValue))
+            if (history.TryGetValue(poi.Id, out var lastPlayed) &&
+                (DateTime.Now - lastPlayed).TotalMinutes < COOLDOWN_MINUTES)
             {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[Narration] ⚡ INTERRUPT: New POI {poi.Id} " +
-                    $"(priority={poi.Priority}) > current {currentPoi?.Id} " +
-                    $"(priority={currentPriority})");
-
-                // Force stop current
-                cts?.Cancel();
-            }
-            else if (currentlyPlaying)
-            {
-                // Enqueue — phát sau khi POI hiện tại xong
-                _playQueue.Enqueue(
-                    new QueuedPoi { Poi = poi, Location = location },
-                    poi.Priority);
-
-                System.Diagnostics.Debug.WriteLine(
-                    $"[Narration] 📋 QUEUED: POI={poi.Id} (priority={poi.Priority}), " +
-                    $"queue size={_playQueue.Count}");
+                Debug.WriteLine(
+                    $"[Narration] COOLDOWN: POI={poi.Id} ({poi.Name}), " +
+                    $"remaining={(COOLDOWN_MINUTES - (DateTime.Now - lastPlayed).TotalMinutes):F1} min");
+                RaiseNarrationCompleted(poi.Id, location, NarrationCycleOutcome.SkippedCooldown);
                 return;
+            }
+
+            lock (lockObj)
+            {
+                if (currentPoi?.Id == poi.Id)
+                {
+                    Debug.WriteLine($"[Narration] Skip duplicate (current): POI={poi.Id}");
+                    return;
+                }
+
+                if (_queuedPoiIds.Contains(poi.Id))
+                {
+                    Debug.WriteLine($"[Narration] Skip duplicate (queued): POI={poi.Id}");
+                    return;
+                }
+
+                if (currentPoi != null)
+                {
+                    _fifoQueue.Enqueue(new QueuedPoi { Poi = poi, Location = location });
+                    _queuedPoiIds.Add(poi.Id);
+                    Debug.WriteLine(
+                        $"[Narration] QUEUED: POI={poi.Id}, queue size={_fifoQueue.Count}");
+                    return;
+                }
             }
         }
 
         coordinator.RequestPlay(AudioSource.Auto, () => StopInternal());
 
         await PlayInternalAsync(poi, location, AudioSource.Auto, force);
-
-        // Sau khi play xong → xử lý queue
         await ProcessQueueAsync();
     }
 
-    // ══════════════════════════════════════════════════════════════════
-    // PUBLIC: MANUAL PLAY (User bấm từ HomePage)
-    // ══════════════════════════════════════════════════════════════════
-
     /// <summary>
-    /// Manual play từ HomePage — luôn thắng Auto, xóa queue.
+    /// Manual: hủy token, xóa hàng đợi, chờ vòng xử lý cũ dừng (tối đa ~1s), phát ngay POI chọn.
     /// </summary>
     public async Task PlayManual(Poi poi, Location location)
     {
         if (poi == null) return;
 
-        // Clear queue khi manual — user đã chọn POI cụ thể
+        StopInternal();
+        coordinator.NotifyStop(AudioSource.Auto);
+
         lock (lockObj)
         {
-            _playQueue.Clear();
+            while (_fifoQueue.Count > 0)
+            {
+                var n = _fifoQueue.Dequeue();
+                _queuedPoiIds.Remove(n.Poi.Id);
+            }
         }
+
+        await WaitForNarrationIdleAsync(TimeSpan.FromMilliseconds(1000));
 
         coordinator.RequestPlay(AudioSource.HomeManual, () => StopInternal());
 
@@ -216,62 +175,44 @@ public class NarrationEngine
         }
     }
 
-    // ══════════════════════════════════════════════════════════════════
-    // CORE: PLAY WITH FALLBACK (Yêu cầu 2)
-    // ══════════════════════════════════════════════════════════════════
-
-    /// <summary>
-    /// Fallback chain:
-    ///   1. Cloudinary Audio (nếu có mạng + AudioUrl)
-    ///   2. Legacy POI.AudioUrl
-    ///   3. SQLite Script + TTS (offline fallback)
-    ///
-    /// Xử lý lỗi mạng nửa chừng: nếu audio stream fail → switch sang TTS ngay.
-    /// </summary>
     private async Task PlayWithFallbackAsync(TtsDto selected, Poi poi,
         Location location, CancellationToken token, AudioSource source)
     {
         bool played = false;
 
-        // ── Ưu tiên 1: AudioUrl Cloudinary ──
         if (!string.IsNullOrWhiteSpace(selected.AudioUrl))
         {
             try
             {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[Narration] ▶ Cloudinary: {selected.AudioUrl}");
+                Debug.WriteLine($"[Narration] ▶ Cloudinary: {selected.AudioUrl}");
                 await audio.Play(selected.AudioUrl!, token);
                 played = true;
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
-                // Mạng mất nửa chừng → fallback sang TTS (Yêu cầu 2)
-                System.Diagnostics.Debug.WriteLine(
+                Debug.WriteLine(
                     $"[Narration] ⚠️ Cloudinary failed mid-stream: {ex.Message} " +
                     "→ switching to TTS fallback");
             }
         }
 
-        // ── Ưu tiên 2: Legacy POI.AudioUrl ──
         if (!played && !string.IsNullOrWhiteSpace(poi.AudioUrl))
         {
             try
             {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[Narration] ▶ Legacy AudioUrl: {poi.AudioUrl}");
+                Debug.WriteLine($"[Narration] ▶ Legacy AudioUrl: {poi.AudioUrl}");
                 await audio.Play(poi.AudioUrl, token);
                 played = true;
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine(
+                Debug.WriteLine(
                     $"[Narration] Legacy audio failed: {ex.Message} → TTS fallback");
             }
         }
 
-        // ── Ưu tiên 3: SQLite Script + TTS (Yêu cầu 2 & 4) ──
         if (!played)
         {
             var script = GetOfflineScript(poi, selected);
@@ -280,7 +221,7 @@ public class NarrationEngine
                 !token.IsCancellationRequested &&
                 coordinator.IsActiveSource(source))
             {
-                System.Diagnostics.Debug.WriteLine(
+                Debug.WriteLine(
                     $"[Narration] ▶ TTS fallback ({selected.LanguageCode}): " +
                     $"{script[..Math.Min(50, script.Length)]}...");
                 await tts.Speak(script, selected.LanguageCode, token);
@@ -304,60 +245,58 @@ public class NarrationEngine
         }
     }
 
-    // ══════════════════════════════════════════════════════════════════
-    // PRIORITY QUEUE PROCESSOR (Yêu cầu 3)
-    // ══════════════════════════════════════════════════════════════════
-
     private async Task ProcessQueueAsync()
     {
-        lock (lockObj)
+        while (true)
         {
-            if (_isQueueProcessing || _playQueue.Count == 0) return;
-            _isQueueProcessing = true;
-        }
-
-        try
-        {
-            while (true)
+            lock (lockObj)
             {
-                QueuedPoi? next;
-                lock (lockObj)
+                if (_isQueueProcessing || _fifoQueue.Count == 0)
+                    return;
+                _isQueueProcessing = true;
+            }
+
+            try
+            {
+                while (true)
                 {
-                    if (_playQueue.Count == 0)
+                    QueuedPoi? next;
+                    lock (lockObj)
                     {
-                        _isQueueProcessing = false;
-                        return;
+                        if (_fifoQueue.Count == 0)
+                            break;
+                        next = _fifoQueue.Dequeue();
+                        _queuedPoiIds.Remove(next.Poi.Id);
                     }
-                    next = _playQueue.Dequeue();
+
+                    if (history.TryGetValue(next.Poi.Id, out var lastPlay) &&
+                        (DateTime.Now - lastPlay).TotalMinutes < COOLDOWN_MINUTES)
+                    {
+                        Debug.WriteLine($"[Narration] QUEUE: Skip cooldown POI={next.Poi.Id}");
+                        RaiseNarrationCompleted(
+                            next.Poi.Id, next.Location, NarrationCycleOutcome.SkippedCooldown);
+                        continue;
+                    }
+
+                    Debug.WriteLine(
+                        $"[Narration] QUEUE: Playing next POI={next.Poi.Id} ({next.Poi.Name})");
+
+                    coordinator.RequestPlay(AudioSource.Auto, () => StopInternal());
+                    await PlayInternalAsync(next.Poi, next.Location, AudioSource.Auto, false);
                 }
+            }
+            finally
+            {
+                lock (lockObj) { _isQueueProcessing = false; }
+            }
 
-                if (next == null) continue;
-
-                // Cooldown check cho queued item
-                if (history.TryGetValue(next.Poi.Id, out var lastPlay) &&
-                    (DateTime.Now - lastPlay).TotalMinutes < COOLDOWN_MINUTES)
-                {
-                    System.Diagnostics.Debug.WriteLine(
-                        $"[Narration] QUEUE: Skip cooldown POI={next.Poi.Id}");
-                    continue;
-                }
-
-                System.Diagnostics.Debug.WriteLine(
-                    $"[Narration] QUEUE: Playing next POI={next.Poi.Id} ({next.Poi.Name})");
-
-                coordinator.RequestPlay(AudioSource.Auto, () => StopInternal());
-                await PlayInternalAsync(next.Poi, next.Location, AudioSource.Auto, false);
+            lock (lockObj)
+            {
+                if (_fifoQueue.Count == 0)
+                    return;
             }
         }
-        finally
-        {
-            lock (lockObj) { _isQueueProcessing = false; }
-        }
     }
-
-    // ══════════════════════════════════════════════════════════════════
-    // INTERNAL PLAY
-    // ══════════════════════════════════════════════════════════════════
 
     private async Task PlayInternalAsync(Poi poi, Location location,
         AudioSource source, bool force)
@@ -374,23 +313,50 @@ public class NarrationEngine
         }
 
         var token = localCts.Token;
+        var intentionalCancel = false;
+        var skipCompletionEvent = false;
 
         try
         {
             var scripts = await GetScripts(poi);
             var selected = SelectLang(scripts);
-            if (selected == null) return;
+            if (selected == null)
+            {
+                if (source == AudioSource.Auto)
+                    RaiseNarrationCompleted(poi.Id, location, NarrationCycleOutcome.Error);
+                skipCompletionEvent = true;
+                return;
+            }
 
-            if (token.IsCancellationRequested) return;
-            if (!coordinator.IsActiveSource(source)) return;
+            if (token.IsCancellationRequested)
+            {
+                skipCompletionEvent = true;
+                return;
+            }
+
+            if (!coordinator.IsActiveSource(source))
+            {
+                skipCompletionEvent = true;
+                return;
+            }
 
             tracker.StartSession(poi.Id, location.Latitude, location.Longitude);
             await PlayWithFallbackAsync(selected, poi, location, token, source);
         }
         catch (OperationCanceledException)
         {
+            intentionalCancel = true;
             tracker.StopSession();
             coordinator.NotifyStop(source);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[Narration] PlayInternalAsync error POI={poi.Id}: {ex.Message}");
+            tracker.StopSession();
+            coordinator.NotifyStop(source);
+            if (source == AudioSource.Auto)
+                RaiseNarrationCompleted(poi.Id, location, NarrationCycleOutcome.Error);
+            skipCompletionEvent = true;
         }
         finally
         {
@@ -403,20 +369,17 @@ public class NarrationEngine
                 }
             }
         }
-    }
 
-    // ══════════════════════════════════════════════════════════════════
-    // SCRIPT RESOLUTION (Yêu cầu 2 & 4)
-    // Ưu tiên: Memory cache → API (nếu có mạng) → SQLite (offline)
-    // ══════════════════════════════════════════════════════════════════
+        if (source == AudioSource.Auto && !intentionalCancel && !token.IsCancellationRequested &&
+            !skipCompletionEvent)
+            RaiseNarrationCompleted(poi.Id, location, NarrationCycleOutcome.Completed);
+    }
 
     private async Task<List<TtsDto>> GetScripts(Poi poi)
     {
-        // 1. Memory cache
         if (ttsCache.TryGetValue(poi.Id, out var cached))
             return cached;
 
-        // 2. Thử API (nếu có mạng)
         bool isOnline = IsOnline();
         if (isOnline)
         {
@@ -431,16 +394,14 @@ public class NarrationEngine
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[Narration] API failed, using SQLite: {ex.Message}");
+                Debug.WriteLine($"[Narration] API failed, using SQLite: {ex.Message}");
             }
         }
 
-        // 3. Fallback: SQLite offline (Yêu cầu 4 — Offline Translation Logic)
         var offlineScripts = offlineSync.GetAllLocalScripts(poi.Id);
         if (offlineScripts.Count > 0)
         {
-            System.Diagnostics.Debug.WriteLine(
+            Debug.WriteLine(
                 $"[Narration] 📦 Using SQLite scripts: {offlineScripts.Count} langs for POI {poi.Id}");
 
             var dtos = offlineScripts.Select(s => new TtsDto
@@ -456,36 +417,33 @@ public class NarrationEngine
             return dtos;
         }
 
-        // 4. Nothing found — return empty
         ttsCache[poi.Id] = new List<TtsDto>();
         return ttsCache[poi.Id];
     }
 
-    /// <summary>
-    /// Lấy script text để phát TTS — ưu tiên SQLite khi offline.
-    /// </summary>
     private string GetOfflineScript(Poi poi, TtsDto selected)
     {
-        // Nếu TtsDto đã có script → dùng luôn
         if (!string.IsNullOrWhiteSpace(selected.TtsScript))
             return selected.TtsScript;
 
-        // Query SQLite (Yêu cầu 4)
         var local = offlineSync.GetLocalScript(poi.Id, lang.Current);
         if (local != null && !string.IsNullOrWhiteSpace(local.TtsScript))
             return local.TtsScript;
 
-        // Fallback sang Description của POI
         return poi.Description ?? "";
     }
 
-    // ══════════════════════════════════════════════════════════════════
-    // PUBLIC CONTROLS
-    // ══════════════════════════════════════════════════════════════════
-
     public void Stop()
     {
-        lock (lockObj) { _playQueue.Clear(); }
+        lock (lockObj)
+        {
+            while (_fifoQueue.Count > 0)
+            {
+                var n = _fifoQueue.Dequeue();
+                _queuedPoiIds.Remove(n.Poi.Id);
+            }
+        }
+
         StopInternal();
         coordinator.NotifyStop(AudioSource.Auto);
         coordinator.NotifyStop(AudioSource.HomeManual);
@@ -505,7 +463,12 @@ public class NarrationEngine
         ttsCache.Clear();
         lock (lockObj)
         {
-            _playQueue.Clear();
+            while (_fifoQueue.Count > 0)
+            {
+                var n = _fifoQueue.Dequeue();
+                _queuedPoiIds.Remove(n.Poi.Id);
+            }
+
             currentPoi = null;
             currentPriority = null;
         }
@@ -516,10 +479,6 @@ public class NarrationEngine
         tts.Stop();
         coordinator.Reset();
     }
-
-    // ══════════════════════════════════════════════════════════════════
-    // HELPERS
-    // ══════════════════════════════════════════════════════════════════
 
     private TtsDto? SelectLang(List<TtsDto> scripts)
     {
@@ -544,9 +503,42 @@ public class NarrationEngine
         catch { return false; }
     }
 
-    // ══════════════════════════════════════════════════════════════════
-    // INNER TYPES (Yêu cầu 3 — Priority Queue)
-    // ══════════════════════════════════════════════════════════════════
+    private void RaiseNarrationCompleted(int poiId, Location location, NarrationCycleOutcome outcome)
+    {
+        var args = new NarrationCompletedEventArgs(poiId, location.Latitude, location.Longitude, outcome);
+        try
+        {
+            NarrationCompleted?.Invoke(this, args);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[Narration] NarrationCompleted handler error: {ex.Message}");
+        }
+
+        try
+        {
+            NarrationTelemetryBus.Publish(args);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[Narration] NarrationTelemetryBus error: {ex.Message}");
+        }
+    }
+
+    private async Task WaitForNarrationIdleAsync(TimeSpan maxWait)
+    {
+        var sw = Stopwatch.StartNew();
+        while (sw.Elapsed < maxWait)
+        {
+            lock (lockObj)
+            {
+                if (!_isQueueProcessing && currentPoi == null)
+                    return;
+            }
+
+            await Task.Delay(50);
+        }
+    }
 
     private class QueuedPoi
     {

@@ -34,6 +34,7 @@ namespace SmartTourAPI.Data
         public DbSet<AudioPipelineJob> AudioPipelineJobs { get; set; }
         public DbSet<ScriptChangeRequest> ScriptChangeRequests { get; set; }
         public DbSet<VendorPremiumOrder> VendorPremiumOrders { get; set; }
+        public DbSet<VisitLog> VisitLogs { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -120,6 +121,12 @@ namespace SmartTourAPI.Data
                 entity.Property(e => e.Status).HasMaxLength(20);
                 entity.HasIndex(e => e.OrderId).IsUnique();
                 entity.HasIndex(e => new { e.PoiId, e.Status, e.CreatedAt });
+            });
+
+            modelBuilder.Entity<VisitLog>(entity =>
+            {
+                entity.ToTable("visit_logs");
+                entity.HasIndex(e => new { e.PoiId, e.VisitTime });
             });
         }
     }

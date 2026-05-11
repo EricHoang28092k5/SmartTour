@@ -1,7 +1,9 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.JsonWebTokens;
 using SmartTour.Shared.Models;
 using SmartTourAPI.Data;
 using SmartTourAPI.Services;
@@ -14,11 +16,16 @@ public class AnalyticsController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly IAudioListenIngestionService _ingestion;
+    private readonly IVisitLogIngestionService _visitLogIngestion;
 
-    public AnalyticsController(AppDbContext db, IAudioListenIngestionService ingestion)
+    public AnalyticsController(
+        AppDbContext db,
+        IAudioListenIngestionService ingestion,
+        IVisitLogIngestionService visitLogIngestion)
     {
         _db = db;
         _ingestion = ingestion;
+        _visitLogIngestion = visitLogIngestion;
     }
 
     [Authorize]
@@ -40,6 +47,37 @@ public class AnalyticsController : ControllerBase
             return Ok(new { accepted = false, reason });
 
         return Ok(new { accepted = true, queued = true });
+    }
+
+    /// <summary>
+    /// Ghi nhận lượt ghé POI (enqueue — không chờ DB). UserId ưu tiên từ JWT nếu có.
+    /// </summary>
+    [AllowAnonymous]
+    [EnableRateLimiting("DeviceTokenPolicy")]
+    [HttpPost("visit")]
+    public IActionResult LogVisit([FromBody] LogVisitDto? dto)
+    {
+        if (dto == null || dto.PoiId <= 0)
+            return BadRequest(new { error = "invalid_poi" });
+
+        var resolvedUserId = User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub)
+            ?? (dto.UserId ?? string.Empty).Trim();
+
+        var item = new VisitLogQueueItem
+        {
+            PoiId = dto.PoiId,
+            UserId = resolvedUserId,
+            Lat = dto.Lat,
+            Lng = dto.Lng,
+            VisitType = dto.VisitType
+        };
+
+        if (!_visitLogIngestion.TryEnqueue(item, out var reason))
+            return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                new { error = "queue_unavailable", reason });
+
+        return Accepted(new { message = "Visit queued" });
     }
 
     [Authorize(Roles = "Admin")]
@@ -87,4 +125,13 @@ public class PoiAudioListenDto
     public string DeviceId { get; set; } = string.Empty;
     public int? TotalDurationSeconds { get; set; }
     public bool CompletedNaturally { get; set; }
+}
+
+public class LogVisitDto
+{
+    public int PoiId { get; set; }
+    public string? UserId { get; set; }
+    public double Lat { get; set; }
+    public double Lng { get; set; }
+    public VisitType VisitType { get; set; }
 }

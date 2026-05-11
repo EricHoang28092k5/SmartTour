@@ -35,6 +35,14 @@ internal static class Program
         Log($"Số thiết bị: {deviceCount} (DEV-01 … DEV-{deviceCount:00}; đổi bằng tham số dòng lệnh, xem README.txt)");
         Log("");
 
+        void OnNarrationTelemetry(object? _, NarrationCompletedEventArgs e)
+        {
+            Log($"NarrationTelemetryBus: poiId={e.PoiId} outcome={e.Outcome} lat={e.Latitude:F6} lng={e.Longitude:F6}");
+        }
+
+        NarrationTelemetryBus.NarrationCompleted += OnNarrationTelemetry;
+        try
+        {
         var (centerLat, centerLng, pois, popularity) = BuildIntersectionScenario();
         Log($"Điểm giao (user): lat={centerLat:F6}, lng={centerLng:F6}");
         Log($"Số POI: {pois.Count}; popularity: {string.Join(", ", popularity.Select(kv => $"{kv.Key}={kv.Value}"))}");
@@ -95,6 +103,11 @@ internal static class Program
 
         Log("");
         Log("=== Kết thúc mô phỏng ===");
+        }
+        finally
+        {
+            NarrationTelemetryBus.NarrationCompleted -= OnNarrationTelemetry;
+        }
 
         var logDir = Path.GetDirectoryName(outPath);
         if (!string.IsNullOrEmpty(logDir))
@@ -346,6 +359,8 @@ internal static class Program
 
             _lastDispatchedPoiId = head.Id;
             log($"{_deviceId} | PLAY → id={head.Id} \"{head.Name}\" (pinned={_pinnedPoiId?.ToString() ?? "none"}, skipped=[{string.Join(",", _skipped)}])");
+            NarrationTelemetryBus.Publish(new NarrationCompletedEventArgs(
+                head.Id, userLat, userLng, NarrationCycleOutcome.Completed));
         }
     }
 }

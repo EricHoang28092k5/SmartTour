@@ -127,6 +127,27 @@ public class ApiService
         await http.PostAsJsonAsync("api/pois/playlog", log);
     }
 
+    /// <summary>
+    /// Ghi nhận lượt ghé POI (202 Accepted — ghi theo lô phía server).
+    /// </summary>
+    public async Task PostVisitAsync(
+        int poiId,
+        double lat,
+        double lng,
+        VisitType visitType,
+        string? anonymousUserId = null)
+    {
+        await EnsureDeviceTokenAsync();
+        await http.PostAsJsonAsync("api/analytics/visit", new
+        {
+            poiId,
+            userId = anonymousUserId,
+            lat,
+            lng,
+            visitType
+        });
+    }
+
     public async Task<PoiSearchResponse?> SearchPois(string? keyword, double? lat = null, double? lng = null, double? maxDistanceKm = null)
     {
         await EnsureDeviceTokenAsync();
@@ -213,6 +234,15 @@ public class ApiService
         deviceId = Guid.NewGuid().ToString("N");
         Preferences.Default.Set(key, deviceId);
         return deviceId;
+    }
+
+    /// <summary>UserId ẩn danh thống nhất với heatmap device id (dev_…).</summary>
+    public string GetOrCreateAnonymousVisitUserId()
+    {
+        var id = GetOrCreatePresenceDeviceId();
+        return id.StartsWith("dev_", StringComparison.OrdinalIgnoreCase)
+            ? id
+            : $"dev_{id}";
     }
 
     // ══════════════════════════════════════════════════════════════════
