@@ -82,6 +82,9 @@ public class LocalizationService
     /// <summary>YC4: Localized label for the Google Maps directions button in bottom POI card.</summary>
     public string DirectionsBtn => T("Chỉ đường", "Get Directions", "ルートを表示", "获取路线", "길 안내");
 
+    public string MapPinnedBanner => T("Đang ghim — chỉ auto-play quán này", "Pinned — only this place auto-plays",
+        "固定中 — このスポットのみ自動再生", "已固定 — 仅自动播放此点", "고정됨 — 이 장소만 자동 재생");
+
     public string Start => T("Bắt đầu", "Start", "開始", "开始", "시작");
     public string Call => T("Gọi", "Call", "電話", "拨打", "전화");
     public string SavePlace => T("Lưu", "Save", "保存", "收藏", "저장");

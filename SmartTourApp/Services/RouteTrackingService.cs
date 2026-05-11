@@ -1,4 +1,4 @@
-﻿using SmartTour.Services;
+using SmartTour.Services;
 using SmartTour.Shared.Models;
 using System.Text.Json;
 
@@ -434,5 +434,5 @@ namespace SmartTourApp.Services
     }
 
     // RouteSessionDto và RouteStopDto nằm trong SmartTour.Shared.Models (RouteSessionDto.cs)
-    // để cả SmartTourApp và SmartTourBackend dùng chung — không định nghĩa lại ở đây.
+    // để cả SmartTourApp và SmartTourAPI dùng chung — không định nghĩa lại ở đây.
 }

@@ -1,9 +1,9 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using CloudinaryDotNet;
 using CloudinaryDotNet.Actions;
-using SmartTourBackend.Data; // Nhớ check lại using này cho khớp với DbContext của bác
+using SmartTourAPI.Data; // Nhớ check lại using này cho khớp với DbContext của bác
 using SmartTour.Shared.Models;
 
 namespace SmartTourCMS.Controllers

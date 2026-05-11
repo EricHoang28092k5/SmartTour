@@ -1,7 +1,7 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using SmartTourBackend.Data; // Tự sửa namespace nếu của mày khác
+using SmartTourAPI.Data; // Tự sửa namespace nếu của mày khác
 
 namespace SmartTourCMS.Controllers
 {

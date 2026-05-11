@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Identity; // Bơm thêm Identity
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SmartTour.Shared.Models;
-using SmartTourBackend.Data;
+using SmartTourAPI.Data;
 
 namespace SmartTourCMS.Controllers
 {

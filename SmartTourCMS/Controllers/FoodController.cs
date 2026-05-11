@@ -1,4 +1,4 @@
-﻿using CloudinaryDotNet;
+using CloudinaryDotNet;
 using CloudinaryDotNet.Actions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
 using SmartTour.Shared.Models;
-using SmartTourBackend.Data;
+using SmartTourAPI.Data;
 using System.Globalization; // Bắt buộc phải có để lột dấu
 using System.Text; // Bắt buộc phải có cho StringBuilder
 using System.Text.Json;

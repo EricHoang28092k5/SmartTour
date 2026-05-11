@@ -3,7 +3,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using SmartTourBackend.Data;
+using SmartTourAPI.Data;
 using SmartTourCMS.Models;
 using SmartTour.Shared.Models;
 

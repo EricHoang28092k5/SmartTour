@@ -1,8 +1,8 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity; // Bổ sung Identity để lấy thông tin User
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using SmartTourBackend.Data;
+using SmartTourAPI.Data;
 
 namespace SmartTourCMS.Controllers
 {

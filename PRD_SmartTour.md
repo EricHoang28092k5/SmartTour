@@ -658,7 +658,7 @@ sequenceDiagram
 sequenceDiagram
     actor U as Staff
     participant CMS as CMS
-    participant API as BackendAPI
+    participant API as SmartTourAPI
     participant DB as PostgreSQL
     U->>CMS: Mở dashboard/log plays
     CMS->>API: GET /api/cms-dashboard/poi-stats
@@ -704,7 +704,7 @@ sequenceDiagram
 sequenceDiagram
     actor U as Admin
     participant CMS as CMS
-    participant API as BackendAPI
+    participant API as SmartTourAPI
     participant DB as PostgreSQL
     U->>CMS: Mở Heatmap
     CMS->>API: GET /api/heatmap + /api/routes/popular
@@ -747,7 +747,7 @@ sequenceDiagram
 sequenceDiagram
     actor T as Traveler
     participant APP as App
-    participant API as BackendAPI
+    participant API as SmartTourAPI
     participant DB as PostgreSQL
     T->>APP: Mở Home/Map
     APP->>API: GET /api/pois?lang=xx
@@ -760,7 +760,7 @@ sequenceDiagram
 sequenceDiagram
     actor T as Traveler
     participant APP as App
-    participant API as BackendAPI
+    participant API as SmartTourAPI
     participant CACHE as LocalCache
     T->>APP: Mở chi tiết POI, bấm play
     APP->>API: GET /api/audio/poi/{id}
@@ -789,7 +789,7 @@ sequenceDiagram
 sequenceDiagram
     actor T as Traveler
     participant APP as App
-    participant API as BackendAPI
+    participant API as SmartTourAPI
     participant DB as PostgreSQL
     T->>APP: Nghe audio/di chuyển
     APP->>API: POST /api/pois/playlog
@@ -873,7 +873,7 @@ sequenceDiagram
 sequenceDiagram
     actor U as Admin
     participant CMS as CMS
-    participant API as BackendAPI
+    participant API as SmartTourAPI
     participant DB as PostgreSQL
     U->>CMS: Mở Dashboard
     CMS->>API: GET /api/cms-dashboard/device-status
@@ -890,7 +890,7 @@ sequenceDiagram
 sequenceDiagram
     actor T as Traveler
     participant APP as App
-    participant API as BackendAPI
+    participant API as SmartTourAPI
     participant DB as PostgreSQL
     T->>APP: Mở app
     APP->>API: POST /api/presence/heartbeat
@@ -1490,11 +1490,11 @@ Checklist nghiệm thu theo chức năng:
 | Loại | Đường dẫn / ghi chú |
 | --- | --- |
 | PRD (tài liệu này) | `PRD_SmartTour.md` (root repo) |
-| Backend API | `SmartTourBackend/Controllers/*.cs`, `SmartTourBackend/Program.cs`, `SmartTourBackend/Data/AppDbContext.cs` |
+| Backend API | `SmartTourAPI/Controllers/*.cs`, `SmartTourAPI/Program.cs`, `SmartTourAPI/Data/AppDbContext.cs` |
 | CMS Web | `SmartTourCMS/Controllers/*.cs`, `SmartTourCMS/Views/**`, `SmartTourCMS/Program.cs` |
 | App MAUI | `SmartTourApp/Pages/*.xaml*`, `SmartTourApp/Services/*.cs`, `SmartTourApp/MauiProgram.cs` |
 | Shared Models | `SmartTour.Shared/SmartTour.Shared/Models/*.cs` |
-| Migration / SQL | `SmartTourBackend/Migrations/*.cs` |
+| Migration / SQL | `SmartTourAPI/Migrations/*.cs` |
 | Sơ đồ ERD | Mermaid ERD tại mục `8.3` |
 | Use Case / Sequence / Activity | Mermaid tại mục `11`, `12`, `13` |
 

@@ -15,6 +15,9 @@ obj/
 **/*credentials*.json
 **/appsettings.Development.json
 
+# OverlapLogRunner — log mô phỏng (tạo khi chạy)
+SmartTour.OverlapLogRunner/overlap_simulation_log.txt
+
 # --- Các file đặc thù khác ---
 *.userosscache
 *.sln.docstates

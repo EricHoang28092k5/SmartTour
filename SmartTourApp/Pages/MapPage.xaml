@@ -228,8 +228,17 @@
             </Border.Shadow>
             <Border.GestureRecognizers>
                 <TapGestureRecognizer Tapped="PoiCard_Tapped"/>
+                <SwipeGestureRecognizer Direction="Left" Swiped="PoiCard_Swiped"/>
             </Border.GestureRecognizers>
             <VerticalStackLayout Spacing="0" Padding="18,16,18,18">
+
+                <Label x:Name="LblPinnedBanner"
+                       IsVisible="False"
+                       Text=""
+                       FontSize="11"
+                       FontAttributes="Bold"
+                       TextColor="#C62828"
+                       Margin="0,0,0,8"/>
 
                 <!-- Header Row: Name + Distance + Icon buttons -->
                 <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,12">

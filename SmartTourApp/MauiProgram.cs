@@ -34,6 +34,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<LocationService>();
         builder.Services.AddSingleton<AudioService>();
         builder.Services.AddSingleton<GeofencingEngine>();
+        builder.Services.AddSingleton<MarketOverlapPlaybackService>();
 
         // ── Language & Localization ──
         builder.Services.AddSingleton<LanguageService>();
@@ -57,7 +58,7 @@ public static class MauiProgram
         // ── API ──
         builder.Services.AddHttpClient<ApiService>(client =>
         {
-            client.BaseAddress = new Uri("http://10.0.2.2:5165/");
+            client.BaseAddress = new Uri("http://192.168.1.4:5165/");
         });
 
         // ── Data / Repository ──

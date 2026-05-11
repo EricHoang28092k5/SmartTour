@@ -3,8 +3,8 @@ using DotNetEnv;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
-using SmartTourBackend.Data;
-using SmartTourBackend.Services;
+using SmartTourAPI.Data;
+using SmartTourAPI.Services;
 
 Env.Load();
 var builder = WebApplication.CreateBuilder(args);

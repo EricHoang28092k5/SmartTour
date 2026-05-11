@@ -1,8 +1,8 @@
-﻿namespace SmartTour.Shared.Models
+namespace SmartTour.Shared.Models
 {
     /// <summary>
     /// DTO gửi từ client lên API khi flush một route session.
-    /// Nằm trong Shared để cả SmartTourApp và SmartTourBackend cùng dùng.
+    /// Nằm trong Shared để cả SmartTourApp và SmartTourAPI cùng dùng.
     /// </summary>
     public class RouteSessionDto
     {

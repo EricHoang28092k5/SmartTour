@@ -7,6 +7,7 @@ public class TrackingService
 {
     private readonly LocationService location;
     private readonly GeofencingEngine geo;
+    private readonly MarketOverlapPlaybackService market;
     private readonly NarrationEngine narration;
     private readonly PoiRepository repo;
     private readonly LocationLogger logger;
@@ -30,6 +31,7 @@ public class TrackingService
     public TrackingService(
         LocationService location,
         GeofencingEngine geo,
+        MarketOverlapPlaybackService market,
         NarrationEngine narration,
         PoiRepository repo,
         LocationLogger logger,
@@ -39,6 +41,7 @@ public class TrackingService
     {
         this.location = location;
         this.geo = geo;
+        this.market = market;
         this.narration = narration;
         this.repo = repo;
         this.logger = logger;
@@ -94,6 +97,7 @@ public class TrackingService
                         System.Diagnostics.Debug.WriteLine(
                             "🔄 Auto-play re-enabled → Reset GeofencingEngine + LocationService state");
                         geo.Reset();
+                        market.Reset();
                         location.ResetAdaptiveState();
                     }
 
@@ -102,7 +106,9 @@ public class TrackingService
                     if (autoPlayEnabled)
                     {
                         await RefreshPoiPopularityIfNeededAsync();
-                        var poi = geo.FindBestPoi(loc, pois);
+                        var (poi, stopNarration) = market.Evaluate(loc, pois);
+                        if (stopNarration)
+                            narration.Stop();
                         if (poi != null)
                             await narration.Play(poi, loc);
                     }

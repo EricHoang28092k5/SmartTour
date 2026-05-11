@@ -90,6 +90,75 @@ public class GeofencingEngine
         return null;
     }
 
+    /// <summary>
+    /// Tất cả POI đang overlap bán kính (không lọc cooldown 30s), sắp giống thứ tự ưu tiên FindBestPoi:
+    /// Premium → popularity → gần hơn → thứ tự list.
+    /// Dùng cho khu chợ nhiều quán chồng vùng + skip/ghim.
+    /// </summary>
+    public List<Poi> GetOrderedOverlappingPois(Location user, List<Poi> pois)
+    {
+        ApplyExitCleanup(user, pois);
+
+        var raw = new List<(Poi poi, double dist, int queryIndex)>();
+        for (var i = 0; i < pois.Count; i++)
+        {
+            var poi = pois[i];
+            var meters =
+                Location.CalculateDistance(
+                    user,
+                    new Location(poi.Lat, poi.Lng),
+                    DistanceUnits.Kilometers) * 1000;
+
+            if (meters <= poi.Radius)
+                raw.Add((poi, meters, i));
+        }
+
+        if (raw.Count == 0)
+            return new List<Poi>();
+
+        Dictionary<int, int> popularitySnapshot;
+        lock (poiPopularity)
+        {
+            popularitySnapshot = new Dictionary<int, int>(poiPopularity);
+        }
+
+        static int Pop(Dictionary<int, int> snap, int id) =>
+            snap.TryGetValue(id, out var v) ? v : 0;
+
+        return raw
+            .OrderByDescending(x => x.poi.IsPremium)
+            .ThenByDescending(x => Pop(popularitySnapshot, x.poi.Id))
+            .ThenBy(x => x.dist)
+            .ThenBy(x => x.queryIndex)
+            .Select(x => x.poi)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Gỡ trạng thái “đã kích hoạt vùng” cho một POI (dùng khi user vuốt skip để cho quán kế được auto-play).
+    /// </summary>
+    public void ReleaseActiveZone(int poiId)
+    {
+        activeZones.Remove(poiId);
+        lastTrigger.Remove(poiId);
+    }
+
+    private void ApplyExitCleanup(Location user, List<Poi> pois)
+    {
+        for (var i = 0; i < pois.Count; i++)
+        {
+            var poi = pois[i];
+            var meters =
+                Location.CalculateDistance(
+                    user,
+                    new Location(poi.Lat, poi.Lng),
+                    DistanceUnits.Kilometers) * 1000;
+
+            if (meters > poi.Radius * EXIT_BUFFER)
+                activeZones.Remove(poi.Id);
+        }
+    }
+
     public void UpdatePoiPopularity(IDictionary<int, int> popularityByPoiId)
     {
         if (popularityByPoiId == null) return;

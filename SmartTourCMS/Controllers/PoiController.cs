@@ -5,8 +5,8 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SmartTour.Shared.Models;
-using SmartTourBackend.Data;
-using SmartTourBackend.Services;
+using SmartTourAPI.Data;
+using SmartTourAPI.Services;
 using SmartTourCMS.Models;
 using System.Globalization; // Bắt buộc phải có cho vụ lột dấu tiếng Việt
 using System.Text;

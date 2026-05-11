@@ -30,7 +30,10 @@ public partial class MapPage : ContentPage
     private readonly OfflineMapService offlineMapService;
     private readonly OfflineSyncService offlineSync;
     private readonly LocalizationService loc;
+    private readonly NarrationEngine narration;
+    private readonly MarketOverlapPlaybackService market;
     private readonly MapViewModel vm = new();
+    private Action? _localizationRefreshHandler;
     private List<Poi> pois = new();
     private bool mapInitialized = false;
     private bool trackingStarted = false;
@@ -63,7 +66,9 @@ public partial class MapPage : ContentPage
         ApiService api,
         OfflineMapService offlineMapService,
         OfflineSyncService offlineSync,
-        LocalizationService loc)
+        LocalizationService loc,
+        NarrationEngine narration,
+        MarketOverlapPlaybackService market)
     {
         InitializeComponent();
 
@@ -79,6 +84,15 @@ public partial class MapPage : ContentPage
         this.offlineMapService = offlineMapService;
         this.offlineSync = offlineSync;
         this.loc = loc;
+        this.narration = narration;
+        this.market = market;
+
+        _localizationRefreshHandler = () =>
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                ApplyLocalization();
+                RefreshPinUi();
+            });
 
         offlineMapService.OnConnectivityChanged += OnConnectivityChanged;
         offlineMapService.OnDownloadProgress += OnDownloadProgress;
@@ -108,6 +122,11 @@ public partial class MapPage : ContentPage
     {
         base.OnAppearing();
         ApplyLocalization();
+        if (_localizationRefreshHandler != null)
+        {
+            this.loc.LanguageChanged -= _localizationRefreshHandler;
+            this.loc.LanguageChanged += _localizationRefreshHandler;
+        }
         tracking.OnLocationChanged -= UpdateLocation;
         tracking.OnLocationChanged += UpdateLocation;
 
@@ -207,6 +226,8 @@ public partial class MapPage : ContentPage
     {
         base.OnDisappearing();
         tracking.OnLocationChanged -= UpdateLocation;
+        if (_localizationRefreshHandler != null)
+            this.loc.LanguageChanged -= _localizationRefreshHandler;
         // YC3: Không reset cardManuallyClosed ở đây
         // Trạng thái sẽ được xử lý ở OnAppearing
     }
@@ -357,6 +378,7 @@ public partial class MapPage : ContentPage
             RouteLoadingRow.IsVisible = false;
             PoiCard.IsVisible = true;
             _cardShownForPoiId = poi.Id;
+            RefreshPinUi();
         });
 
         _ = RefreshPoiCardNameAsync(poi);
@@ -831,5 +853,26 @@ public partial class MapPage : ContentPage
         DownloadCancelLabel.Text = loc.Cancel;
         LblDirectionsBtn.Text = loc.DirectionsBtn;
         RouteLoadingLabel.Text = loc.CalculatingRoute;
+        RefreshPinUi();
+    }
+
+    private void RefreshPinUi()
+    {
+        var p = selectedPoi ?? currentNearest;
+        var pinId = market.PinnedPoiId;
+        var pinnedHere = p != null && pinId == p.Id;
+        LblPinnedBanner.IsVisible = pinnedHere;
+        LblPinnedBanner.Text = loc.MapPinnedBanner;
+    }
+
+    private void PoiCard_Swiped(object? sender, SwipedEventArgs e)
+    {
+        if (e.Direction != SwipeDirection.Left) return;
+        _isActionButtonTapped = true;
+        var p = selectedPoi ?? currentNearest;
+        if (p == null) return;
+        market.SkipPoiForAutoPlay(p.Id);
+        narration.Stop();
+        RefreshPinUi();
     }
 }

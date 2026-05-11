@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using SmartTour.Shared.Models;
-using SmartTourBackend.Data;
+using SmartTourAPI.Data;
 using SmartTourCMS.Models;
 using System.Diagnostics;
 using System.Linq;
@@ -233,7 +233,7 @@ namespace SmartTourCMS.Controllers
                 if (pg?.SqlState == "42P01")
                 {
                     _logger.LogWarning(
-                        "Bảng DevicePresences chưa tồn tại. Chạy migration: dotnet ef database update --project SmartTourBackend");
+                        "Bảng DevicePresences chưa tồn tại. Chạy migration: dotnet ef database update --project SmartTourAPI");
                 }
                 else
                 {

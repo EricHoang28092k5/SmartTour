@@ -1,0 +1,31 @@
+﻿[2026-05-11 20:33:19.325] === SmartTour Overlap LogRunner (mô phỏng khu chợ / giao POI) ===
+[2026-05-11 20:33:19.329] File log: d:\Solution1\C#\SmartTour\SmartTour.OverlapLogRunner\SmartTour OverlapLog\overlap_simulation_log.txt
+[2026-05-11 20:33:19.335] Số thiết bị: 2 (DEV-01 … DEV-02; đổi bằng tham số dòng lệnh, xem README.txt)
+[2026-05-11 20:33:19.335] 
+[2026-05-11 20:33:19.337] Điểm giao (user): lat=10.776889, lng=106.700806
+[2026-05-11 20:33:19.339] Số POI: 4; popularity: 1=50, 2=200, 3=200, 4=10
+[2026-05-11 20:33:19.339] 
+[2026-05-11 20:33:19.341] --- TICK 1: 2 thiết bị cùng vị trí, GPS accuracy = 25m ---
+[2026-05-11 20:33:19.353] DEV-01 | Trong vùng (đã sắp): Quán A (Premium)(id=1, prem=True, dist=80.1m, pop=50) | Quán C(id=3, prem=False, dist=80.1m, pop=200) | Quán B(id=2, prem=False, dist=80.1m, pop=200) | Quán D(id=4, prem=False, dist=80.1m, pop=10)
+[2026-05-11 20:33:19.355] DEV-01 | PLAY → id=1 "Quán A (Premium)" (pinned=none, skipped=[])
+[2026-05-11 20:33:19.355] DEV-02 | Trong vùng (đã sắp): Quán A (Premium)(id=1, prem=True, dist=80.1m, pop=50) | Quán C(id=3, prem=False, dist=80.1m, pop=200) | Quán B(id=2, prem=False, dist=80.1m, pop=200) | Quán D(id=4, prem=False, dist=80.1m, pop=10)
+[2026-05-11 20:33:19.356] DEV-02 | PLAY → id=1 "Quán A (Premium)" (pinned=none, skipped=[])
+[2026-05-11 20:33:19.356] 
+[2026-05-11 20:33:19.356] --- Giữa tick: DEV-01 SKIP POI id=1 (Quán A (Premium)) ---
+[2026-05-11 20:33:19.356] 
+[2026-05-11 20:33:19.356] --- TICK 2: sau khi DEV-01 skip, các máy khác giữ nguyên trạng thái dispatch ---
+[2026-05-11 20:33:19.356] DEV-01 | Trong vùng (đã sắp): Quán A (Premium)(id=1, prem=True, dist=80.1m, pop=50) | Quán C(id=3, prem=False, dist=80.1m, pop=200) | Quán B(id=2, prem=False, dist=80.1m, pop=200) | Quán D(id=4, prem=False, dist=80.1m, pop=10)
+[2026-05-11 20:33:19.356] DEV-01 | PLAY → id=3 "Quán C" (pinned=none, skipped=[1])
+[2026-05-11 20:33:19.356] DEV-02 | Trong vùng (đã sắp): Quán A (Premium)(id=1, prem=True, dist=80.1m, pop=50) | Quán C(id=3, prem=False, dist=80.1m, pop=200) | Quán B(id=2, prem=False, dist=80.1m, pop=200) | Quán D(id=4, prem=False, dist=80.1m, pop=10)
+[2026-05-11 20:33:19.356] DEV-02 | HOLD — head vẫn là id=1, không gọi Play lại (tránh spam tick).
+[2026-05-11 20:33:19.356] 
+[2026-05-11 20:33:19.356] --- TICK 3: DEV-02 accuracy = 150m (>120) → không auto-play ---
+[2026-05-11 20:33:19.356] DEV-02 | GPS accuracy 150m > 120 → bỏ qua auto-play (giống MarketOverlapPlaybackService).
+[2026-05-11 20:33:19.356] 
+[2026-05-11 20:33:19.356] --- GHIM: bỏ qua (cần ≥3 thiết bị; ví dụ POI ghim sẽ là id=2 Quán B) ---
+[2026-05-11 20:33:19.356] 
+[2026-05-11 20:33:19.356] --- TICK 4: di chuyển xa (ngoài mọi bán kính) → hết vùng, bỏ ghim nếu có ---
+[2026-05-11 20:33:19.356] DEV-01 | Không còn POI trong bán kính. hadPinBeforeClear=False → StopNarration=no.
+[2026-05-11 20:33:19.356] DEV-02 | Không còn POI trong bán kính. hadPinBeforeClear=False → StopNarration=no.
+[2026-05-11 20:33:19.356] 
+[2026-05-11 20:33:19.356] === Kết thúc mô phỏng ===
