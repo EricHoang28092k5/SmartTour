@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using SmartTourAPI.Data;
 using SmartTourAPI.Services;
+using SmartTourCMS.Services;
 
 Env.Load();
 var builder = WebApplication.CreateBuilder(args);
@@ -69,6 +70,18 @@ builder.Services.ConfigureApplicationCookie(options =>
 });
 
 builder.Services.AddAuthorization();
+builder.Services.AddSingleton<ILogRunner, FileLogRunner>();
+builder.Services.AddHttpClient("SmartTourApi", client =>
+{
+    var baseUrl = builder.Configuration["BackendApi:BaseUrl"];
+    if (!string.IsNullOrWhiteSpace(baseUrl))
+    {
+        var u = baseUrl.Trim().TrimEnd('/');
+        client.BaseAddress = new Uri(u + "/");
+    }
+
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
 builder.Services.AddScoped<IVoiceService, VoiceService>();
 
 var app = builder.Build();

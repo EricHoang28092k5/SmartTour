@@ -1,0 +1,85 @@
+@{
+    ViewData["Title"] = "Load test";
+    var bulkUrl = Url.Action("RunBulkVisit", "LoadTest")!;
+}
+
+<div class="card shadow-sm border-0 mb-4" style="max-width: 720px;">
+    <div class="card-body">
+        <h4 class="mb-3">Load test (Admin)</h4>
+        <p class="text-muted">
+            Công cụ giả lập tải / geofence phục vụ kiểm thử. Geofence Simulator dùng POI thật từ DB, gọi
+            <code>POST /api/analytics/visit</code> qua CMS proxy (cần <strong>SmartTourAPI</strong> chạy và
+            <code>BackendApi:BaseUrl</code> đúng trong <code>appsettings.json</code>).
+            Trên trang đó có luôn panel <strong>Log audio</strong> và lưu/xem/tải <code>logqueue.txt</code> qua <code>ILogRunner</code> — không cần mục menu riêng.
+        </p>
+        <a class="btn btn-primary" asp-controller="LoadTest" asp-action="GeofenceSimulator">
+            Mở Geofence Simulator
+        </a>
+    </div>
+</div>
+
+<div class="card shadow-sm border-0" style="max-width: 720px;">
+    <div class="card-body">
+        <h5 class="mb-2">Bulk visit (stress)</h5>
+        <p class="text-muted small mb-3">
+            Gửi <strong>N</strong> request song song tới <code>api/analytics/visit</code> — mỗi thiết bị <code>SIM-BULK-001</code> … <code>SIM-BULK-NNN</code>,
+            tọa độ <code>0,0</code> (DTO API dùng <code>double</code>, tương đương bulk HeriStep với lat/lng null), <code>visitType = MapClick</code> (1).
+            Chỉ POI <strong>đang active</strong> trong DB.
+        </p>
+        <div class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label small mb-0" for="bulkDeviceCount">Số thiết bị (1–200)</label>
+                <input type="number" class="form-control" id="bulkDeviceCount" min="1" max="200" value="20" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small mb-0" for="bulkPoiId">PoiId</label>
+                <input type="number" class="form-control" id="bulkPoiId" min="1" placeholder="VD: 1" />
+            </div>
+            <div class="col-md-4">
+                <button type="button" class="btn btn-warning w-100" id="bulkRunBtn" title="Cần API + worker VisitLog">
+                    ▶ Chạy bulk visit
+                </button>
+            </div>
+        </div>
+        <pre class="small bg-light border rounded p-2 mt-3 mb-0 text-wrap" id="bulkResult" style="min-height: 3rem;">(chưa chạy)</pre>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        (function () {
+            const url = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(bulkUrl));
+            const btn = document.getElementById('bulkRunBtn');
+            const out = document.getElementById('bulkResult');
+            btn.addEventListener('click', async function () {
+                const deviceCount = Math.min(200, Math.max(1, parseInt(document.getElementById('bulkDeviceCount').value, 10) || 1));
+                const poiId = parseInt(document.getElementById('bulkPoiId').value, 10);
+                if (!poiId || poiId < 1) {
+                    out.textContent = 'Nhập PoiId hợp lệ.';
+                    return;
+                }
+                btn.disabled = true;
+                out.textContent = 'Đang gửi…';
+                try {
+                    const res = await fetch(url, {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                        body: JSON.stringify({ deviceCount, poiId })
+                    });
+                    const text = await res.text();
+                    try {
+                        const j = JSON.parse(text);
+                        out.textContent = JSON.stringify(j, null, 2);
+                    } catch {
+                        out.textContent = res.status + ' ' + text;
+                    }
+                } catch (e) {
+                    out.textContent = 'Lỗi: ' + e;
+                } finally {
+                    btn.disabled = false;
+                }
+            });
+        })();
+    </script>
+}

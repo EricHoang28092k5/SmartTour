@@ -1,0 +1,608 @@
+@{
+    ViewData["Title"] = "Geofence Simulator";
+}
+
+<div id="gfSim" class="d-none"
+     data-pois-url="@Url.Action("POIs", "LoadTest")"
+     data-visit-url="@Url.Action("FireGeofenceVisit", "LoadTest")"
+     data-logs-url="@Url.Action("RecentVisitLogs", "LoadTest")"
+     data-save-url="@Url.Action("SaveSimulatorLog", "LoadTest")"
+     data-download-url="@Url.Action("DownloadQueueLog", "LoadTest")"
+     data-read-url="@Url.Action("ReadQueueLog", "LoadTest")"></div>
+
+<div class="container-fluid">
+    <h4 class="mb-2">Geofence Simulator <span class="badge bg-secondary">Admin</span></h4>
+    <p class="text-muted small mb-3">
+        Giả lập nhiều thiết bị ảo trên bản đồ (Leaflet). <strong>Chỉ trong lãnh thổ Việt Nam</strong> (neo random hoặc seed đều bị giới hạn bbox đất liền; tọa độ vòng quanh neo cũng nằm trong phạm vi đó).
+        <strong>Near 3/4/5</strong> tạo vòng ngẫu nhiên có giao chung; server gán ngẫu nhiên tier: <strong>Premium</strong>, <strong>Heatmap</strong> (2 POI thì popularity khác nhau — POI pop cao thắng khi so heatmap), <strong>Distance</strong> (còn lại). Khi máy nằm trong <strong>vùng giao của tất cả</strong> vòng POI trong cụm, toàn bộ POI đó được <strong>xếp một hàng đợi</strong> theo ưu tiên (cao trước) rồi <strong>phát lần lượt</strong> (FIFO). Ra khỏi giao rồi vào lại thì có thể xếp hàng lại (tuỳ cooldown API). Giữa mỗi bài audio trong hàng đợi: <strong>~5 giây</strong>. Visit API gọi nền. Client log <strong>chỉ</strong> dòng audio tự động (user + POI), không bấm Play.
+    </p>
+
+    <div class="row g-3">
+        <div class="col-lg-8">
+            <div id="map" class="border rounded" style="height: 520px;"></div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-header bg-white fw-semibold">Cụm POI &amp; máy ảo</div>
+                <div class="card-body small">
+                    <div class="mb-2 d-flex flex-wrap gap-1">
+                        <button type="button" class="btn btn-sm btn-outline-primary gf-near" data-n="3">Near 3</button>
+                        <button type="button" class="btn btn-sm btn-outline-primary gf-near" data-n="4">Near 4</button>
+                        <button type="button" class="btn btn-sm btn-outline-primary gf-near" data-n="5">Near 5</button>
+                    </div>
+                    <div class="mb-2 small">
+                        <span class="text-muted">Tâm seed (tuỳ chọn):</span>
+                        <input id="gfSeedLat" type="text" class="form-control form-control-sm d-inline-block" style="width:110px" placeholder="lat" />
+                        <input id="gfSeedLng" type="text" class="form-control form-control-sm d-inline-block" style="width:110px" placeholder="lng" />
+                        <div class="form-text">Để trống → neo <strong>ngẫu nhiên trong Việt Nam</strong>. Nhập lat/lng ngoài VN sẽ được <strong>kẹp</strong> vào bbox đất liền.</div>
+                    </div>
+                    <label class="form-label mb-0">Số máy ảo (1–10)</label>
+                    <input type="range" id="gfDevCount" class="form-range" min="1" max="10" value="4" />
+                    <div class="text-muted mb-2"><span id="gfDevCountLbl">4</span> máy — userId <code>SIM-DEV-01</code> …</div>
+                    <label class="form-label mb-0">Cooldown / POI / máy (giảm spam API)</label>
+                    <select id="gfCooldown" class="form-select form-select-sm mb-1">
+                        <option value="30000">30 giây (test nhanh)</option>
+                        <option value="120000">2 phút</option>
+                        <option value="300000" selected>5 phút (giống mô tả đồ án tham chiếu)</option>
+                    </select>
+                    <div class="form-text mb-2">Chỉ áp dụng cho <strong>lặp lại visit/API</strong> cùng POI. Giữa các bài audio trong hàng đợi luôn cách <strong>~5 giây</strong>.</div>
+                    <div class="d-flex flex-wrap gap-2 mb-2">
+                        <button type="button" id="gfSpawn" class="btn btn-sm btn-success">Spawn (giao mọi vùng)</button>
+                        <button type="button" id="gfWalk" class="btn btn-sm btn-outline-secondary">Start walk</button>
+                        <button type="button" id="gfStop" class="btn btn-sm btn-outline-danger">Stop</button>
+                        <button type="button" id="gfNudge" class="btn btn-sm btn-outline-dark">Nudge ▲▼◀▶</button>
+                        <button type="button" id="gfConverge" class="btn btn-sm btn-warning">Converge về giao</button>
+                    </div>
+                    <div id="gfPoiStatus" class="alert alert-light border py-2 small mb-0">Chưa tải POI.</div>
+                    <div id="gfPoiLegend" class="mt-2 small text-muted" style="max-height: 120px; overflow: auto;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mt-1" id="gf-log-audio-panel">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white fw-semibold">Log audio — tự động khi vào vòng (geofence)</div>
+                <div class="card-body p-2">
+                    <p class="text-muted small mb-2">Mỗi dòng = một bài audio tự động trong hàng đợi (ưu tiên FIFO), cách nhau <strong>~5 giây</strong>. <strong>Không có nút Play</strong> — chỉ khi nằm trong vùng giao.</p>
+                    <pre id="gfClientLog" class="small bg-dark text-light rounded p-3 mb-2 mb-lg-3" style="min-height: 180px; max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-word;"></pre>
+                    <div class="d-flex flex-column flex-md-row flex-md-wrap align-items-start align-items-md-center gap-2 gap-md-3 mb-2">
+                        <div class="form-check form-check-sm mb-0">
+                            <input class="form-check-input" type="checkbox" id="gfLogAppend" />
+                            <label class="form-check-label small" for="gfLogAppend">Nối tiếp (append) vào <code>logqueue.txt</code> — không ghi đè file</label>
+                        </div>
+                        <button type="button" id="gfSaveLog" class="btn btn-sm btn-primary">Save → ILogRunner</button>
+                        <div class="btn-group btn-group-sm" role="group">
+                            <a id="gfDownloadLog" class="btn btn-outline-secondary" href="@Url.Action("DownloadQueueLog", "LoadTest")" download="logqueue.txt">Tải logqueue.txt</a>
+                            <button type="button" id="gfViewSavedLog" class="btn btn-outline-secondary">Xem file đã lưu</button>
+                        </div>
+                    </div>
+                    <p class="text-muted small mb-0">Đường dẫn file: <code id="gfLogPathHint">(sau Save / View)</code></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-3">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white fw-semibold">Device stats</div>
+                <div class="card-body p-0 table-responsive">
+                    <table class="table table-sm table-striped mb-0 small">
+                        <thead><tr>
+                            <th>Máy</th><th>Queue</th><th>Enters</th><th>API ✓</th><th>API ✗</th><th>Cooldown skip</th><th>POI target</th>
+                        </tr></thead>
+                        <tbody id="gfStatsBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 mt-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-success text-white fw-semibold">Server log (visit_logs, user SIM-*)</div>
+                <div class="card-body p-2">
+                    <pre id="gfServerLog" class="small bg-light border rounded p-2 mb-0" style="max-height: 220px; overflow: auto;"></pre>
+                    <p class="text-muted small mt-2 mb-0">Polling mỗi 4s. Cần API + worker VisitLog chạy để thấy dòng sau vài trăm ms.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="gfLogFileModal" tabindex="-1" aria-labelledby="gfLogFileModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="gfLogFileModalLabel">Nội dung logqueue.txt (ILogRunner)</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+            </div>
+            <div class="modal-body p-0">
+                <pre id="gfLogFileModalBody" class="small mb-0 p-3 bg-light" style="max-height: 70vh; white-space: pre-wrap; word-break: break-word;"></pre>
+            </div>
+            <div class="modal-footer">
+                <span class="text-muted small me-auto" id="gfLogFileModalPath"></span>
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Đóng</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+<style>
+    .poi-sim-tt.leaflet-tooltip {
+        background: rgba(255,255,255,0.92);
+        border: 1px solid #333;
+        color: #222;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 4px 8px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+        white-space: pre-line;
+        text-align: center;
+    }
+</style>
+@section Scripts {
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script>
+(function () {
+    const root = document.getElementById('gfSim').dataset;
+    const poisUrl = root.poisUrl;
+    const visitUrl = root.visitUrl;
+    const logsUrl = root.logsUrl;
+    const saveUrl = root.saveUrl;
+    const readUrl = root.readUrl;
+
+    /** Khoảng cách giữa hai lần log/phát audio POI kế tiếp trong cùng hàng đợi (cố định ~5s). */
+    const audioPlayGapMs = 5000;
+    let clusterPois = [];
+    let clusterCenter = { lat: 10.776889, lng: 106.700806 };
+    let devices = [];
+    let map, layerCircles, layerDevices;
+    let walkTimer = null;
+    let pollTimer = null;
+    let clientLines = [];
+    /** Điểm giao do server chứng minh (luôn nằm trong mọi đĩa khi layout = random_overlapping_disks). */
+    let serverIntersection = null;
+    let feasibleAnchor = null;
+
+    function logLine(msg) {
+        clientLines.push(msg);
+        if (clientLines.length > 400) clientLines.shift();
+        const el = document.getElementById('gfClientLog');
+        el.textContent = clientLines.join('\n');
+        el.scrollTop = el.scrollHeight;
+    }
+
+    function escHtml(s) {
+        if (!s) return '';
+        return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+    }
+
+    function renderPoiLegend() {
+        const el = document.getElementById('gfPoiLegend');
+        if (!clusterPois.length) { el.innerHTML = ''; return; }
+        let h = '<div class="fw-semibold text-dark mb-1">Vòng = POI (màu: Premium / Heatmap / Khoảng cách)</div><ul class="mb-0 ps-3 small">';
+        clusterPois.forEach(p => {
+            const badge = p.simTier === 'Premium' ? 'bg-danger' : (p.simTier === 'Heatmap' ? 'bg-warning text-dark' : 'bg-primary');
+            h += '<li>POI #' + p.id + ' <span class="badge ' + badge + '">' + escHtml(p.simTier) + '</span> heat=' + p.popularity + ', r=' + p.radius + 'm</li>';
+        });
+        h += '</ul>';
+        el.innerHTML = h;
+    }
+
+    function distM(lat1, lon1, lat2, lon2) {
+        const R = 6371000, p1 = lat1 * Math.PI / 180, p2 = lat2 * Math.PI / 180;
+        const dp = (lat2 - lat1) * Math.PI / 180, dl = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(dp/2)**2 + Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+
+    function orderOverlapping(lat, lng, pois) {
+        const raw = [];
+        for (let i = 0; i < pois.length; i++) {
+            const p = pois[i];
+            const d = distM(lat, lng, p.lat, p.lng);
+            if (d <= p.radius) raw.push({ poi: p, dist: d, q: i });
+        }
+        raw.sort((a, b) => {
+            if (a.poi.isPremium !== b.poi.isPremium) return a.poi.isPremium ? -1 : 1;
+            const pa = a.poi.popularity || 0, pb = b.poi.popularity || 0;
+            if (pa !== pb) return pb - pa;
+            if (a.dist !== b.dist) return a.dist - b.dist;
+            return a.q - b.q;
+        });
+        return raw.map(x => x.poi);
+    }
+
+    function getCooldownMs() {
+        return parseInt(document.getElementById('gfCooldown').value, 10) || 300000;
+    }
+
+    function ensureMap() {
+        if (map) return;
+        map = L.map('map');
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OSM' }).addTo(map);
+        layerCircles = L.layerGroup().addTo(map);
+        layerDevices = L.layerGroup().addTo(map);
+    }
+
+    function renderPoisOnMap() {
+        ensureMap();
+        layerCircles.clearLayers();
+        clusterPois.forEach(p => {
+            const tier = (p.simTier || '').toLowerCase();
+            const color = tier === 'premium' ? '#c0392b' : (tier === 'heatmap' ? '#e67e22' : '#2980b9');
+            const tip = 'POI #' + p.id + '\n[' + (p.simTier || '') + '] r=' + p.radius + 'm';
+            L.circle([p.lat, p.lng], { radius: p.radius, color: color, fillOpacity: 0.14, weight: 3 })
+                .bindTooltip(tip, { permanent: true, direction: 'center', className: 'poi-sim-tt', opacity: 1 })
+                .bindPopup('<b>POI #' + p.id + '</b><br>Tier: ' + escHtml(p.simTier || '') + '<br>Heat: ' + (p.popularity || 0) + '<br>r=' + p.radius + 'm')
+                .addTo(layerCircles);
+        });
+        const bounds = [];
+        clusterPois.forEach(p => bounds.push([p.lat, p.lng]));
+        if (bounds.length) {
+            map.fitBounds(bounds, { padding: [40, 40] });
+            if (typeof clusterCenter.lat === 'number' && typeof clusterCenter.lng === 'number')
+                map.setView([clusterCenter.lat, clusterCenter.lng], Math.max(map.getZoom(), 16), { animate: false });
+        }
+    }
+
+    function renderDevices() {
+        ensureMap();
+        layerDevices.clearLayers();
+        devices.forEach(d => {
+            d.marker = L.circleMarker([d.lat, d.lng], { radius: 9, color: '#27ae60', fillColor: '#2ecc71', fillOpacity: 0.9, weight: 2 })
+                .bindTooltip(d.label, { permanent: false }).addTo(layerDevices);
+        });
+        refreshStatsTable();
+    }
+
+    /** Điểm (lat,lng) có nằm trong bán kính của mọi POI trong cụm không. */
+    function insideAll(lat, lng, pois) {
+        if (!pois || !pois.length) return false;
+        return pois.every(p => distM(lat, lng, p.lat, p.lng) <= Math.max(1, p.radius));
+    }
+
+    /** Tìm một điểm trong giao các đĩa (centroid → random trong bbox → lưới thô). */
+    function findIntersectionBase(pois) {
+        if (!pois.length) return null;
+        const cx = pois.reduce((s, p) => s + p.lat, 0) / pois.length;
+        const cy = pois.reduce((s, p) => s + p.lng, 0) / pois.length;
+        if (insideAll(cx, cy, pois)) return { lat: cx, lng: cy };
+
+        let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+        pois.forEach(p => {
+            const r = Math.max(1, p.radius);
+            const dlat = r / 111320;
+            const cos = Math.max(0.25, Math.abs(Math.cos(p.lat * Math.PI / 180)));
+            const dlng = r / (111320 * cos);
+            minLat = Math.min(minLat, p.lat - dlat);
+            maxLat = Math.max(maxLat, p.lat + dlat);
+            minLng = Math.min(minLng, p.lng - dlng);
+            maxLng = Math.max(maxLng, p.lng + dlng);
+        });
+
+        for (let t = 0; t < 6000; t++) {
+            const lat = minLat + Math.random() * (maxLat - minLat);
+            const lng = minLng + Math.random() * (maxLng - minLng);
+            if (insideAll(lat, lng, pois)) return { lat, lng };
+        }
+        for (let gy = 0; gy <= 32; gy++) {
+            for (let gx = 0; gx <= 32; gx++) {
+                const lat = minLat + (gx / 32) * (maxLat - minLat);
+                const lng = minLng + (gy / 32) * (maxLng - minLng);
+                if (insideAll(lat, lng, pois)) return { lat, lng };
+            }
+        }
+        return null;
+    }
+
+    function offsetMeters(lat0, lng0, bearingRad, distM) {
+        const latScale = 111320;
+        const lngScale = 111320 * Math.cos(lat0 * Math.PI / 180);
+        return {
+            lat: lat0 + (distM * Math.cos(bearingRad)) / latScale,
+            lng: lng0 + (distM * Math.sin(bearingRad)) / lngScale
+        };
+    }
+
+    /** Nhích nhẹ quanh base, vẫn nằm trong giao tất cả đĩa. */
+    function jitterInsideAll(base, pois, maxMeters) {
+        if (!base) return null;
+        const cap = Math.max(3, Math.min(maxMeters || 18, 0.14 * Math.min(...pois.map(p => Math.max(50, p.radius)))));
+        for (let k = 0; k < 80; k++) {
+            const b = Math.random() * Math.PI * 2;
+            const dm = Math.random() * cap;
+            const pt = offsetMeters(base.lat, base.lng, b, dm);
+            if (insideAll(pt.lat, pt.lng, pois)) return pt;
+        }
+        return insideAll(base.lat, base.lng, pois) ? base : null;
+    }
+
+    function refreshStatsTable() {
+        const tb = document.getElementById('gfStatsBody');
+        tb.innerHTML = '';
+        devices.forEach(d => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = '<td>' + d.label + '</td><td>' + d.queue.length + (d._processing ? '*' : '') + '</td><td>' + d.stats.enters + '</td><td>' + d.stats.apiOk + '</td><td>' + d.stats.apiFail + '</td><td>' + d.stats.cooldownSkips + '</td><td>' + (d.stats.lastTarget || '-') + '</td>';
+            tb.appendChild(tr);
+        });
+    }
+
+    function spawnDevices() {
+        const n = parseInt(document.getElementById('gfDevCount').value, 10);
+        if (!clusterPois.length) { alert('Chưa có POI — bấm Near 3/4/5.'); return; }
+
+        const base = (serverIntersection && insideAll(serverIntersection.lat, serverIntersection.lng, clusterPois))
+            ? serverIntersection
+            : findIntersectionBase(clusterPois);
+        if (!base) {
+            feasibleAnchor = null;
+            alert('Cụm POI hiện tại không có giao (không có chỗ cùng thuộc tất cả các vòng).\nThử: đổi tâm seed, hoặc Near khác.');
+            return;
+        }
+        feasibleAnchor = base;
+
+        const minR = Math.min(...clusterPois.map(p => Math.max(50, p.radius)));
+        const maxJ = Math.min(22, minR * 0.11);
+
+        devices = [];
+        for (let i = 0; i < n; i++) {
+            const id = i + 1;
+            const devLabel = 'SIM-DEV-' + String(id).padStart(2, '0');
+            const pos = jitterInsideAll(base, clusterPois, maxJ) || base;
+            devices.push({
+                id, label: devLabel,
+                lat: pos.lat, lng: pos.lng,
+                queue: [], _processing: false,
+                cooldown: {},
+                /** true = đã xếp hàng phát cho lần “đứng trong giao cả cụm” hiện tại; ra khỏi giao → false. */
+                wasInClusterIntersection: false,
+                walkBearing: Math.random() * Math.PI * 2,
+                stats: { enters: 0, apiOk: 0, apiFail: 0, cooldownSkips: 0, lastTarget: '' }
+            });
+        }
+        renderDevices();
+        checkGeofenceAll();
+    }
+
+    async function processQueue(d) {
+        if (d._processing || !d.queue.length) return;
+        d._processing = true;
+        refreshStatsTable();
+        while (d.queue.length) {
+            const job = d.queue.shift();
+            const ts = new Date().toISOString();
+            logLine(ts + ' | ' + d.label + ' | AUTO | GEOFENCE | AUDIO | POI #' + job.poiId + ' | tier=' + (job.simTier || '') + ' | heat=' + (job.popularity != null ? job.popularity : ''));
+            // Visit API chạy nền — không await trước khoảng nghỉ, tránh API chậm/treo làm trễ POI kế tiếp.
+            fetch(visitUrl, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ poiId: job.poiId, lat: d.lat, lng: d.lng, userId: d.label })
+            })
+                .then(res => res.json().then(j => ({ res, j })).catch(() => ({ res, j: {} })))
+                .then(({ res, j }) => {
+                    if (res.ok && j.ok !== false) d.stats.apiOk++;
+                    else { d.stats.apiFail++; console.warn(d.label, 'visit API', res.status, j); }
+                    refreshStatsTable();
+                })
+                .catch(e => {
+                    d.stats.apiFail++;
+                    console.warn(d.label, 'visit error', e);
+                    refreshStatsTable();
+                });
+            // Sau khi log POI này: chờ 5s rồi mới tới log POI kế (không chờ thừa sau POI cuối).
+            if (d.queue.length > 0)
+                await new Promise(r => setTimeout(r, audioPlayGapMs));
+        }
+        d._processing = false;
+        refreshStatsTable();
+    }
+
+    function checkGeofenceAll() {
+        const cd = getCooldownMs();
+        const now = Date.now();
+        devices.forEach(d => {
+            const inClusterIntersection = clusterPois.length > 0 && insideAll(d.lat, d.lng, clusterPois);
+            if (!inClusterIntersection) {
+                d.wasInClusterIntersection = false;
+                return;
+            }
+            if (d.wasInClusterIntersection) return;
+
+            const ordered = orderOverlapping(d.lat, d.lng, clusterPois);
+
+            let queued = 0;
+            let firstId = null;
+            for (const poi of ordered) {
+                const until = d.cooldown[poi.id] || 0;
+                if (until > now) {
+                    d.stats.cooldownSkips++;
+                    continue;
+                }
+                d.cooldown[poi.id] = now + cd;
+                d.queue.push({
+                    poiId: poi.id,
+                    simTier: poi.simTier || '',
+                    popularity: poi.popularity != null ? poi.popularity : 0
+                });
+                if (firstId == null) firstId = poi.id;
+                queued++;
+            }
+            if (queued === 0) {
+                d.stats.lastTarget = '(trong giao — chờ cooldown POI)';
+                refreshStatsTable();
+                return;
+            }
+            d.wasInClusterIntersection = true;
+            d.stats.enters++;
+            d.stats.lastTarget = '#' + firstId + ' → ' + queued + ' POI (ưu tiên)';
+            refreshStatsTable();
+            processQueue(d);
+        });
+    }
+
+    function walkStep() {
+        const step = 5;
+        devices.forEach(d => {
+            const olat = d.lat, olng = d.lng;
+            const br = d.walkBearing + (Math.random() - 0.5) * 0.3;
+            d.walkBearing = br;
+            d.lat += (step * Math.cos(br)) / 111320;
+            d.lng += (step * Math.sin(br)) / (111320 * Math.cos(d.lat * Math.PI / 180));
+            if (!insideAll(d.lat, d.lng, clusterPois)) {
+                d.lat = olat; d.lng = olng;
+                d.walkBearing = Math.random() * Math.PI * 2;
+            }
+            if (d.marker) d.marker.setLatLng([d.lat, d.lng]);
+        });
+        checkGeofenceAll();
+    }
+
+    async function loadCluster(n) {
+        document.getElementById('gfPoiStatus').textContent = 'Đang tải POI…';
+        const slat = parseFloat(document.getElementById('gfSeedLat').value);
+        const slng = parseFloat(document.getElementById('gfSeedLng').value);
+        let q = 'clusterSize=' + encodeURIComponent(n);
+        if (!isNaN(slat) && !isNaN(slng)) {
+            q += '&seedLat=' + encodeURIComponent(slat) + '&seedLng=' + encodeURIComponent(slng) + '&randomLocation=false';
+        } else {
+            q += '&randomLocation=true';
+        }
+        const u = poisUrl + '?' + q;
+        const res = await fetch(u, { credentials: 'same-origin' });
+        const data = await res.json();
+        if (data.error || !(data.pois && data.pois.length)) {
+            clusterPois = [];
+            feasibleAnchor = null;
+            serverIntersection = null;
+            document.getElementById('gfPoiStatus').className = 'alert alert-danger border py-2 small mb-0';
+            document.getElementById('gfPoiStatus').textContent = data.message || data.error || 'Không có cụm POI chồng lấn.';
+            console.warn('POIs API', data.message || data.error);
+            alert(data.message || 'Không tải được cụm POI (kiểm tra số POI đã duyệt trong DB).');
+            renderPoisOnMap();
+            return;
+        }
+        clusterPois = (data.pois || []).map(p => ({
+            id: p.id, lat: p.lat, lng: p.lng, radius: p.radius,
+            isPremium: !!p.isPremium, priority: p.priority || 0, popularity: p.popularity != null ? p.popularity : 0,
+            simTier: p.simTier || 'Distance'
+        }));
+        serverIntersection = (data.intersection && typeof data.intersection.lat === 'number' && typeof data.intersection.lng === 'number')
+            ? { lat: data.intersection.lat, lng: data.intersection.lng }
+            : null;
+        if (data.intersection && typeof data.intersection.lat === 'number') {
+            clusterCenter = { lat: data.intersection.lat, lng: data.intersection.lng };
+        } else if (data.center) {
+            clusterCenter = data.center;
+        }
+        const note = data.randomLocation ? ' (neo ngẫu nhiên trong VN)' : '';
+        document.getElementById('gfPoiStatus').className = 'alert alert-success border py-2 small mb-0';
+        document.getElementById('gfPoiStatus').textContent = 'Đã tải ' + clusterPois.length + ' vòng — giao chung, tier random (Premium/Heatmap/Distance).' + note;
+        renderPoiLegend();
+        renderPoisOnMap();
+        spawnDevices();
+    }
+
+    async function pollServerLogs() {
+        try {
+            const res = await fetch(logsUrl + '?minutes=60&take=120', { credentials: 'same-origin' });
+            const data = await res.json();
+            const lines = (data.items || []).map(x => x.visitTime + ' | ' + x.userId + ' | poi ' + x.poiId + ' | ' + x.visitType);
+            document.getElementById('gfServerLog').textContent = lines.length ? lines.join('\n') : '(trống — chạy API + worker, hoặc chưa có visit SIM-*)';
+        } catch (e) {
+            document.getElementById('gfServerLog').textContent = 'Lỗi poll: ' + e;
+        }
+    }
+
+    document.querySelectorAll('.gf-near').forEach(btn => {
+        btn.addEventListener('click', () => loadCluster(parseInt(btn.dataset.n, 10)));
+    });
+    document.getElementById('gfDevCount').addEventListener('input', function () {
+        document.getElementById('gfDevCountLbl').textContent = this.value;
+    });
+    document.getElementById('gfSpawn').addEventListener('click', spawnDevices);
+    document.getElementById('gfWalk').addEventListener('click', function () {
+        if (walkTimer) return;
+        walkTimer = setInterval(walkStep, 700);
+    });
+    document.getElementById('gfStop').addEventListener('click', function () {
+        if (walkTimer) { clearInterval(walkTimer); walkTimer = null; }
+    });
+    document.getElementById('gfNudge').addEventListener('click', function () {
+        const m = 12;
+        devices.forEach(d => {
+            const olat = d.lat, olng = d.lng;
+            d.lat += (Math.random() - 0.5) * m / 111320;
+            d.lng += (Math.random() - 0.5) * m / (111320 * Math.cos(d.lat * Math.PI / 180));
+            if (!insideAll(d.lat, d.lng, clusterPois)) { d.lat = olat; d.lng = olng; }
+            if (d.marker) d.marker.setLatLng([d.lat, d.lng]);
+        });
+        checkGeofenceAll();
+    });
+    document.getElementById('gfConverge').addEventListener('click', function () {
+        if (!clusterPois.length || !devices.length) return;
+        const base = (serverIntersection && insideAll(serverIntersection.lat, serverIntersection.lng, clusterPois))
+            ? serverIntersection
+            : (findIntersectionBase(clusterPois) || feasibleAnchor);
+        if (!base) {
+            alert('Chưa có điểm giao — tải lại cụm POI.');
+            return;
+        }
+        feasibleAnchor = base;
+        const minR = Math.min(...clusterPois.map(p => Math.max(50, p.radius)));
+        const maxJ = Math.min(20, minR * 0.1);
+        devices.forEach(d => {
+            const pos = jitterInsideAll(base, clusterPois, maxJ) || base;
+            d.lat = pos.lat; d.lng = pos.lng;
+            d.walkBearing = Math.random() * Math.PI * 2;
+            if (d.marker) d.marker.setLatLng([d.lat, d.lng]);
+        });
+        checkGeofenceAll();
+    });
+    document.getElementById('gfSaveLog').addEventListener('click', async function () {
+        const append = document.getElementById('gfLogAppend').checked;
+        const body = { text: clientLines.join('\n'), sessionId: 'geofence-sim', append: append };
+        const res = await fetch(saveUrl, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const raw = await res.text();
+        let j = {};
+        try { j = JSON.parse(raw); } catch { /* not JSON */ }
+        const hint = document.getElementById('gfLogPathHint');
+        if (j.path && hint) hint.textContent = j.path;
+        if (res.ok && j.ok !== false)
+            alert((append ? 'Đã nối (append) vào logqueue.' : 'Đã ghi đè logqueue.') + (j.path ? '\n' + j.path : ''));
+        else
+            alert('Lỗi: ' + (j.detail || raw || res.status));
+    });
+    document.getElementById('gfViewSavedLog').addEventListener('click', async function () {
+        try {
+            const res = await fetch(readUrl, { credentials: 'same-origin' });
+            const data = await res.json();
+            if (!res.ok || data.ok === false) {
+                alert('Không đọc được file log.');
+                return;
+            }
+            document.getElementById('gfLogFileModalBody').textContent = data.text || '(trống)';
+            document.getElementById('gfLogFileModalPath').textContent = data.path || '';
+            const hint = document.getElementById('gfLogPathHint');
+            if (hint && data.path) hint.textContent = data.path;
+            const modalEl = document.getElementById('gfLogFileModal');
+            if (typeof bootstrap !== 'undefined' && bootstrap.Modal)
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            else
+                alert((data.text || '(trống)').slice(0, 8000) + (data.text && data.text.length > 8000 ? '\n…' : ''));
+        } catch (e) {
+            alert('Lỗi đọc log: ' + e);
+        }
+    });
+
+    document.getElementById('gfDevCount').dispatchEvent(new Event('input'));
+    ensureMap();
+    map.setView([clusterCenter.lat, clusterCenter.lng], 14);
+    pollTimer = setInterval(pollServerLogs, 4000);
+    pollServerLogs();
+})();
+</script>
+}

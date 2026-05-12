@@ -110,6 +110,11 @@
                         <i class="fa-solid fa-fire me-2" style="color: #e74c3c;"></i> Bản đồ nhiệt (Heatmap)
                     </a>
                 </li>
+                <li class="nav-item">
+                    <a class="nav-link @(ViewContext.RouteData.Values["Controller"]?.ToString() == "LoadTest" ? "active" : "")" asp-controller="LoadTest" asp-action="Index">
+                        <i class="fa-solid fa-flask me-2"></i> Load test
+                    </a>
+                </li>
             }
         </ul>
 
