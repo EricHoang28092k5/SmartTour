@@ -88,7 +88,7 @@
                     <i class="fa-solid fa-play me-2"></i> Lịch sử nghe
                 </a>
             </li>
-            @if (User.IsInRole("Vendor"))
+            @if (User.IsInRole("Vendor") || User.IsInRole("Admin"))
             {
                 <li class="nav-item">
                     <a class="nav-link @(ViewContext.RouteData.Values["Controller"]?.ToString() == "Premium" ? "active" : "")" asp-controller="Premium" asp-action="Index">

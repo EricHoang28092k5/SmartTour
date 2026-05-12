@@ -176,7 +176,8 @@ public class VendorPremiumController : ControllerBase
             VendorUserId = poi.VendorId ?? actorUserId,
             Amount = amount,
             Provider = "momo",
-            Status = "pending",
+            // Phải là "queued" để MoMoPaymentWorker nhận job và gọi MoMo (worker bỏ qua trạng thái khác).
+            Status = "queued",
             CreatedAt = DateTime.UtcNow
         };
         _db.VendorPremiumOrders.Add(order);
