@@ -22,4 +22,7 @@ public class VisitLog
     public DateTime VisitTime { get; set; }
 
     public VisitType VisitType { get; set; }
+
+    /// <summary>Tốc độ tại thời điểm visit (km/h), null nếu không gửi / không đo được.</summary>
+    public double? SpeedKmh { get; set; }
 }

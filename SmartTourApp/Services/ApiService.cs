@@ -135,7 +135,8 @@ public class ApiService
         double lat,
         double lng,
         VisitType visitType,
-        string? anonymousUserId = null)
+        string? anonymousUserId = null,
+        double? speedKmh = null)
     {
         await EnsureDeviceTokenAsync();
         await http.PostAsJsonAsync("api/analytics/visit", new
@@ -144,7 +145,8 @@ public class ApiService
             userId = anonymousUserId,
             lat,
             lng,
-            visitType
+            visitType,
+            speedKmh
         });
     }
 

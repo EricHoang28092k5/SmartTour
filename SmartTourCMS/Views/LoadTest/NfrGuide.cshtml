@@ -1,0 +1,65 @@
+@{
+    ViewData["Title"] = "NFR — Geofence & LogRunner";
+    var simUrl = Url.Action("GeofenceSimulator", "LoadTest")!;
+}
+
+<div class="container-fluid" style="max-width: 960px;">
+    <h4 class="mb-2">Hướng dẫn NFR, k6 &amp; file log</h4>
+    <p class="text-muted small mb-4">
+        Tóm tắt luồng kiểm thử liên quan <strong>Geofence Simulator</strong> (web) và <strong>ILogRunner</strong> (file <code>logqueue.txt</code>).
+        Script đầy đủ nằm trong repo: <code>tests/nfr/</code> (README trong thư mục đó).
+    </p>
+
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white fw-semibold">Trang CMS (đã đăng nhập Admin)</div>
+        <div class="card-body small">
+            <ul class="mb-0">
+                <li><a asp-controller="LoadTest" asp-action="GeofenceSimulator">Geofence Simulator</a> — proxy <code>POST /api/analytics/visit</code>, chỉ <code>userId</code> bắt đầu <code>SIM-</code>; poll <code>RecentVisitLogs</code> (bảng <code>visit_logs</code>).</li>
+                <li><a asp-controller="LoadTest" asp-action="Index">Load test</a> — <strong>Bulk visit (stress)</strong> qua <code>RunBulkVisit</code> (song song tới API, <code>SIM-BULK-###</code>).</li>
+                <li><strong>Log audio / ILogRunner:</strong> <code>SaveSimulatorLog</code> (ghi đè hoặc append), <code>ReadQueueLog</code>, <code>DownloadQueueLog</code>. Đường dẫn mặc định: <code>%TEMP%\SmartTour\logqueue.txt</code> (hoặc <code>LogRunner:FilePath</code> trong appsettings).</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white fw-semibold">API trực tiếp (k6 / Postman)</div>
+        <div class="card-body small">
+            <p class="mb-2">Cần URL <strong>SmartTourAPI</strong> (ví dụ <code>https://localhost:…</code>) và biến môi trường k6 <code>BASE_URL</code>.</p>
+            <table class="table table-sm table-bordered mb-0">
+                <thead><tr><th>Endpoint</th><th>Ghi chú</th></tr></thead>
+                <tbody>
+                    <tr><td><code>GET /api/health</code></td><td>Smoke DB.</td></tr>
+                    <tr><td><code>POST /api/analytics/visit</code></td><td>Anonymous; body JSON <code>poiId, userId?, lat, lng, visitType</code> (0=Geofence, 1=MapClick, 2=QRCode). Trả <strong>202 Accepted</strong> khi enqueue OK.</td></tr>
+                </tbody>
+            </table>
+            <p class="text-muted mt-2 mb-0">Rate limit khoảng <strong>60 request / 10s / IP</strong> — script k6 trong repo dùng tốc độ arrival an toàn (&lt;60).</p>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white fw-semibold">Lệnh k6 (chạy từ thư mục gốc repo)</div>
+        <div class="card-body">
+            <pre class="small bg-light border rounded p-3 mb-0">k6 run -e BASE_URL=https://localhost:PORT -e POI_ID=1 tests/nfr/smarttour-smoke.js
+k6 run -e BASE_URL=https://localhost:PORT -e POI_ID=1 tests/nfr/smarttour-visit-arrival.js
+k6 run -e BASE_URL=https://localhost:PORT -e POI_ID=1 tests/nfr/smarttour-visit-geofence.js</pre>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white fw-semibold">PowerShell — minh chứng visit</div>
+        <div class="card-body">
+            <pre class="small bg-light border rounded p-3 mb-0">powershell -ExecutionPolicy Bypass -File tests/nfr/evidence-geofence-log.ps1 -BaseUrl https://localhost:PORT -PoiId 1 -VisitCount 30</pre>
+            <p class="small text-muted mt-2 mb-0">Kết quả: <code>tests/nfr/results/smarttour-geofence-evidence-*.txt</code></p>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white fw-semibold">OverlapLogRunner (console, không API)</div>
+        <div class="card-body small">
+            <pre class="small bg-light border rounded p-3 mb-2">dotnet run --project SmartTour.OverlapLogRunner -- 8</pre>
+            <p class="mb-0">Mô phỏng thứ tự ưu tiên POI / skip; output file theo tham số project (xem <code>README.txt</code> trong <code>SmartTour.OverlapLogRunner</code>).</p>
+        </div>
+    </div>
+
+    <a class="btn btn-primary" href="@simUrl">← Quay lại Geofence Simulator</a>
+</div>

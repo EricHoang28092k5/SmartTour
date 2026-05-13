@@ -144,8 +144,11 @@ namespace SmartTourApp.Services
                         : $"dev_{_deviceId}";
                     try
                     {
+                        double? speedKmh = null;
+                        if (loc.Speed.HasValue)
+                            speedKmh = loc.Speed.Value * 3.6;
                         await _api.PostVisitAsync(
-                            poi.Id, loc.Latitude, loc.Longitude, VisitType.Geofence, visitUserId);
+                            poi.Id, loc.Latitude, loc.Longitude, VisitType.Geofence, visitUserId, speedKmh);
                     }
                     catch (Exception vx)
                     {

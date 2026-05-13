@@ -12,9 +12,14 @@
             <code>BackendApi:BaseUrl</code> đúng trong <code>appsettings.json</code>).
             Trên trang đó có luôn panel <strong>Log audio</strong> và lưu/xem/tải <code>logqueue.txt</code> qua <code>ILogRunner</code> — không cần mục menu riêng.
         </p>
+        <div class="d-flex flex-wrap gap-2">
         <a class="btn btn-primary" asp-controller="LoadTest" asp-action="GeofenceSimulator">
             Mở Geofence Simulator
         </a>
+        <a class="btn btn-outline-secondary" asp-controller="LoadTest" asp-action="NfrGuide">
+            Hướng dẫn NFR &amp; k6 (LogRunner / API)
+        </a>
+        </div>
     </div>
 </div>
 

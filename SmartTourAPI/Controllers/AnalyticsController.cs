@@ -70,7 +70,8 @@ public class AnalyticsController : ControllerBase
             UserId = resolvedUserId,
             Lat = dto.Lat,
             Lng = dto.Lng,
-            VisitType = dto.VisitType
+            VisitType = dto.VisitType,
+            SpeedKmh = dto.SpeedKmh
         };
 
         if (!_visitLogIngestion.TryEnqueue(item, out var reason))
@@ -134,4 +135,6 @@ public class LogVisitDto
     public double Lat { get; set; }
     public double Lng { get; set; }
     public VisitType VisitType { get; set; }
+    /// <summary>Tốc độ km/h (tuỳ chọn). Client GPS thường đổi từ m/s sang km/h.</summary>
+    public double? SpeedKmh { get; set; }
 }

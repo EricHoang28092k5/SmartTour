@@ -11,10 +11,13 @@
      data-read-url="@Url.Action("ReadQueueLog", "LoadTest")"></div>
 
 <div class="container-fluid">
-    <h4 class="mb-2">Geofence Simulator <span class="badge bg-secondary">Admin</span></h4>
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+        <h4 class="mb-0">Geofence Simulator <span class="badge bg-secondary">Admin</span></h4>
+        <a class="btn btn-sm btn-outline-secondary" asp-controller="LoadTest" asp-action="NfrGuide">Hướng dẫn NFR &amp; k6</a>
+    </div>
     <p class="text-muted small mb-3">
         Giả lập nhiều thiết bị ảo trên bản đồ (Leaflet). <strong>Chỉ trong lãnh thổ Việt Nam</strong> (neo random hoặc seed đều bị giới hạn bbox đất liền; tọa độ vòng quanh neo cũng nằm trong phạm vi đó).
-        <strong>Near 3/4/5</strong> tạo vòng ngẫu nhiên có giao chung; server gán ngẫu nhiên tier: <strong>Premium</strong>, <strong>Heatmap</strong> (2 POI thì popularity khác nhau — POI pop cao thắng khi so heatmap), <strong>Distance</strong> (còn lại). Khi máy nằm trong <strong>vùng giao của tất cả</strong> vòng POI trong cụm, toàn bộ POI đó được <strong>xếp một hàng đợi</strong> theo ưu tiên (cao trước) rồi <strong>phát lần lượt</strong> (FIFO). Ra khỏi giao rồi vào lại thì có thể xếp hàng lại (tuỳ cooldown API). Giữa mỗi bài audio trong hàng đợi: <strong>~5 giây</strong>. Visit API gọi nền. Client log <strong>chỉ</strong> dòng audio tự động (user + POI), không bấm Play.
+        <strong>Near 3/4/5</strong> tạo cụm POI; <strong>Spawn</strong> hoặc <strong>Converge về giao</strong> đặt máy vào <strong>vùng giao tất cả vòng</strong> → mỗi máy <strong>tự gọi visit API</strong> (<code>FireGeofenceVisit</code>) lần lượt theo POI ưu tiên (FIFO, ~5 giây giữa hai POI). <strong>Không cần walk</strong> — có thể dùng <strong>Nudge</strong> nếu muốn nhích vị trí / đổi tốc độ minh hoạ. <code>speedMps</code> chủ yếu từ jitter spawn (+ nudge nếu có).
     </p>
 
     <div class="row g-3">
@@ -45,11 +48,9 @@
                         <option value="120000">2 phút</option>
                         <option value="300000" selected>5 phút (giống mô tả đồ án tham chiếu)</option>
                     </select>
-                    <div class="form-text mb-2">Chỉ áp dụng cho <strong>lặp lại visit/API</strong> cùng POI. Giữa các bài audio trong hàng đợi luôn cách <strong>~5 giây</strong>.</div>
+                    <div class="form-text mb-2">Chỉ áp dụng cho <strong>lặp lại visit/API</strong> cùng POI. Giữa các POI trong một lần vào giao luôn cách <strong>~5 giây</strong>.</div>
                     <div class="d-flex flex-wrap gap-2 mb-2">
                         <button type="button" id="gfSpawn" class="btn btn-sm btn-success">Spawn (giao mọi vùng)</button>
-                        <button type="button" id="gfWalk" class="btn btn-sm btn-outline-secondary">Start walk</button>
-                        <button type="button" id="gfStop" class="btn btn-sm btn-outline-danger">Stop</button>
                         <button type="button" id="gfNudge" class="btn btn-sm btn-outline-dark">Nudge ▲▼◀▶</button>
                         <button type="button" id="gfConverge" class="btn btn-sm btn-warning">Converge về giao</button>
                     </div>
@@ -65,7 +66,7 @@
             <div class="card border-0 shadow-sm">
                 <div class="card-header bg-white fw-semibold">Log audio — tự động khi vào vòng (geofence)</div>
                 <div class="card-body p-2">
-                    <p class="text-muted small mb-2">Mỗi dòng = một bài audio tự động trong hàng đợi (ưu tiên FIFO), cách nhau <strong>~5 giây</strong>. <strong>Không có nút Play</strong> — chỉ khi nằm trong vùng giao.</p>
+                    <p class="text-muted small mb-2">Mỗi dòng = một lần tới lượt POI (FIFO, ~5s); <strong>speedMps</strong> từ jitter spawn / nudge. <strong>tier / heat</strong> = meta POI. Khi máy trong giao: mỗi dòng kèm <strong>POST visit</strong> (<code>FireGeofenceVisit</code> → API). Không nút Play.</p>
                     <pre id="gfClientLog" class="small bg-dark text-light rounded p-3 mb-2 mb-lg-3" style="min-height: 180px; max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-word;"></pre>
                     <div class="d-flex flex-column flex-md-row flex-md-wrap align-items-start align-items-md-center gap-2 gap-md-3 mb-2">
                         <div class="form-check form-check-sm mb-0">
@@ -153,13 +154,20 @@
     const saveUrl = root.saveUrl;
     const readUrl = root.readUrl;
 
-    /** Khoảng cách giữa hai lần log/phát audio POI kế tiếp trong cùng hàng đợi (cố định ~5s). */
+    /** Khoảng cách giữa hai lần log/visit POI kế tiếp trong cùng hàng đợi (cố định ~5s). */
     const audioPlayGapMs = 5000;
+    /** Giả định thời gian một cú nudge (s) để quy đổi quãng đường → m/s. */
+    const nudgeDtSec = 0.35;
+
+    function mpsToKmh(mps) {
+        const v = Number(mps);
+        if (!isFinite(v) || v < 0) return 0;
+        return Math.round(v * 3.6 * 100) / 100;
+    }
     let clusterPois = [];
     let clusterCenter = { lat: 10.776889, lng: 106.700806 };
     let devices = [];
     let map, layerCircles, layerDevices;
-    let walkTimer = null;
     let pollTimer = null;
     let clientLines = [];
     /** Điểm giao do server chứng minh (luôn nằm trong mọi đĩa khi layout = random_overlapping_disks). */
@@ -352,14 +360,17 @@
             const id = i + 1;
             const devLabel = 'SIM-DEV-' + String(id).padStart(2, '0');
             const pos = jitterInsideAll(base, clusterPois, maxJ) || base;
+            const jitterM = distM(base.lat, base.lng, pos.lat, pos.lng);
+            const spawnMps = jitterM > 0.001 ? Math.min(6, jitterM / 1.0) * (0.88 + Math.random() * 0.24) : 0;
             devices.push({
                 id, label: devLabel,
                 lat: pos.lat, lng: pos.lng,
+                /** m/s: spawn jitter + nudge; mỗi POST visit dùng giá trị tại thời điểm tới lượt POI. */
+                speedMps: spawnMps,
                 queue: [], _processing: false,
                 cooldown: {},
                 /** true = đã xếp hàng phát cho lần “đứng trong giao cả cụm” hiện tại; ra khỏi giao → false. */
                 wasInClusterIntersection: false,
-                walkBearing: Math.random() * Math.PI * 2,
                 stats: { enters: 0, apiOk: 0, apiFail: 0, cooldownSkips: 0, lastTarget: '' }
             });
         }
@@ -374,13 +385,15 @@
         while (d.queue.length) {
             const job = d.queue.shift();
             const ts = new Date().toISOString();
-            logLine(ts + ' | ' + d.label + ' | AUTO | GEOFENCE | AUDIO | POI #' + job.poiId + ' | tier=' + (job.simTier || '') + ' | heat=' + (job.popularity != null ? job.popularity : ''));
-            // Visit API chạy nền — không await trước khoảng nghỉ, tránh API chậm/treo làm trễ POI kế tiếp.
+            const mps = (typeof d.speedMps === 'number' && isFinite(d.speedMps) && d.speedMps >= 0) ? d.speedMps : 0;
+            const mpsStr = mps.toFixed(2);
+            logLine(ts + ' | ' + d.label + ' | AUTO | GEOFENCE | AUDIO | POI #' + job.poiId + ' | tier=' + (job.simTier || '') + ' | heat=' + (job.popularity != null ? job.popularity : '') + ' | speedMps=' + mpsStr);
+            // Visit API: speedKmh = m/s × 3.6 (cột DB). Mỗi POI trong hàng = một POST riêng với tốc độ tại thời điểm tới lượt POI đó.
             fetch(visitUrl, {
                 method: 'POST',
                 credentials: 'same-origin',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ poiId: job.poiId, lat: d.lat, lng: d.lng, userId: d.label })
+                body: JSON.stringify({ poiId: job.poiId, lat: d.lat, lng: d.lng, userId: d.label, speedKmh: mpsToKmh(mps) })
             })
                 .then(res => res.json().then(j => ({ res, j })).catch(() => ({ res, j: {} })))
                 .then(({ res, j }) => {
@@ -444,23 +457,6 @@
         });
     }
 
-    function walkStep() {
-        const step = 5;
-        devices.forEach(d => {
-            const olat = d.lat, olng = d.lng;
-            const br = d.walkBearing + (Math.random() - 0.5) * 0.3;
-            d.walkBearing = br;
-            d.lat += (step * Math.cos(br)) / 111320;
-            d.lng += (step * Math.sin(br)) / (111320 * Math.cos(d.lat * Math.PI / 180));
-            if (!insideAll(d.lat, d.lng, clusterPois)) {
-                d.lat = olat; d.lng = olng;
-                d.walkBearing = Math.random() * Math.PI * 2;
-            }
-            if (d.marker) d.marker.setLatLng([d.lat, d.lng]);
-        });
-        checkGeofenceAll();
-    }
-
     async function loadCluster(n) {
         document.getElementById('gfPoiStatus').textContent = 'Đang tải POI…';
         const slat = parseFloat(document.getElementById('gfSeedLat').value);
@@ -510,7 +506,14 @@
         try {
             const res = await fetch(logsUrl + '?minutes=60&take=120', { credentials: 'same-origin' });
             const data = await res.json();
-            const lines = (data.items || []).map(x => x.visitTime + ' | ' + x.userId + ' | poi ' + x.poiId + ' | ' + x.visitType);
+            const lines = (data.items || []).map(x => {
+                let spd = '';
+                if (x.speedKmh != null && x.speedKmh !== undefined && isFinite(Number(x.speedKmh))) {
+                    const kmh = Number(x.speedKmh);
+                    spd = ' | speedMps=' + (kmh / 3.6).toFixed(2) + ' | speedKmh=' + kmh.toFixed(1);
+                }
+                return x.visitTime + ' | ' + x.userId + ' | poi ' + x.poiId + ' | ' + x.visitType + spd;
+            });
             document.getElementById('gfServerLog').textContent = lines.length ? lines.join('\n') : '(trống — chạy API + worker, hoặc chưa có visit SIM-*)';
         } catch (e) {
             document.getElementById('gfServerLog').textContent = 'Lỗi poll: ' + e;
@@ -524,13 +527,6 @@
         document.getElementById('gfDevCountLbl').textContent = this.value;
     });
     document.getElementById('gfSpawn').addEventListener('click', spawnDevices);
-    document.getElementById('gfWalk').addEventListener('click', function () {
-        if (walkTimer) return;
-        walkTimer = setInterval(walkStep, 700);
-    });
-    document.getElementById('gfStop').addEventListener('click', function () {
-        if (walkTimer) { clearInterval(walkTimer); walkTimer = null; }
-    });
     document.getElementById('gfNudge').addEventListener('click', function () {
         const m = 12;
         devices.forEach(d => {
@@ -538,6 +534,11 @@
             d.lat += (Math.random() - 0.5) * m / 111320;
             d.lng += (Math.random() - 0.5) * m / (111320 * Math.cos(d.lat * Math.PI / 180));
             if (!insideAll(d.lat, d.lng, clusterPois)) { d.lat = olat; d.lng = olng; }
+            else {
+                const moved = distM(olat, olng, d.lat, d.lng);
+                if (moved > 0.02)
+                    d.speedMps = moved / nudgeDtSec;
+            }
             if (d.marker) d.marker.setLatLng([d.lat, d.lng]);
         });
         checkGeofenceAll();
@@ -556,8 +557,12 @@
         const maxJ = Math.min(20, minR * 0.1);
         devices.forEach(d => {
             const pos = jitterInsideAll(base, clusterPois, maxJ) || base;
+            const jitterM = distM(base.lat, base.lng, pos.lat, pos.lng);
             d.lat = pos.lat; d.lng = pos.lng;
-            d.walkBearing = Math.random() * Math.PI * 2;
+            d.speedMps = jitterM > 0.001 ? Math.min(6, jitterM / 1.0) * (0.88 + Math.random() * 0.24) : 0;
+            d.wasInClusterIntersection = false;
+            d.queue = [];
+            d._processing = false;
             if (d.marker) d.marker.setLatLng([d.lat, d.lng]);
         });
         checkGeofenceAll();

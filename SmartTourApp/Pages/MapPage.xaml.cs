@@ -370,12 +370,16 @@ public partial class MapPage : ContentPage
         try
         {
             var loc = currentLocation ?? new Location(poi.Lat, poi.Lng);
+            double? speedKmh = null;
+            if (currentLocation?.Speed is double sp)
+                speedKmh = sp * 3.6;
             await api.PostVisitAsync(
                 poi.Id,
                 loc.Latitude,
                 loc.Longitude,
                 VisitType.MapClick,
-                api.GetOrCreateAnonymousVisitUserId());
+                api.GetOrCreateAnonymousVisitUserId(),
+                speedKmh);
         }
         catch (Exception ex)
         {

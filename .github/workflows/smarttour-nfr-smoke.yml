@@ -1,0 +1,28 @@
+name: SmartTour NFR (build API)
+
+on:
+  push:
+    paths:
+      - 'SmartTourAPI/**'
+      - 'SmartTour.Shared/**'
+      - 'tests/nfr/**'
+      - '.github/workflows/smarttour-nfr-smoke.yml'
+  pull_request:
+    paths:
+      - 'SmartTourAPI/**'
+      - 'SmartTour.Shared/**'
+      - 'tests/nfr/**'
+      - '.github/workflows/smarttour-nfr-smoke.yml'
+
+jobs:
+  build-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build SmartTourAPI
+        run: dotnet build SmartTourAPI/SmartTourAPI.csproj -c Release
+      - name: Note
+        run: echo "k6 scenarios live in tests/nfr — run locally with SmartTourAPI + DB (see tests/nfr/README.md)."

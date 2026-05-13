@@ -33,6 +33,9 @@ public sealed class LoadTestController : Controller
 
     public IActionResult Index() => View();
 
+    /// <summary>Hướng dẫn NFR (k6, script PS), LogRunner &amp; Geofence Simulator — Admin.</summary>
+    public IActionResult NfrGuide() => View();
+
     public IActionResult GeofenceSimulator() => View();
 
     /// <summary>
@@ -346,7 +349,8 @@ public sealed class LoadTestController : Controller
                         userId = uid,
                         lat = body.Lat,
                         lng = body.Lng,
-                        visitType = VisitType.Geofence
+                        visitType = VisitType.Geofence,
+                        speedKmh = body.SpeedKmh
                     },
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -384,6 +388,7 @@ public sealed class LoadTestController : Controller
                 v.UserId,
                 v.Lat,
                 v.Lng,
+                v.SpeedKmh,
                 v.VisitTime,
                 visitType = v.VisitType.ToString()
             })
@@ -447,6 +452,8 @@ public sealed class LoadTestController : Controller
         public double Lat { get; set; }
         public double Lng { get; set; }
         public string? UserId { get; set; }
+        /// <summary>Tốc độ km/h tại thời điểm visit (simulator / client).</summary>
+        public double? SpeedKmh { get; set; }
     }
 
     public sealed class SaveSimulatorLogRequest

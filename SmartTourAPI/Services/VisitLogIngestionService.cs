@@ -12,6 +12,7 @@ public sealed class VisitLogQueueItem
     public double Lat { get; set; }
     public double Lng { get; set; }
     public VisitType VisitType { get; set; }
+    public double? SpeedKmh { get; set; }
 }
 
 public interface IVisitLogIngestionService
@@ -133,7 +134,8 @@ public sealed class VisitLogWorker : BackgroundService
                 Lat = i.Lat,
                 Lng = i.Lng,
                 VisitTime = visitTime,
-                VisitType = i.VisitType
+                VisitType = i.VisitType,
+                SpeedKmh = i.SpeedKmh
             }).ToList();
 
             db.VisitLogs.AddRange(rows);
@@ -156,7 +158,8 @@ public sealed class VisitLogWorker : BackgroundService
                         Lat = item.Lat,
                         Lng = item.Lng,
                         VisitTime = visitTime,
-                        VisitType = item.VisitType
+                        VisitType = item.VisitType,
+                        SpeedKmh = item.SpeedKmh
                     });
                     await db.SaveChangesAsync(token);
                 }

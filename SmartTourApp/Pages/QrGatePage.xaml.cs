@@ -191,9 +191,11 @@ public partial class QrGatePage : ContentPage
                             try
                             {
                                 double la = 0, ln = 0;
+                                Location? locForSpeed = null;
                                 if (locSvc != null)
                                 {
                                     var gl = await locSvc.GetLocation();
+                                    locForSpeed = gl;
                                     if (gl != null)
                                     {
                                         la = gl.Latitude;
@@ -201,12 +203,16 @@ public partial class QrGatePage : ContentPage
                                     }
                                 }
 
+                                double? speedKmh = null;
+                                if (locForSpeed?.Speed is double sp)
+                                    speedKmh = sp * 3.6;
                                 await visitApi.PostVisitAsync(
                                     qrPoiId,
                                     la,
                                     ln,
                                     VisitType.QRCode,
-                                    visitApi.GetOrCreateAnonymousVisitUserId());
+                                    visitApi.GetOrCreateAnonymousVisitUserId(),
+                                    speedKmh);
                             }
                             catch (Exception ex)
                             {
