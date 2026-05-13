@@ -981,7 +981,7 @@ sequenceDiagram
     V->>CMS: Chọn POI + gói, bấm Thanh toán bằng ví
     CMS->>API: POST /api/vendor/premium/purchase-premium-wallet-cms (+ X-Internal-Key)
     API->>PW: TryPurchaseWithWalletAsync
-    PW->>DB: Debit vendor_wallets + ledger; gia hạn Poi Premium
+    PW->>DB: Debit vendor_wallets + ledger, gia hạn Poi Premium
     API-->>CMS: success + balanceVnd
     CMS-->>V: Thông báo thành công
 ```
