@@ -120,12 +120,24 @@ public class MoMoPaymentWorker : BackgroundService
 
         try
         {
-            var durationMonths = ExtractDurationMonths(order.OrderId, settings.DefaultMonths);
-            var orderInfo = durationMonths == 0
-                ? $"Nang cap premium POI {order.PoiId} (goi tuan)"
-                : $"Nang cap premium POI {order.PoiId} ({durationMonths} thang)";
-            var extraDataRaw = JsonSerializer.Serialize(new PremiumExtraData(order.PoiId, order.VendorUserId, durationMonths));
-            var extraData = Convert.ToBase64String(Encoding.UTF8.GetBytes(extraDataRaw));
+            var orderKind = string.IsNullOrWhiteSpace(order.OrderKind) ? "premium" : order.OrderKind.Trim();
+            string orderInfo;
+            string extraData;
+            if (string.Equals(orderKind, "wallet_topup", StringComparison.OrdinalIgnoreCase))
+            {
+                orderInfo = "Nap tien vi SmartTour (Vendor)";
+                var extraDataRaw = JsonSerializer.Serialize(new WalletTopUpExtraData(order.VendorUserId));
+                extraData = Convert.ToBase64String(Encoding.UTF8.GetBytes(extraDataRaw));
+            }
+            else
+            {
+                var durationMonths = ExtractDurationMonths(order.OrderId, settings.DefaultMonths);
+                orderInfo = durationMonths == 0
+                    ? $"Nang cap premium POI {order.PoiId} (goi tuan)"
+                    : $"Nang cap premium POI {order.PoiId} ({durationMonths} thang)";
+                var extraDataRaw = JsonSerializer.Serialize(new PremiumExtraData(order.PoiId, order.VendorUserId, durationMonths));
+                extraData = Convert.ToBase64String(Encoding.UTF8.GetBytes(extraDataRaw));
+            }
 
             var signature = settings.UseLegacyAllInOne
                 ? Sign(
@@ -322,3 +334,5 @@ public class MoMoPaymentWorker : BackgroundService
 }
 
 public record PremiumExtraData(int PoiId, string VendorUserId, int Months);
+
+public record WalletTopUpExtraData(string VendorUserId);

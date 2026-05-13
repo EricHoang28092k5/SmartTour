@@ -55,4 +55,7 @@ public class PremiumReturnViewModel
     public DateTime? PaidAt { get; set; }
     public string StatusApiUrl { get; set; } = string.Empty;
     public int PollingIntervalMs { get; set; } = 2500;
+    /// <summary>Nạp ví MoMo → về Wallet; còn lại → Premium.</summary>
+    public string ContinueController { get; set; } = "Premium";
+    public string ContinueLabel { get; set; } = "Về trang Premium";
 }

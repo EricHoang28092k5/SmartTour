@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SmartTourAPI.Data;
+using SmartTourAPI.Services;
 using SmartTourCMS.Models;
 using SmartTour.Shared.Models;
 
@@ -13,20 +14,21 @@ namespace SmartTourCMS.Controllers;
 [Authorize(Roles = "Admin,Vendor")]
 /// <summary>
 /// Luồng Premium trên CMS:
-/// - Hiển thị POI đã duyệt thuộc tài khoản đăng nhập (vendor: của vendor; admin: POI do chính admin tạo — VendorId = Id admin)
-/// - Tạo thanh toán qua backend proxy (internal key)
-/// - Poll trạng thái order và hiển thị trang return
+/// - Admin: áp dụng gói Premium trực tiếp lên POI (không MoMo)
+/// - Vendor: mua Premium trừ ví qua Backend API
 /// </summary>
 public class PremiumController : Controller
 {
     private static readonly HttpClient Http = new();
     private readonly AppDbContext _db;
     private readonly IConfiguration _config;
+    private readonly VendorWalletService _wallet;
 
-    public PremiumController(AppDbContext db, IConfiguration config)
+    public PremiumController(AppDbContext db, IConfiguration config, VendorWalletService wallet)
     {
         _db = db;
         _config = config;
+        _wallet = wallet;
     }
 
     [HttpGet]
@@ -56,6 +58,9 @@ public class PremiumController : Controller
             Packages = BuildPackages(_config),
             SelectedPoiId = poiId
         };
+        if (User.IsInRole("Vendor"))
+            ViewBag.WalletBalanceVnd = await _wallet.GetBalanceVndAsync(userId);
+        ViewBag.IsAdminPremium = User.IsInRole("Admin");
         return View(vm);
     }
 
@@ -65,14 +70,6 @@ public class PremiumController : Controller
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
         if (string.IsNullOrWhiteSpace(userId)) return RedirectToAction("Login", "Account");
-
-        // CMS không gọi MoMo trực tiếp: gọi backend API để tập trung verify/signature một nơi.
-        var apiSettings = ReadBackendApiSettings(_config);
-        if (!apiSettings.IsConfigured)
-        {
-            TempData["Error"] = "Backend API chưa cấu hình cho Premium payment.";
-            return RedirectToAction(nameof(Index), new { poiId });
-        }
 
         var packages = BuildPackages(_config);
         var package = packages.FirstOrDefault(x => string.Equals(x.Code, packageCode, StringComparison.OrdinalIgnoreCase));
@@ -92,106 +89,71 @@ public class PremiumController : Controller
         if (!string.Equals(poi.VendorId, userId, StringComparison.Ordinal))
             return Forbid();
 
+        if (User.IsInRole("Admin"))
+        {
+            var poiTracked = await _db.Pois.FirstOrDefaultAsync(x => x.Id == poiId, HttpContext.RequestAborted);
+            if (poiTracked == null)
+            {
+                TempData["Error"] = "Không tìm thấy POI.";
+                return RedirectToAction(nameof(Index));
+            }
+
+            ApplyPremiumPackageMonths(poiTracked, package.Months);
+            poiTracked.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync(HttpContext.RequestAborted);
+            TempData["Success"] =
+                $"Đã áp dụng gói {package.Name} cho POI. Premium hiệu lực đến {poiTracked.PremiumExpiresAt:dd/MM/yyyy HH:mm} (UTC).";
+            return RedirectToAction(nameof(Index), new { poiId });
+        }
+
+        var apiSettings = ReadBackendApiSettings(_config);
+        if (!apiSettings.IsConfigured)
+        {
+            TempData["Error"] = "Backend API chưa cấu hình cho thanh toán từ ví.";
+            return RedirectToAction(nameof(Index), new { poiId });
+        }
+
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Post, $"{apiSettings.BaseUrl.TrimEnd('/')}/api/vendor/premium/create-payment-cms");
-            // Internal key giúp backend phân biệt call nội bộ từ CMS.
+            using var request = new HttpRequestMessage(
+                HttpMethod.Post,
+                $"{apiSettings.BaseUrl.TrimEnd('/')}/api/vendor/premium/purchase-premium-wallet-cms");
             request.Headers.Add("X-Internal-Key", apiSettings.InternalKey);
-            request.Content = JsonContent.Create(new CmsCreatePremiumPaymentRequest
+            request.Content = JsonContent.Create(new
             {
-                PoiId = poi.Id,
-                VendorUserId = poi.VendorId ?? userId,
-                Months = package.Months,
-                Amount = (int)package.AmountVnd
+                poiId = poi.Id,
+                vendorUserId = poi.VendorId ?? userId,
+                months = package.Months,
+                priceVnd = package.AmountVnd
             });
 
             using var response = await Http.SendAsync(request);
             var raw = await response.Content.ReadAsStringAsync();
             if (!response.IsSuccessStatusCode)
             {
-                TempData["Error"] = $"Backend API lỗi ({(int)response.StatusCode}): {raw}";
+                TempData["Error"] = string.IsNullOrWhiteSpace(raw)
+                    ? $"Thanh toán thất bại ({(int)response.StatusCode})."
+                    : raw;
                 return RedirectToAction(nameof(Index), new { poiId });
             }
 
             using var doc = JsonDocument.Parse(raw);
             var root = doc.RootElement;
             var ok = root.TryGetProperty("success", out var successEl) && successEl.GetBoolean();
-            if (!ok || !root.TryGetProperty("data", out var dataEl))
+            if (!ok)
             {
-                TempData["Error"] = "Backend API trả dữ liệu không hợp lệ.";
+                var msg = root.TryGetProperty("message", out var mEl) ? mEl.GetString() : "Thanh toán thất bại.";
+                TempData["Error"] = msg;
                 return RedirectToAction(nameof(Index), new { poiId });
             }
 
-            var orderId = dataEl.TryGetProperty("orderId", out var orderEl) ? orderEl.GetString() ?? string.Empty : string.Empty;
-            var payUrl = dataEl.TryGetProperty("payUrl", out var payUrlEl) ? payUrlEl.GetString() ?? string.Empty : string.Empty;
-            var deeplink = dataEl.TryGetProperty("deeplink", out var deeplinkEl) ? deeplinkEl.GetString() : null;
-            var qrCodeUrl = dataEl.TryGetProperty("qrCodeUrl", out var qrCodeUrlEl) ? qrCodeUrlEl.GetString() : null;
-            // Ưu tiên deeplink (mobile wallet), fallback payUrl (web checkout).
-            var checkoutUrl = !string.IsNullOrWhiteSpace(deeplink) ? deeplink : payUrl;
-            var qrSource = !string.IsNullOrWhiteSpace(qrCodeUrl) ? qrCodeUrl : checkoutUrl;
-            var vendorUserIdForOrder = poi.VendorId ?? userId;
-            if (string.IsNullOrWhiteSpace(orderId))
-            {
-                TempData["Error"] = "Thiếu dữ liệu thanh toán từ Backend API.";
-                return RedirectToAction(nameof(Index), new { poiId });
-            }
-
-            if (string.IsNullOrWhiteSpace(checkoutUrl))
-            {
-                // API trả 202 + đơn xếp hàng: link MoMo do worker ghi sau — poll order-status cho tới khi có payUrl/deeplink.
-                var polled = await PollForPremiumCheckoutUrlsAsync(
-                    apiSettings.BaseUrl,
-                    apiSettings.InternalKey,
-                    orderId,
-                    vendorUserIdForOrder,
-                    HttpContext.RequestAborted);
-                if (polled == null)
-                {
-                    TempData["Error"] =
-                        "Đã tạo đơn nhưng chưa nhận được link thanh toán từ MoMo (timeout). Kiểm tra API đang chạy, cấu hình MoMo và log worker.";
-                    return RedirectToAction(nameof(Index), new { poiId });
-                }
-
-                if (polled.Value.FailedMessage != null)
-                {
-                    TempData["Error"] = polled.Value.FailedMessage;
-                    return RedirectToAction(nameof(Index), new { poiId });
-                }
-
-                payUrl = polled.Value.PayUrl ?? string.Empty;
-                deeplink = polled.Value.Deeplink;
-                qrCodeUrl = polled.Value.QrCodeUrl;
-                checkoutUrl = !string.IsNullOrWhiteSpace(deeplink) ? deeplink : payUrl;
-                qrSource = !string.IsNullOrWhiteSpace(qrCodeUrl) ? qrCodeUrl : checkoutUrl;
-            }
-
-            if (string.IsNullOrWhiteSpace(checkoutUrl))
-            {
-                TempData["Error"] = "Thiếu dữ liệu thanh toán từ Backend API.";
-                return RedirectToAction(nameof(Index), new { poiId });
-            }
-
-            var vm = new PremiumCheckoutViewModel
-            {
-                PoiId = poi.Id,
-                PoiName = poi.Name,
-                PackageName = package.Name,
-                PackageCode = package.Code,
-                Months = package.Months,
-                AmountVnd = package.AmountVnd,
-                OrderId = orderId,
-                PayUrl = payUrl,
-                Deeplink = deeplink,
-                QrCodeUrl = qrCodeUrl,
-                QrImageUrl = $"https://quickchart.io/qr?text={Uri.EscapeDataString(qrSource!)}&size=300",
-                StatusApiUrl = Url.Action(nameof(GetPaymentStatus), "Premium", new { orderId }, Request.Scheme) ?? string.Empty,
-                ReturnUrl = Url.Action(nameof(PaymentReturn), "Premium", new { orderId }, Request.Scheme) ?? $"/payment/return?orderId={Uri.EscapeDataString(orderId)}"
-            };
-            return View("Checkout", vm);
+            TempData["Error"] = null;
+            TempData["Success"] = $"Đã mua gói {package.Name} bằng ví. Số dư còn lại có thể xem tại mục Ví vendor.";
+            return RedirectToAction(nameof(Index), new { poiId });
         }
         catch (Exception ex)
         {
-            TempData["Error"] = $"Không kết nối được Backend API premium: {ex.Message}";
+            TempData["Error"] = $"Không kết nối được Backend API: {ex.Message}";
             return RedirectToAction(nameof(Index), new { poiId });
         }
     }
@@ -207,11 +169,27 @@ public class PremiumController : Controller
         if (order == null)
             return View("Return", new PremiumReturnViewModel { OrderId = orderId, Message = "Không tìm thấy giao dịch." });
 
-        var poi = await _db.Pois.AsNoTracking().FirstOrDefaultAsync(x => x.Id == order.PoiId);
         var isPaid = string.Equals(order.Status, "paid", StringComparison.OrdinalIgnoreCase);
-        var message = isPaid
-            ? "Thanh toán thành công. POI đã được nâng cấp Premium."
-            : "Giao dịch đang chờ xác nhận từ MoMo hoặc chưa thành công.";
+        var kind = string.IsNullOrWhiteSpace(order.OrderKind) ? "premium" : order.OrderKind.Trim();
+        string message;
+        if (isPaid)
+        {
+            message = string.Equals(kind, "wallet_topup", StringComparison.OrdinalIgnoreCase)
+                ? "Thanh toán thành công. Số dư ví đã được cộng."
+                : "Thanh toán thành công. POI đã được nâng cấp Premium.";
+        }
+        else
+        {
+            message = "Giao dịch đang chờ xác nhận từ MoMo hoặc chưa thành công.";
+        }
+
+        var poi = order.PoiId > 0
+            ? await _db.Pois.AsNoTracking().FirstOrDefaultAsync(x => x.Id == order.PoiId)
+            : null;
+
+        var isWalletTopup = string.Equals(kind, "wallet_topup", StringComparison.OrdinalIgnoreCase);
+        var continueController = isWalletTopup ? "Wallet" : "Premium";
+        var continueLabel = isWalletTopup ? "Về Ví vendor" : "Về trang Premium";
 
         return View("Return", new PremiumReturnViewModel
         {
@@ -220,7 +198,9 @@ public class PremiumController : Controller
             Message = message,
             Poi = poi,
             PaidAt = order.PaidAt,
-            StatusApiUrl = Url.Action(nameof(GetPaymentStatus), "Premium", new { orderId = order.OrderId }, Request.Scheme) ?? string.Empty
+            StatusApiUrl = Url.Action(nameof(GetPaymentStatus), "Premium", new { orderId = order.OrderId }, Request.Scheme) ?? string.Empty,
+            ContinueController = continueController,
+            ContinueLabel = continueLabel
         });
     }
 
@@ -289,64 +269,18 @@ public class PremiumController : Controller
         }
     }
 
-    private readonly record struct PolledUrls(string? PayUrl, string? Deeplink, string? QrCodeUrl, string? FailedMessage);
-
-    private static async Task<PolledUrls?> PollForPremiumCheckoutUrlsAsync(
-        string baseUrl,
-        string internalKey,
-        string orderId,
-        string vendorUserId,
-        CancellationToken cancellationToken)
+    /// <summary>Cùng quy tắc gia hạn như sau thanh toán MoMo / ví (tuần = Months 0 → +7 ngày).</summary>
+    private static void ApplyPremiumPackageMonths(Poi poi, int durationMonths)
     {
-        const int maxAttempts = 60;
-        for (var attempt = 0; attempt < maxAttempts; attempt++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            using var request = new HttpRequestMessage(
-                HttpMethod.Post,
-                $"{baseUrl.TrimEnd('/')}/api/vendor/premium/order-status-cms");
-            request.Headers.Add("X-Internal-Key", internalKey);
-            request.Content = JsonContent.Create(new CmsPremiumOrderStatusRequest
-            {
-                OrderId = orderId,
-                VendorUserId = vendorUserId,
-                ForceProviderCheck = false
-            });
-
-            using var response = await Http.SendAsync(request, cancellationToken);
-            var raw = await response.Content.ReadAsStringAsync(cancellationToken);
-            if (!response.IsSuccessStatusCode)
-            {
-                await Task.Delay(500, cancellationToken);
-                continue;
-            }
-
-            using var doc = JsonDocument.Parse(raw);
-            var root = doc.RootElement;
-            if (!root.TryGetProperty("success", out var okEl) || !okEl.GetBoolean() ||
-                !root.TryGetProperty("data", out var dataEl))
-            {
-                await Task.Delay(500, cancellationToken);
-                continue;
-            }
-
-            var status = dataEl.TryGetProperty("status", out var stEl) ? stEl.GetString() ?? string.Empty : string.Empty;
-            if (string.Equals(status, "failed", StringComparison.OrdinalIgnoreCase))
-            {
-                var err = dataEl.TryGetProperty("lastError", out var le) ? le.GetString() : null;
-                return new PolledUrls(null, null, null, string.IsNullOrWhiteSpace(err) ? "Tạo thanh toán MoMo thất bại." : err);
-            }
-
-            var payUrl = dataEl.TryGetProperty("payUrl", out var pEl) ? pEl.GetString() : null;
-            var deeplink = dataEl.TryGetProperty("deeplink", out var dEl) ? dEl.GetString() : null;
-            var qrCodeUrl = dataEl.TryGetProperty("qrCodeUrl", out var qEl) ? qEl.GetString() : null;
-            if (!string.IsNullOrWhiteSpace(deeplink) || !string.IsNullOrWhiteSpace(payUrl))
-                return new PolledUrls(payUrl, deeplink, qrCodeUrl, null);
-
-            await Task.Delay(500, cancellationToken);
-        }
-
-        return null;
+        var now = DateTime.UtcNow;
+        var start = poi.PremiumExpiresAt.HasValue && poi.PremiumExpiresAt > now
+            ? poi.PremiumExpiresAt.Value
+            : now;
+        poi.IsPremium = true;
+        poi.PremiumActivatedAt ??= now;
+        poi.PremiumExpiresAt = durationMonths == 0
+            ? start.AddDays(7)
+            : start.AddMonths(Math.Max(1, durationMonths));
     }
 
     private static List<PremiumPackageOption> BuildPackages(IConfiguration config)
@@ -406,14 +340,6 @@ public class PremiumController : Controller
         public bool IsConfigured =>
             !string.IsNullOrWhiteSpace(BaseUrl) &&
             !string.IsNullOrWhiteSpace(InternalKey);
-    }
-
-    private sealed class CmsCreatePremiumPaymentRequest
-    {
-        public int PoiId { get; set; }
-        public int Months { get; set; }
-        public int Amount { get; set; }
-        public string VendorUserId { get; set; } = string.Empty;
     }
 
     private sealed class CmsPremiumOrderStatusRequest

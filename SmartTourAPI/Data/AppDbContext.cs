@@ -34,6 +34,8 @@ namespace SmartTourAPI.Data
         public DbSet<AudioPipelineJob> AudioPipelineJobs { get; set; }
         public DbSet<ScriptChangeRequest> ScriptChangeRequests { get; set; }
         public DbSet<VendorPremiumOrder> VendorPremiumOrders { get; set; }
+        public DbSet<VendorWallet> VendorWallets { get; set; }
+        public DbSet<VendorWalletLedgerEntry> VendorWalletLedgerEntries { get; set; }
         public DbSet<VisitLog> VisitLogs { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -113,14 +115,31 @@ namespace SmartTourAPI.Data
             modelBuilder.Entity<VendorPremiumOrder>(entity =>
             {
                 entity.ToTable("vendor_premium_orders");
+                entity.Property(e => e.OrderKind).HasMaxLength(32).HasDefaultValue("premium");
                 entity.Property(e => e.OrderId).HasMaxLength(64);
                 entity.Property(e => e.RequestId).HasMaxLength(64);
                 entity.Property(e => e.VendorUserId).HasMaxLength(128);
                 entity.Property(e => e.Currency).HasMaxLength(8);
                 entity.Property(e => e.Provider).HasMaxLength(32);
-                entity.Property(e => e.Status).HasMaxLength(20);
+                entity.Property(e => e.Status).HasMaxLength(32);
                 entity.HasIndex(e => e.OrderId).IsUnique();
                 entity.HasIndex(e => new { e.PoiId, e.Status, e.CreatedAt });
+            });
+
+            modelBuilder.Entity<VendorWallet>(entity =>
+            {
+                entity.ToTable("vendor_wallets");
+                entity.HasKey(e => e.VendorUserId);
+                entity.Property(e => e.VendorUserId).HasMaxLength(128);
+            });
+
+            modelBuilder.Entity<VendorWalletLedgerEntry>(entity =>
+            {
+                entity.ToTable("vendor_wallet_ledger");
+                entity.Property(e => e.VendorUserId).HasMaxLength(128);
+                entity.Property(e => e.Kind).HasMaxLength(48);
+                entity.Property(e => e.Reference).HasMaxLength(128);
+                entity.HasIndex(e => new { e.VendorUserId, e.CreatedAt });
             });
 
             modelBuilder.Entity<VisitLog>(entity =>

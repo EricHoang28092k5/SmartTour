@@ -3,6 +3,8 @@ namespace SmartTour.Shared.Models;
 public class VendorPremiumOrder
 {
     public long Id { get; set; }
+    /// <summary>premium | wallet_topup | poi_create</summary>
+    public string OrderKind { get; set; } = "premium";
     public string OrderId { get; set; } = string.Empty;
     public string RequestId { get; set; } = string.Empty;
     public int PoiId { get; set; }
@@ -17,4 +19,6 @@ public class VendorPremiumOrder
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? PaidAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
+    /// <summary>JSON tạm cho luồng tạo POI qua MoMo (nếu dùng).</summary>
+    public string? PoiCreationDraftJson { get; set; }
 }

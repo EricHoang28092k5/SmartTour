@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using SmartTour.Shared.Models;
 using SmartTourAPI.Data;
 using SmartTourAPI.Services;
@@ -19,7 +20,7 @@ namespace SmartTourCMS.Controllers
     /// <summary>
     /// Quản lý POI trên CMS:
     /// - CRUD POI có phân quyền Admin/Vendor
-    /// - Luồng duyệt POI (pending/approved/rejected)
+    /// - Vendor: tạo POI qua bước xác nhận, phí cố định (cấu hình); premium qua ví
     /// - Tạo lại translation/audio và xử lý script
     /// </summary>
     public class PoiController : Controller
@@ -28,22 +29,41 @@ namespace SmartTourCMS.Controllers
         private readonly Cloudinary _cloudinary;
         private readonly UserManager<IdentityUser> _userManager;
         private readonly IVoiceService _voiceService;
+        private readonly VendorWalletService _vendorWallet;
+        private readonly IConfiguration _configuration;
         private static readonly HttpClient _httpClient = new HttpClient();
+        private const string VendorPoiDraftSessionKey = "VendorPoiCreateDraftV1";
+        private const int MaxCreateTtsScriptChars = 255;
+
+        private static long GetFixedVendorPoiCreateChargeVnd(IConfiguration configuration) =>
+            long.TryParse(configuration["PoiCreation:FixedVendorCreateChargeVnd"], out var v) && v > 0 ? v : 100_000L;
+
+        /// <summary>TTS khi để trống: "Chào mừng bạn đến với " + tên POI.</summary>
+        private static string ResolveCreateTtsScript(string? ttsScript, string poiName)
+        {
+            if (!string.IsNullOrWhiteSpace(ttsScript))
+                return ttsScript.Trim();
+            return $"Chào mừng bạn đến với {(poiName ?? string.Empty).Trim()}";
+        }
 
         public PoiController(
             AppDbContext context,
             Cloudinary cloudinary,
             UserManager<IdentityUser> userManager,
-            IVoiceService voiceService)
+            IVoiceService voiceService,
+            VendorWalletService vendorWallet,
+            IConfiguration configuration)
         {
             _context = context;
             _cloudinary = cloudinary;
             _userManager = userManager;
             _voiceService = voiceService;
+            _vendorWallet = vendorWallet;
+            _configuration = configuration;
         }
 
         // --- DANH SÁCH POI VÀ TÌM KIẾM KHÔNG DẤU ---
-        public async Task<IActionResult> Index(string? search, int? page, string? tab = null)
+        public async Task<IActionResult> Index(string? search, int? page)
         {
             var user = await _userManager.GetUserAsync(User);
             if (user == null) return RedirectToAction("Login", "Account");
@@ -76,20 +96,11 @@ namespace SmartTourCMS.Controllers
                 ).ToList();
             }
 
-            if (!isAdmin)
-            {
-                var currentTab = string.Equals(tab, "archive", StringComparison.OrdinalIgnoreCase) ? "archive" : "active";
-                poiList = currentTab == "archive"
-                    ? poiList.Where(p => p.ApprovalStatus == "rejected").ToList()
-                    : poiList.Where(p => p.ApprovalStatus != "rejected").ToList();
-
-                ViewBag.CurrentTab = currentTab;
-            }
-            else
-            {
-                ViewBag.CurrentTab = "active";
-            }
             //ViewBag.CountPoi = poiList.Count;
+            ViewBag.RejectedPoiCount = !isAdmin
+                ? poiList.Count(p => string.Equals(p.ApprovalStatus, "rejected", StringComparison.OrdinalIgnoreCase))
+                : 0;
+
             const int pageSize = 10;
             var pageNumber = page ?? 1;
             var pagedList = poiList.ToPagedList(pageNumber, pageSize);
@@ -118,7 +129,13 @@ namespace SmartTourCMS.Controllers
         }
 
         [HttpGet]
-        public IActionResult Create() => View();
+        public IActionResult Create()
+        {
+            var minTop = long.TryParse(_configuration["PoiCreation:MinimumWalletTopUpVnd"], out var m) && m > 0 ? m : 20_000L;
+            ViewBag.MinWalletTopUpVnd = minTop;
+            ViewBag.FixedVendorPoiCreateChargeVnd = GetFixedVendorPoiCreateChargeVnd(_configuration);
+            return View();
+        }
 
         [HttpPost]
         [ValidateAntiForgeryToken]
@@ -127,13 +144,14 @@ namespace SmartTourCMS.Controllers
             var user = await _userManager.GetUserAsync(User);
             if (user != null) poi.VendorId = user.Id;
             var isAdmin = user != null && await _userManager.IsInRoleAsync(user, "Admin");
+            if (!isAdmin && user == null) return RedirectToAction("Login", "Account");
 
-            poi.ApprovalStatus = isAdmin ? "approved" : "pending";
-            poi.IsActive = isAdmin;
-            poi.ApprovedAt = isAdmin ? DateTime.UtcNow : null;
+            poi.ApprovalStatus = "approved";
+            poi.IsActive = true;
+            poi.ApprovedAt = DateTime.UtcNow;
             poi.ApprovedByUserId = isAdmin ? user?.Id : null;
             poi.CreatedBy = user?.Email ?? user?.UserName ?? user?.Id;
-            poi.ApprovalNote = isAdmin ? null : JsonSerializer.Serialize(new PendingPoiApprovalNote { RequestType = "create" });
+            poi.ApprovalNote = null;
 
             // 1. Upload ảnh lên Cloudinary
             if (imageFile != null)
@@ -142,26 +160,236 @@ namespace SmartTourCMS.Controllers
                 poi.ImageUrl = res.SecureUrl.ToString();
             }
 
-            // 2. AI viết kịch bản nếu lười
+            poi.Description = (poi.Description ?? string.Empty).Trim();
             if (string.IsNullOrWhiteSpace(poi.Description))
+                ModelState.AddModelError(nameof(poi.Description), "Vui lòng nhập mô tả địa điểm.");
+
+            var resolvedTts = ResolveCreateTtsScript(poi.TtsScript, poi.Name ?? string.Empty);
+            if (resolvedTts.Length > MaxCreateTtsScriptChars)
             {
-                poi.Description = await GenerateScriptWithAI(poi.Name);
+                ModelState.AddModelError(nameof(poi.TtsScript),
+                    $"TTS script tối đa {MaxCreateTtsScriptChars} ký tự (hiện {resolvedTts.Length}).");
             }
-            poi.TtsScript = string.IsNullOrWhiteSpace(poi.TtsScript) ? poi.Description : poi.TtsScript;
+
+            poi.TtsScript = resolvedTts;
+
+            if (!ModelState.IsValid)
+            {
+                var minTopInv = long.TryParse(_configuration["PoiCreation:MinimumWalletTopUpVnd"], out var mv) && mv > 0 ? mv : 20_000L;
+                ViewBag.MinWalletTopUpVnd = minTopInv;
+                ViewBag.FixedVendorPoiCreateChargeVnd = GetFixedVendorPoiCreateChargeVnd(_configuration);
+                return View(poi);
+            }
+
+            if (!isAdmin && user != null)
+            {
+                if (imageFile == null || string.IsNullOrWhiteSpace(poi.ImageUrl))
+                {
+                    ModelState.AddModelError(string.Empty, "Vui lòng chọn ảnh bìa cho địa điểm.");
+                    ViewBag.MinWalletTopUpVnd = long.TryParse(_configuration["PoiCreation:MinimumWalletTopUpVnd"], out var m0) && m0 > 0 ? m0 : 20_000L;
+                    ViewBag.FixedVendorPoiCreateChargeVnd = GetFixedVendorPoiCreateChargeVnd(_configuration);
+                    return View(poi);
+                }
+
+                var chargeVnd = GetFixedVendorPoiCreateChargeVnd(_configuration);
+
+                var draft = new VendorPoiCreateDraft
+                {
+                    VendorUserId = user.Id,
+                    CreatedBy = poi.CreatedBy,
+                    Name = poi.Name.Trim(),
+                    Description = poi.Description,
+                    TtsScript = poi.TtsScript,
+                    Lat = poi.Lat,
+                    Lng = poi.Lng,
+                    Radius = poi.Radius > 0 ? poi.Radius : 100,
+                    ImageUrl = poi.ImageUrl,
+                    Priority = poi.Priority,
+                    OpenTicks = poi.OpenTime?.Ticks,
+                    CloseTicks = poi.CloseTime?.Ticks,
+                    CategoryId = poi.CategoryId,
+                    ChargeVnd = chargeVnd,
+                    TotalTtsChars = 0
+                };
+
+                await HttpContext.Session.LoadAsync(HttpContext.RequestAborted);
+                var json = JsonSerializer.Serialize(draft, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+                HttpContext.Session.SetString(VendorPoiDraftSessionKey, json);
+                await HttpContext.Session.CommitAsync(HttpContext.RequestAborted);
+
+                return RedirectToAction(nameof(CreateConfirm));
+            }
 
             _context.Pois.Add(poi);
             await _context.SaveChangesAsync();
-
-            // Vendor tạo POI phải chờ admin duyệt trước khi generate translation/audio.
-            if (!isAdmin)
-            {
-                TempData["success"] = "POI đã được gửi duyệt. Admin phê duyệt xong mới hiển thị trên app.";
-                return RedirectToAction(nameof(Index));
-            }
-
-            // Chỉ tạo bản dịch/audio tại bước duyệt POI.
             TempData["success"] = "POI đã tạo thành công.";
             return RedirectToAction(nameof(Index));
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> CreateConfirm()
+        {
+            if (!User.IsInRole("Vendor")) return RedirectToAction(nameof(Create));
+            var user = await _userManager.GetUserAsync(User);
+            if (user == null) return RedirectToAction("Login", "Account");
+
+            await HttpContext.Session.LoadAsync(HttpContext.RequestAborted);
+            var draft = ReadVendorPoiDraft();
+            if (draft == null || !string.Equals(draft.VendorUserId, user.Id, StringComparison.Ordinal))
+            {
+                TempData["Error"] = "Phiên xác nhận hết hạn. Vui lòng nhập lại thông tin POI.";
+                return RedirectToAction(nameof(Create));
+            }
+
+            var chargeVnd = GetFixedVendorPoiCreateChargeVnd(_configuration);
+            draft.ChargeVnd = chargeVnd;
+            draft.TotalTtsChars = 0;
+            var json2 = JsonSerializer.Serialize(draft, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+            HttpContext.Session.SetString(VendorPoiDraftSessionKey, json2);
+            await HttpContext.Session.CommitAsync(HttpContext.RequestAborted);
+
+            var balance = await _vendorWallet.GetBalanceVndAsync(user.Id);
+            var minTop = long.TryParse(_configuration["PoiCreation:MinimumWalletTopUpVnd"], out var m) && m > 0 ? m : 20_000L;
+            var vm = new PoiCreateConfirmViewModel
+            {
+                Draft = draft,
+                BalanceVnd = balance,
+                SufficientBalance = balance >= chargeVnd,
+                MinWalletTopUpVnd = minTop
+            };
+            return View(vm);
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> CreateConfirmPost()
+        {
+            if (!User.IsInRole("Vendor")) return Forbid();
+            var user = await _userManager.GetUserAsync(User);
+            if (user == null) return RedirectToAction("Login", "Account");
+
+            await HttpContext.Session.LoadAsync(HttpContext.RequestAborted);
+            var draft = ReadVendorPoiDraft();
+            if (draft == null || !string.Equals(draft.VendorUserId, user.Id, StringComparison.Ordinal))
+            {
+                TempData["Error"] = "Phiên hết hạn. Thử lại từ bước tạo POI.";
+                return RedirectToAction(nameof(Create));
+            }
+
+            var chargeVnd = GetFixedVendorPoiCreateChargeVnd(_configuration);
+
+            static TimeSpan? TicksToTimeSpan(long? ticks) =>
+                ticks is long t ? TimeSpan.FromTicks(t) : null;
+
+            var missingAudio = new int[1];
+            var insufficient = new bool[1];
+            var audioError = new System.Text.StringBuilder();
+
+            var strategy = _context.Database.CreateExecutionStrategy();
+            try
+            {
+                await strategy.ExecuteAsync(async () =>
+                {
+                    var poi = new Poi
+                    {
+                        Name = draft.Name,
+                        Description = draft.Description,
+                        TtsScript = draft.TtsScript ?? ResolveCreateTtsScript(null, draft.Name),
+                        Lat = draft.Lat,
+                        Lng = draft.Lng,
+                        Radius = draft.Radius,
+                        ImageUrl = draft.ImageUrl,
+                        Priority = draft.Priority,
+                        OpenTime = TicksToTimeSpan(draft.OpenTicks),
+                        CloseTime = TicksToTimeSpan(draft.CloseTicks),
+                        CategoryId = draft.CategoryId,
+                        VendorId = draft.VendorUserId,
+                        CreatedBy = draft.CreatedBy,
+                        ApprovalStatus = "approved",
+                        IsActive = true,
+                        ApprovedAt = DateTime.UtcNow,
+                        ApprovedByUserId = null,
+                        ApprovalNote = null,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+
+                    await using var tx = await _context.Database.BeginTransactionAsync(HttpContext.RequestAborted);
+                    if (!await _vendorWallet.TryDebitAsync(user.Id, chargeVnd, "poi_create", null, false, HttpContext.RequestAborted))
+                    {
+                        insufficient[0] = true;
+                        await tx.RollbackAsync(HttpContext.RequestAborted);
+                        return;
+                    }
+
+                    _context.Pois.Add(poi);
+                    await _context.SaveChangesAsync(HttpContext.RequestAborted);
+                    try
+                    {
+                        missingAudio[0] = await CreateTranslationsAndAudio(poi);
+                        await _context.SaveChangesAsync(HttpContext.RequestAborted);
+                        await tx.CommitAsync(HttpContext.RequestAborted);
+                    }
+                    catch (Exception ex)
+                    {
+                        audioError.Append(ex.Message);
+                        await tx.RollbackAsync(HttpContext.RequestAborted);
+                        throw;
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                if (audioError.Length > 0)
+                {
+                    TempData["Error"] = "Không tạo được bản dịch/audio: " + audioError.ToString();
+                    return RedirectToAction(nameof(CreateConfirm));
+                }
+
+                TempData["Error"] = "Lỗi khi tạo POI: " + ex.Message;
+                return RedirectToAction(nameof(CreateConfirm));
+            }
+
+            if (insufficient[0])
+            {
+                TempData["Error"] = $"Số dư ví không đủ (cần {chargeVnd:N0} VNĐ).";
+                return RedirectToAction(nameof(CreateConfirm));
+            }
+
+            HttpContext.Session.Remove(VendorPoiDraftSessionKey);
+            await HttpContext.Session.CommitAsync(HttpContext.RequestAborted);
+
+            if (missingAudio[0] > 0)
+                TempData["AudioWarning"] = $"Đã trừ {chargeVnd:N0} VNĐ trong ví. Còn {missingAudio[0]} bản dịch chưa có audio — thử tạo lại audio sau.";
+            else
+                TempData["success"] = $"POI đã tạo và hiển thị trên app. Đã trừ phí tạo POI {chargeVnd:N0} VNĐ từ ví.";
+
+            return RedirectToAction(nameof(Index));
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> CreateConfirmCancel()
+        {
+            await HttpContext.Session.LoadAsync(HttpContext.RequestAborted);
+            HttpContext.Session.Remove(VendorPoiDraftSessionKey);
+            await HttpContext.Session.CommitAsync(HttpContext.RequestAborted);
+            return RedirectToAction(nameof(Create));
+        }
+
+        private VendorPoiCreateDraft? ReadVendorPoiDraft()
+        {
+            var json = HttpContext.Session.GetString(VendorPoiDraftSessionKey);
+            if (string.IsNullOrWhiteSpace(json)) return null;
+            try
+            {
+                return JsonSerializer.Deserialize<VendorPoiCreateDraft>(json,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         [HttpGet]
@@ -204,20 +432,24 @@ namespace SmartTourCMS.Controllers
                 poi.VendorId = existing.VendorId;
                 if (!isAdmin)
                 {
-                    // Vendor không được sửa "live": phải tạo snapshot + chuyển pending.
-                    var note = new PendingPoiApprovalNote
-                    {
-                        RequestType = "edit",
-                        Original = SnapshotFromPoi(existing)
-                    };
-                    poi.ApprovalStatus = "pending";
-                    poi.IsActive = false;
-                    poi.ApprovedAt = null;
+                    poi.ApprovalStatus = "approved";
+                    poi.IsActive = true;
+                    poi.ApprovedAt = DateTime.UtcNow;
                     poi.ApprovedByUserId = null;
-                    poi.ApprovalNote = JsonSerializer.Serialize(note);
+                    poi.ApprovalNote = null;
                     _context.Update(poi);
+                    if (poi.Description != existing.Description ||
+                        (poi.TtsScript ?? "") != (existing.TtsScript ?? ""))
+                    {
+                        var oldTrans = _context.PoiTranslations.Where(t => t.PoiId == id);
+                        _context.PoiTranslations.RemoveRange(oldTrans);
+                        var missing = await CreateTranslationsAndAudio(poi);
+                        if (missing > 0)
+                            TempData["AudioWarning"] = $"Đã cập nhật nội dung nhưng còn {missing} bản dịch chưa có audio.";
+                    }
+
                     await _context.SaveChangesAsync();
-                    TempData["success"] = "POI đã gửi yêu cầu chỉnh sửa. Chờ Admin duyệt.";
+                    TempData["success"] = "Đã cập nhật POI.";
                     return RedirectToAction(nameof(Index));
                 }
 
@@ -245,54 +477,9 @@ namespace SmartTourCMS.Controllers
 
         [Authorize(Roles = "Admin")]
         [HttpGet]
-        public async Task<IActionResult> PendingApprovals(string? requestType = null)
+        public IActionResult PendingApprovals(string? requestType = null)
         {
-            var pending = await _context.Pois
-                .Where(p => p.ApprovalStatus == "pending")
-                .OrderByDescending(p => p.CreatedAt)
-                .ToListAsync();
-
-            var vendorIds = pending
-                .Where(p => !string.IsNullOrWhiteSpace(p.VendorId))
-                .Select(p => p.VendorId!)
-                .Distinct()
-                .ToList();
-            var vendorEmailMap = new Dictionary<string, string>();
-            foreach (var vid in vendorIds)
-            {
-                var user = await _userManager.FindByIdAsync(vid);
-                vendorEmailMap[vid] = user?.Email ?? user?.UserName ?? vid;
-            }
-
-            var rows = pending.Select(p =>
-            {
-                var note = ParseApprovalNote(p.ApprovalNote);
-                var requestType = note?.RequestType == "edit" ? "edit" : "create";
-                var script = string.IsNullOrWhiteSpace(p.TtsScript) ? p.Description : p.TtsScript ?? string.Empty;
-                return new PoiPendingApprovalRowViewModel
-                {
-                    Id = p.Id,
-                    Name = p.Name,
-                    VendorEmail = !string.IsNullOrWhiteSpace(p.VendorId) && vendorEmailMap.TryGetValue(p.VendorId, out var email) ? email : "-",
-                    CreatedAt = p.CreatedAt,
-                    ApprovalStatus = p.ApprovalStatus,
-                    RequestType = requestType,
-                    ScriptPreview = script,
-                    ChangedFields = BuildChangedFields(note, p)
-                };
-            }).ToList();
-
-            if (!string.IsNullOrWhiteSpace(requestType))
-            {
-                var normalized = requestType.Trim().ToLowerInvariant();
-                if (normalized is "create" or "edit")
-                {
-                    rows = rows.Where(r => string.Equals(r.RequestType, normalized, StringComparison.OrdinalIgnoreCase)).ToList();
-                }
-            }
-
-            ViewBag.RequestTypeFilter = requestType?.Trim().ToLowerInvariant();
-            return View(rows);
+            return RedirectToAction(nameof(Index));
         }
 
         [Authorize(Roles = "Admin")]
@@ -302,7 +489,7 @@ namespace SmartTourCMS.Controllers
         {
             var poi = await _context.Pois.FirstOrDefaultAsync(p => p.Id == id);
             if (poi == null) return NotFound();
-            if (poi.ApprovalStatus != "pending") return RedirectToAction(nameof(PendingApprovals));
+            if (poi.ApprovalStatus != "pending") return RedirectToAction(nameof(Index));
 
             var admin = await _userManager.GetUserAsync(User);
             poi.ApprovalStatus = "approved";
@@ -335,7 +522,7 @@ namespace SmartTourCMS.Controllers
             poi.ApprovalNote = null;
             await _context.SaveChangesAsync();
             TempData["success"] = "Đã duyệt POI thành công.";
-            return RedirectToAction(nameof(PendingApprovals));
+            return RedirectToAction(nameof(Index));
         }
 
         [Authorize(Roles = "Admin")]
@@ -345,7 +532,7 @@ namespace SmartTourCMS.Controllers
         {
             var poi = await _context.Pois.FirstOrDefaultAsync(p => p.Id == id);
             if (poi == null) return NotFound();
-            if (poi.ApprovalStatus != "pending") return RedirectToAction(nameof(PendingApprovals));
+            if (poi.ApprovalStatus != "pending") return RedirectToAction(nameof(Index));
 
             var note = ParseApprovalNote(poi.ApprovalNote);
             if (note?.RequestType == "edit" && note.Original is not null)
@@ -365,7 +552,7 @@ namespace SmartTourCMS.Controllers
                 TempData["success"] = "Đã từ chối POI.";
             }
             await _context.SaveChangesAsync();
-            return RedirectToAction(nameof(PendingApprovals));
+            return RedirectToAction(nameof(Index));
         }
 
         [HttpPost]
@@ -438,9 +625,63 @@ namespace SmartTourCMS.Controllers
             var isAdmin = await _userManager.IsInRoleAsync(user, "Admin");
             if (!isAdmin && poi.VendorId != user.Id) return Forbid();
 
+            var (ok, err) = await DeletePoiCoreAsync(id);
+            if (ok)
+                TempData["success"] = "Đã xóa POI và toàn bộ dữ liệu liên quan.";
+            else if (string.Equals(err, "notfound", StringComparison.Ordinal))
+                return NotFound();
+            else
+                TempData["Error"] = "Xóa POI thất bại: " + (err ?? "lỗi không xác định");
+
+            return RedirectToAction(nameof(Index));
+        }
+
+        /// <summary>Vendor: xóa một lần mọi POI của mình đang ở trạng thái rejected.</summary>
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> DeleteAllRejectedVendorPois()
+        {
+            var user = await _userManager.GetUserAsync(User);
+            if (user == null) return RedirectToAction("Login", "Account");
+
+            if (await _userManager.IsInRoleAsync(user, "Admin"))
+            {
+                TempData["Error"] = "Thao tác này chỉ dành cho tài khoản vendor.";
+                return RedirectToAction(nameof(Index));
+            }
+
+            var ids = await _context.Pois.AsNoTracking()
+                .Where(p => p.VendorId == user.Id && p.ApprovalStatus == "rejected")
+                .Select(p => p.Id)
+                .ToListAsync();
+
+            if (ids.Count == 0)
+            {
+                TempData["Error"] = "Không có POI đã từ chối để xóa.";
+                return RedirectToAction(nameof(Index));
+            }
+
+            var deleted = 0;
+            foreach (var id in ids)
+            {
+                var (ok, _) = await DeletePoiCoreAsync(id);
+                if (ok) deleted++;
+            }
+
+            TempData["success"] = deleted == ids.Count
+                ? $"Đã xóa {deleted} địa điểm đã từ chối."
+                : $"Đã xóa {deleted}/{ids.Count} địa điểm đã từ chối (một số bản ghi không xóa được — kiểm tra ràng buộc dữ liệu).";
+            return RedirectToAction(nameof(Index));
+        }
+
+        /// <summary>Xóa POI và các bản ghi phụ thuộc đã được map trong CMS (gọi sau khi kiểm tra quyền).</summary>
+        private async Task<(bool ok, string? error)> DeletePoiCoreAsync(int id)
+        {
             try
             {
-                // Xóa theo thứ tự phụ thuộc để tránh FK conflict khi không bật cascade đầy đủ.
+                var poi = await _context.Pois.FirstOrDefaultAsync(p => p.Id == id);
+                if (poi == null) return (false, "notfound");
+
                 var poiTranslations = _context.PoiTranslations.Where(x => x.PoiId == id);
                 var poiImages = _context.PoiImages.Where(x => x.PoiId == id);
                 var foods = _context.Food.Where(x => x.PoiId == id);
@@ -458,13 +699,12 @@ namespace SmartTourCMS.Controllers
                 _context.Pois.Remove(poi);
 
                 await _context.SaveChangesAsync();
-                TempData["success"] = "Đã xóa POI và toàn bộ dữ liệu liên quan.";
+                return (true, null);
             }
             catch (Exception ex)
             {
-                TempData["Error"] = "Xóa POI thất bại: " + ex.Message;
+                return (false, ex.Message);
             }
-            return RedirectToAction(nameof(Index));
         }
 
         // --- HELPER METHODS ---
@@ -587,26 +827,6 @@ namespace SmartTourCMS.Controllers
                 return doc.RootElement[0][0][0].GetString() ?? text;
             }
             catch { return text; }
-        }
-
-        private async Task<string> GenerateScriptWithAI(string poiName)
-        {
-            string apiKey = Environment.GetEnvironmentVariable("GGKEYAPI");
-            string url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={apiKey}";
-            var payload = new { contents = new[] { new { parts = new[] { new { text = $"Viết thuyết minh du lịch 150 chữ cho: {poiName}. Không tiêu đề, không dùng dấu *." } } } } };
-            try
-            {
-                var json = JsonSerializer.Serialize(payload);
-                var res = await _httpClient.PostAsync(url, new StringContent(json, Encoding.UTF8, "application/json"));
-                if (res.IsSuccessStatusCode)
-                {
-                    var body = await res.Content.ReadAsStringAsync();
-                    using var doc = JsonDocument.Parse(body);
-                    return doc.RootElement.GetProperty("candidates")[0].GetProperty("content").GetProperty("parts")[0].GetProperty("text").GetString();
-                }
-            }
-            catch { }
-            return $"Chào mừng bạn đến với {poiName}.";
         }
 
         // HÀM LỘT DẤU TIẾNG VIỆT

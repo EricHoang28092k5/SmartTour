@@ -13,10 +13,22 @@
     {
         <div class="alert alert-danger">@error</div>
     }
+    @if (TempData["Success"] is string okMsg && !string.IsNullOrWhiteSpace(okMsg))
+    {
+        <div class="alert alert-success">@okMsg</div>
+    }
+
+    @if (ViewBag.WalletBalanceVnd is long wb)
+    {
+        <div class="alert alert-light border mb-3">
+            <strong>Số dư ví:</strong> @wb.ToString("N0") đ
+            <a class="btn btn-sm btn-outline-primary ms-2" asp-controller="Wallet" asp-action="Index">Nạp thêm</a>
+        </div>
+    }
 
     @if (Model.Pois.Count == 0)
     {
-        <div class="alert alert-info">Bạn chưa có POI nào được duyệt để nâng cấp premium.</div>
+        <div class="alert alert-info">Bạn chưa có POI nào để nâng cấp premium.</div>
     }
     else
     {
@@ -66,8 +78,15 @@
             </div>
 
             <div class="d-grid d-md-flex justify-content-md-end">
-                <button class="btn btn-warning btn-lg" type="submit">
-                    <i class="fa-solid fa-qrcode me-2"></i>Tạo QR / Link thanh toán MoMo
+                <button class="btn btn-success btn-lg" type="submit">
+                    @if (ViewBag.IsAdminPremium is bool isAdm && isAdm)
+                    {
+                        <span><i class="fa-solid fa-check me-2"></i>Áp dụng gói Premium</span>
+                    }
+                    else
+                    {
+                        <span><i class="fa-solid fa-wallet me-2"></i>Thanh toán bằng ví</span>
+                    }
                 </button>
             </div>
         </form>

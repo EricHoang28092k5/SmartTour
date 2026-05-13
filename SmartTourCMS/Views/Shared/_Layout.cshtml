@@ -67,14 +67,6 @@
                     <i class="fa-solid fa-location-dot me-2"></i> Quản lý địa điểm
                 </a>
             </li>
-            @if (User.IsInRole("Admin"))
-            {
-                <li class="nav-item">
-                    <a class="nav-link @(ViewContext.RouteData.Values["Action"]?.ToString() == "PendingApprovals" ? "active" : "")" asp-controller="Poi" asp-action="PendingApprovals">
-                        <i class="fa-solid fa-hourglass-half me-2"></i> POI chờ duyệt
-                    </a>
-                </li>
-            }
             <li class="nav-item">
                 <a class="nav-link @(ViewContext.RouteData.Values["Controller"]?.ToString() == "Food" ? "active" : "")" asp-controller="Food" asp-action="Index">
                     <i class="fa-solid fa-utensils me-2"></i> Quản lý Thực đơn
@@ -93,6 +85,14 @@
                 <li class="nav-item">
                     <a class="nav-link @(ViewContext.RouteData.Values["Controller"]?.ToString() == "Premium" ? "active" : "")" asp-controller="Premium" asp-action="Index">
                         <i class="fa-solid fa-crown me-2"></i> Nâng cấp Premium
+                    </a>
+                </li>
+            }
+            @if (User.IsInRole("Vendor"))
+            {
+                <li class="nav-item">
+                    <a class="nav-link @(ViewContext.RouteData.Values["Controller"]?.ToString() == "Wallet" ? "active" : "")" asp-controller="Wallet" asp-action="Index">
+                        <i class="fa-solid fa-wallet me-2"></i> Ví vendor
                     </a>
                 </li>
             }

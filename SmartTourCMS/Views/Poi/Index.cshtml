@@ -13,13 +13,28 @@
     </div>
 }
 
+@if (TempData["success"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        @TempData["success"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+}
+
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        @TempData["Error"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+}
+
 @* 1. TIÊU ĐỀ VÀ Ô TÌM KIẾM *@
 
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2><i class="fa-solid fa-map-location-dot text-primary"></i> Quản lý địa điểm</h2>
-    <div class="d-flex gap-2">
+    <div class="d-flex flex-wrap gap-2 align-items-center">
         <form id="poiSearchForm" asp-action="Index" method="get" class="input-group">
-            <input type="hidden" name="tab" value="@((ViewBag.CurrentTab as string) ?? "active")" />
             <span class="input-group-text bg-white border-end-0"><i class="fa-solid fa-magnifying-glass text-muted"></i></span>
             <input id="poiSearchInput" type="text" name="search" value="@ViewBag.CurrentSearch" class="form-control border-start-0" placeholder="Tìm tên địa điểm..." />
             <button type="submit" class="btn btn-outline-secondary">Tìm</button>
@@ -27,40 +42,21 @@
         <a asp-action="Create" class="btn btn-success shadow-sm" style="min-width: 120px;">
             <i class="fa-solid fa-plus"></i> Thêm mới
         </a>
-        @if (ViewBag.IsAdmin != null && (bool)ViewBag.IsAdmin)
+        @if (ViewBag.IsAdmin is bool isAdm && !isAdm && ViewBag.RejectedPoiCount is int rejCnt && rejCnt > 0)
         {
-            <a asp-action="PendingApprovals" class="btn btn-warning shadow-sm">
-                <i class="fa-solid fa-clock"></i> Chờ duyệt
-            </a>
+            <form asp-action="DeleteAllRejectedVendorPois" method="post" class="d-inline"
+                  onsubmit="return confirm('Xóa hết @rejCnt địa điểm đã từ chối? Thao tác không hoàn tác.');">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn btn-outline-danger shadow-sm">
+                    <i class="fa-solid fa-trash-can"></i> Xóa tất cả đã từ chối (@rejCnt)
+                </button>
+            </form>
         }
     </div>
 </div>
 
 @{
     var isAdminView = ViewBag.IsAdmin != null && (bool)ViewBag.IsAdmin;
-    var currentTab = (ViewBag.CurrentTab as string) ?? "active";
-}
-
-@if (!isAdminView)
-{
-    <ul class="nav nav-tabs mb-3">
-        <li class="nav-item">
-            <a class="nav-link @(currentTab == "active" ? "active" : "")"
-               asp-action="Index"
-               asp-route-search="@ViewBag.CurrentSearch"
-               asp-route-tab="active">
-                Hoạt động
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link @(currentTab == "archive" ? "active" : "")"
-               asp-action="Index"
-               asp-route-search="@ViewBag.CurrentSearch"
-               asp-route-tab="archive">
-                Đã từ chối / Lưu trữ
-            </a>
-        </li>
-    </ul>
 }
 
 @* 2. BẢNG DỮ LIỆU *@
@@ -122,28 +118,19 @@
                             }
                         </td>
                         <td>
-                            @if (item.ApprovalStatus == "approved")
+                            @if (string.Equals(item.ApprovalStatus, "approved", StringComparison.OrdinalIgnoreCase))
                             {
-                                <span class="badge bg-success">Đã duyệt</span>
-                            }
-                            else if (item.ApprovalStatus == "rejected")
-                            {
-                                <span class="badge bg-danger">Từ chối</span>
-                            }
-                            else
-                            {
-                                <span class="badge bg-warning text-dark">Chờ duyệt</span>
-                            }
-                            @if (rowPremiumActive)
-                            {
-                                <span class="badge bg-warning text-dark ms-1"
-                                      title="Hết hạn lúc @item.PremiumExpiresAt!.Value.ToLocalTime().ToString("HH:mm dd/MM/yyyy")">
-                                    Premium
-                                </span>
-                            }
-                            else
-                            {
-                                <span class="badge bg-secondary ms-1">Cơ bản</span>
+                                @if (rowPremiumActive)
+                                {
+                                    <span class="badge bg-warning text-dark"
+                                          title="Hết hạn lúc @item.PremiumExpiresAt!.Value.ToLocalTime().ToString("HH:mm dd/MM/yyyy")">
+                                        Premium
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">Cơ bản</span>
+                                }
                             }
                         </td>
                         <td>
@@ -172,7 +159,13 @@
                             }
                             @if (isRejectedForVendor)
                             {
-                                <span class="text-muted">POI đã bị từ chối</span>
+                                <span class="text-muted me-2">POI đã bị từ chối</span>
+                                <form asp-action="Delete" asp-route-id="@item.Id" method="post" class="d-inline" onsubmit="return confirm('Xóa vĩnh viễn địa điểm này?');">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="btn btn-danger btn-sm">
+                                        <i class="fa fa-trash"></i> Xóa
+                                    </button>
+                                </form>
                             }
                             else
                             {
@@ -238,7 +231,7 @@
     
     @* THANH PHÂN TRANG THÊM VÀO ĐÂY *@
     <div class="card-footer bg-white d-flex justify-content-center pt-3 pb-1 border-top-0">
-        @Html.PagedListPager(Model, page => Url.Action("Index", new { page = page, search = ViewBag.CurrentSearch, tab = ViewBag.CurrentTab }), new PagedListRenderOptions
+        @Html.PagedListPager(Model, page => Url.Action("Index", new { page = page, search = ViewBag.CurrentSearch }), new PagedListRenderOptions
         {
             LiElementClasses = new string[] { "page-item" },
             PageClasses = new string[] { "page-link" }

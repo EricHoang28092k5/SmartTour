@@ -168,6 +168,10 @@ var cloudinaryAccount = hasCloudinaryConfig
     : new Account("placeholder-cloud", "placeholder-key", "placeholder-secret");
 builder.Services.AddSingleton(new Cloudinary(cloudinaryAccount));
 builder.Services.AddScoped<IVoiceService, VoiceService>();
+builder.Services.AddScoped<VendorWalletService>();
+builder.Services.AddScoped<PoiNeuralTtsQuoteService>();
+builder.Services.AddScoped<PremiumWalletPurchaseService>();
+builder.Services.AddScoped<PoiCreationFulfillmentProcessor>();
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IAudioPipelineQueue, AudioPipelineQueue>();
 builder.Services.AddSingleton<AudioListenIngestionService>();

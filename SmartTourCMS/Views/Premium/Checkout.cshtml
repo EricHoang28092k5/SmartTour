@@ -6,7 +6,7 @@
 <div class="container py-3">
     <div class="card shadow-sm border-0 mx-auto" style="max-width: 760px;">
         <div class="card-header bg-white fw-bold">
-            <i class="fa-solid fa-money-bill-wave me-2 text-success"></i>Thanh toán Premium qua MoMo
+            <i class="fa-solid fa-money-bill-wave me-2 text-success"></i>@(Model.PoiId > 0 ? "Thanh toán Premium qua MoMo" : "Nạp tiền ví qua MoMo")
         </div>
         <div class="card-body">
             <div class="row">
@@ -33,7 +33,7 @@
             </div>
         </div>
         <div class="card-footer bg-white d-flex justify-content-between">
-            <a class="btn btn-outline-secondary" asp-action="Index" asp-route-poiId="@Model.PoiId">Quay lại chọn gói</a>
+            <a class="btn btn-outline-secondary" href="@(Model.PoiId > 0 ? Url.Action("Index", "Premium", new { poiId = Model.PoiId }) : Url.Action("Index", "Wallet"))">Quay lại</a>
             <a class="btn btn-success" href="@Model.ReturnUrl">Tôi đã thanh toán, kiểm tra trạng thái</a>
         </div>
     </div>

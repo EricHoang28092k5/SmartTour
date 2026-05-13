@@ -21,12 +21,21 @@ public class VendorPremiumController : ControllerBase
     private readonly AppDbContext _db;
     private readonly IConfiguration _config;
     private readonly IMoMoPaymentQueueService _paymentQueue;
+    private readonly VendorWalletService _wallet;
+    private readonly PremiumWalletPurchaseService _premiumWallet;
 
-    public VendorPremiumController(AppDbContext db, IConfiguration config, IMoMoPaymentQueueService paymentQueue)
+    public VendorPremiumController(
+        AppDbContext db,
+        IConfiguration config,
+        IMoMoPaymentQueueService paymentQueue,
+        VendorWalletService wallet,
+        PremiumWalletPurchaseService premiumWallet)
     {
         _db = db;
         _config = config;
         _paymentQueue = paymentQueue;
+        _wallet = wallet;
+        _premiumWallet = premiumWallet;
     }
 
     [HttpPost("status")]
@@ -84,6 +93,67 @@ public class VendorPremiumController : ControllerBase
         return await CreatePaymentCore(dto.PoiId, dto.Months, dto.Amount, userId, isAdmin);
     }
 
+    [HttpPost("wallet/balance")]
+    public async Task<IActionResult> GetWalletBalance()
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(userId)) return Unauthorized(new { success = false, message = "Unauthenticated." });
+        var bal = await _wallet.GetBalanceVndAsync(userId);
+        return Ok(new { success = true, data = new { balanceVnd = bal } });
+    }
+
+    [HttpPost("wallet/create-topup")]
+    [EnableRateLimiting("MoMoCreatePaymentPolicy")]
+    public async Task<IActionResult> CreateWalletTopUp([FromBody] WalletTopUpRequest dto)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(userId)) return Unauthorized(new { success = false, message = "Unauthenticated." });
+        return await CreateWalletTopUpCore(dto.Amount, userId);
+    }
+
+    [AllowAnonymous]
+    [HttpPost("wallet/create-topup-cms")]
+    [EnableRateLimiting("MoMoCreatePaymentPolicy")]
+    public async Task<IActionResult> CreateWalletTopUpFromCms([FromBody] CmsWalletTopUpRequest dto)
+    {
+        if (string.IsNullOrWhiteSpace(dto.VendorUserId))
+            return BadRequest(new { success = false, message = "Invalid vendorUserId." });
+        var internalKey = Request.Headers["X-Internal-Key"].FirstOrDefault() ?? string.Empty;
+        var expected = _config["Admin:ApiKey"] ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(expected) || !string.Equals(internalKey, expected, StringComparison.Ordinal))
+            return Unauthorized(new { success = false, message = "Invalid internal key." });
+        return await CreateWalletTopUpCore(dto.Amount, dto.VendorUserId.Trim());
+    }
+
+    [HttpPost("purchase-premium-wallet")]
+    public async Task<IActionResult> PurchasePremiumWithWallet([FromBody] PurchasePremiumWalletRequest dto)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(userId)) return Unauthorized(new { success = false, message = "Unauthenticated." });
+        if (dto.PoiId <= 0 || dto.PriceVnd <= 0)
+            return BadRequest(new { success = false, message = "Invalid request." });
+        var (ok, err) = await _premiumWallet.TryPurchaseWithWalletAsync(dto.PoiId, userId, dto.Months, dto.PriceVnd);
+        if (!ok) return BadRequest(new { success = false, message = err ?? "Thanh toán thất bại." });
+        var bal = await _wallet.GetBalanceVndAsync(userId);
+        return Ok(new { success = true, data = new { balanceVnd = bal } });
+    }
+
+    [AllowAnonymous]
+    [HttpPost("purchase-premium-wallet-cms")]
+    public async Task<IActionResult> PurchasePremiumWithWalletFromCms([FromBody] CmsPurchasePremiumWalletRequest dto)
+    {
+        if (dto.PoiId <= 0 || dto.PriceVnd <= 0 || string.IsNullOrWhiteSpace(dto.VendorUserId))
+            return BadRequest(new { success = false, message = "Invalid request." });
+        var internalKey = Request.Headers["X-Internal-Key"].FirstOrDefault() ?? string.Empty;
+        var expected = _config["Admin:ApiKey"] ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(expected) || !string.Equals(internalKey, expected, StringComparison.Ordinal))
+            return Unauthorized(new { success = false, message = "Invalid internal key." });
+        var (ok, err) = await _premiumWallet.TryPurchaseWithWalletAsync(dto.PoiId, dto.VendorUserId.Trim(), dto.Months, dto.PriceVnd);
+        if (!ok) return BadRequest(new { success = false, message = err ?? "Thanh toán thất bại." });
+        var bal = await _wallet.GetBalanceVndAsync(dto.VendorUserId.Trim());
+        return Ok(new { success = true, data = new { balanceVnd = bal } });
+    }
+
     // CMS proxy endpoint: dùng internal key để gọi backend API từ web MVC
     [AllowAnonymous]
     [HttpPost("create-payment-cms")]
@@ -119,6 +189,90 @@ public class VendorPremiumController : ControllerBase
         return await GetOrderStatusCore(dto.OrderId.Trim(), dto.ForceProviderCheck, dto.VendorUserId.Trim(), false);
     }
 
+    private async Task<IActionResult> CreateWalletTopUpCore(long amount, string vendorUserId)
+    {
+        var minTop = long.TryParse(_config["PoiCreation:MinimumWalletTopUpVnd"], out var m) && m > 0 ? m : 20_000L;
+        if (amount < minTop)
+            return BadRequest(new { success = false, message = $"Số tiền nạp tối thiểu {minTop:N0} VNĐ." });
+
+        var settings = ReadSettings();
+        if (!settings.IsConfigured)
+            return BadRequest(new { success = false, message = $"MoMo is not configured. Missing: {string.Join(", ", settings.GetMissingFields())}" });
+
+        var now = DateTime.UtcNow;
+        // Chỉ tái sử dụng đơn chưa xong khi đúng cùng số tiền — tránh trả đơn 20k khi vendor vừa đổi sang 25k.
+        var existing = await _db.VendorPremiumOrders
+            .Where(x => x.VendorUserId == vendorUserId &&
+                        x.OrderKind == "wallet_topup" &&
+                        x.Amount == amount &&
+                        x.CreatedAt >= now.AddMinutes(-2) &&
+                        (x.Status == "queued" || x.Status == "creating_provider" || x.Status == "awaiting_payment"))
+            .OrderByDescending(x => x.CreatedAt)
+            .FirstOrDefaultAsync();
+
+        if (existing != null)
+        {
+            var existingPayment = ParseCreatePaymentPayload(existing.RawIpnPayload);
+            return Ok(new
+            {
+                success = true,
+                queued = existing.Status != "awaiting_payment",
+                message = "Đang có đơn nạp gần đây, trả về đơn cũ.",
+                data = new
+                {
+                    orderId = existing.OrderId,
+                    requestId = existing.RequestId,
+                    amount = existing.Amount,
+                    status = existing.Status,
+                    payUrl = existingPayment.payUrl,
+                    deeplink = existingPayment.deeplink,
+                    qrCodeUrl = existingPayment.qrCodeUrl
+                }
+            });
+        }
+
+        var requestId = $"WT{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}-{Random.Shared.Next(1000, 9999)}";
+        var orderId = $"WALLET-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}-{Random.Shared.Next(1000, 9999)}";
+
+        var order = new VendorPremiumOrder
+        {
+            OrderKind = "wallet_topup",
+            OrderId = orderId,
+            RequestId = requestId,
+            PoiId = 0,
+            VendorUserId = vendorUserId,
+            Amount = amount,
+            Provider = "momo",
+            Status = "queued",
+            CreatedAt = DateTime.UtcNow
+        };
+        _db.VendorPremiumOrders.Add(order);
+        await _db.SaveChangesAsync();
+
+        if (!_paymentQueue.TryEnqueue(new MoMoCreatePaymentJob(orderId)))
+        {
+            order.Status = "failed";
+            order.LastError = "queue_full";
+            order.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+            return StatusCode(429, new { success = false, message = "Server đang bận, vui lòng thử lại sau vài giây." });
+        }
+
+        return Accepted(new
+        {
+            success = true,
+            queued = true,
+            message = "Đã xếp hàng tạo thanh toán MoMo.",
+            data = new
+            {
+                orderId,
+                requestId,
+                amount,
+                status = "queued"
+            }
+        });
+    }
+
     private async Task<IActionResult> CreatePaymentCore(int poiId, int months, int amountRaw, string actorUserId, bool actorIsAdmin)
     {
         if (poiId <= 0) return BadRequest(new { success = false, message = "Invalid poiId." });
@@ -137,7 +291,8 @@ public class VendorPremiumController : ControllerBase
         if (durationMonths < 0) durationMonths = settings.DefaultMonths;
         var now = DateTime.UtcNow;
         var existing = await _db.VendorPremiumOrders
-            .Where(x => x.PoiId == poiId &&
+            .Where(x => x.OrderKind == "premium" &&
+                        x.PoiId == poiId &&
                         x.VendorUserId == (poi.VendorId ?? actorUserId) &&
                         x.CreatedAt >= now.AddMinutes(-2) &&
                         (x.Status == "queued" || x.Status == "creating_provider" || x.Status == "awaiting_payment"))
@@ -170,6 +325,7 @@ public class VendorPremiumController : ControllerBase
 
         var order = new VendorPremiumOrder
         {
+            OrderKind = "premium",
             OrderId = orderId,
             RequestId = requestId,
             PoiId = poiId,
@@ -310,6 +466,7 @@ public class VendorPremiumController : ControllerBase
             success = true,
             data = new
             {
+                orderKind = order.OrderKind,
                 orderId = order.OrderId,
                 status = order.Status,
                 paidAt = order.PaidAt,
@@ -409,6 +566,19 @@ public class VendorPremiumController : ControllerBase
 
     private async Task ApplyPremiumBenefitAsync(VendorPremiumOrder order, PremiumSettings settings, string? extraData)
     {
+        var kind = string.IsNullOrWhiteSpace(order.OrderKind) ? "premium" : order.OrderKind.Trim();
+        if (string.Equals(kind, "wallet_topup", StringComparison.OrdinalIgnoreCase))
+        {
+            await _wallet.CreditAsync(order.VendorUserId, order.Amount, "momo_topup", order.OrderId);
+            return;
+        }
+
+        if (string.Equals(kind, "poi_create", StringComparison.OrdinalIgnoreCase))
+        {
+            // Giữ hook cho đơn MoMo tạo POI (nếu bật worker fulfillment).
+            return;
+        }
+
         var poi = await _db.Pois.FirstOrDefaultAsync(p => p.Id == order.PoiId);
         if (poi == null) return;
 
@@ -632,5 +802,31 @@ public class CmsPremiumOrderStatusRequest
     public string OrderId { get; set; } = string.Empty;
     public string VendorUserId { get; set; } = string.Empty;
     public bool ForceProviderCheck { get; set; }
+}
+
+public class WalletTopUpRequest
+{
+    public long Amount { get; set; }
+}
+
+public class CmsWalletTopUpRequest
+{
+    public long Amount { get; set; }
+    public string VendorUserId { get; set; } = string.Empty;
+}
+
+public class PurchasePremiumWalletRequest
+{
+    public int PoiId { get; set; }
+    public int Months { get; set; } = 1;
+    public long PriceVnd { get; set; }
+}
+
+public class CmsPurchasePremiumWalletRequest
+{
+    public int PoiId { get; set; }
+    public int Months { get; set; } = 1;
+    public long PriceVnd { get; set; }
+    public string VendorUserId { get; set; } = string.Empty;
 }
 

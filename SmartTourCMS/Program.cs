@@ -70,6 +70,13 @@ builder.Services.ConfigureApplicationCookie(options =>
 });
 
 builder.Services.AddAuthorization();
+builder.Services.AddDistributedMemoryCache();
+builder.Services.AddSession(options =>
+{
+    options.IdleTimeout = TimeSpan.FromMinutes(30);
+    options.Cookie.HttpOnly = true;
+    options.Cookie.IsEssential = true;
+});
 builder.Services.AddSingleton<ILogRunner, FileLogRunner>();
 builder.Services.AddHttpClient("SmartTourApi", client =>
 {
@@ -83,6 +90,8 @@ builder.Services.AddHttpClient("SmartTourApi", client =>
     client.Timeout = TimeSpan.FromSeconds(30);
 });
 builder.Services.AddScoped<IVoiceService, VoiceService>();
+builder.Services.AddScoped<VendorWalletService>();
+builder.Services.AddScoped<PremiumWalletPurchaseService>();
 
 var app = builder.Build();
 
@@ -97,6 +106,7 @@ if (!app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
+app.UseSession();
 
 // Tắt cứng một số module theo cấu hình rút gọn chức năng.
 app.Use(async (context, next) =>

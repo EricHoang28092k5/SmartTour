@@ -9,6 +9,21 @@
 <h2><i class="fa-solid fa-plus-circle text-success"></i> Thêm địa điểm mới</h2>
 <hr />
 
+@if (TempData["Error"] is string terr && !string.IsNullOrWhiteSpace(terr))
+{
+    <div class="alert alert-danger">@terr</div>
+}
+
+<div asp-validation-summary="All" class="alert alert-danger @(ViewData.ModelState.IsValid ? "d-none" : "")" role="alert"></div>
+
+@if (User.IsInRole("Vendor"))
+{
+    <div class="alert alert-warning">
+        <strong>Vendor:</strong> Sau khi bấm <strong>Tiếp tục — xem phí và xác nhận</strong>, hệ thống hiển thị màn <strong>xác nhận</strong> (phí cố định @(ViewBag.FixedVendorPoiCreateChargeVnd is long fx ? fx.ToString("N0") : "100.000") đ, số dư ví). Chỉ khi bấm <strong>Mua / Tạo POI</strong> mới trừ ví và tạo audio.
+        Nạp tiền tại <a asp-controller="Wallet" asp-action="Index">Ví vendor</a> (tối thiểu @(ViewBag.MinWalletTopUpVnd is long mt ? mt.ToString("N0") : "20.000") đ).
+    </div>
+}
+
 <form asp-action="Create" enctype="multipart/form-data">
     <div class="row">
         <div class="col-md-4">
@@ -35,18 +50,27 @@
                         <input asp-for="Radius" type="number" class="form-control" value="100" />
                     </div>
                     <div class="mb-3">
-                        <label asp-for="Description" class="control-label fw-bold">Mô tả địa điểm (Để trống để AI tự viết)</label>
-                        <textarea asp-for="Description" class="form-control" rows="4" placeholder="Nhập mô tả tại đây hoặc để trống để AI tự chém gió..."></textarea>
+                        <label asp-for="Description" class="control-label fw-bold">Mô tả địa điểm <span class="text-danger">*</span></label>
+                        <textarea asp-for="Description" class="form-control" rows="4" placeholder="Nhập mô tả địa điểm (bắt buộc)..." required maxlength="8000"></textarea>
                         <span asp-validation-for="Description" class="text-danger"></span>
                     </div>
                     <div class="mb-3">
-                        <label asp-for="TtsScript" class="control-label fw-bold">TTS Script gốc (tuỳ chọn)</label>
-                        <textarea asp-for="TtsScript" class="form-control" rows="4" placeholder="Nếu để trống sẽ dùng Description để tạo audio đa ngôn ngữ..."></textarea>
+                        <label asp-for="TtsScript" class="control-label fw-bold">TTS Script gốc (tuỳ chọn, tối đa 255 ký tự)</label>
+                        <textarea asp-for="TtsScript" class="form-control" rows="3" maxlength="255" placeholder="Để trống: hệ thống dùng câu mặc định “Chào mừng bạn đến với” + tên địa điểm."></textarea>
+                        <div class="form-text text-muted">Nếu không nhập, script đọc là: Chào mừng bạn đến với [tên POI].</div>
                         <span asp-validation-for="TtsScript" class="text-danger"></span>
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-bold">Ảnh bìa chính (1 ảnh)</label>
-                        <input type="file" name="imageFile" class="form-control" accept="image/*" />
+                        @if (User.IsInRole("Vendor"))
+                        {
+                            <input type="file" name="imageFile" class="form-control" accept="image/*" required />
+                            <div class="form-text text-muted">Vendor: bắt buộc trước bước xem phí / xác nhận.</div>
+                        }
+                        else
+                        {
+                            <input type="file" name="imageFile" class="form-control" accept="image/*" />
+                        }
                     </div>
 
                     <div class="mb-3">
@@ -65,7 +89,14 @@
                     </div>
                     <hr />
                     <button type="submit" class="btn btn-primary w-100 shadow">
-                        <i class="fa-solid fa-save"></i> Lưu địa điểm
+                        @if (User.IsInRole("Vendor"))
+                        {
+                            <span><i class="fa-solid fa-arrow-right me-2"></i>Tiếp tục — xem phí và xác nhận</span>
+                        }
+                        else
+                        {
+                            <span><i class="fa-solid fa-save"></i> Lưu địa điểm</span>
+                        }
                     </button>
                     <a asp-action="Index" class="btn btn-link w-100 mt-2 text-decoration-none text-muted">Quay lại danh sách</a>
                 </div>
