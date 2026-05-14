@@ -1120,40 +1120,40 @@ Luồng này bám **cùng format** sequence mẫu (StreetFood-style): **khối `
 sequenceDiagram
     actor U as "Staff Admin hoặc Vendor"
     participant DP as "TrangDashboard (browser)"
-    participant CMS as "SmartTourCMS: HomeController + API route"
+    participant CMS as "SmartTourCMS HomeController và route API"
     participant DB as PostgreSQL
 
     U->>DP: Điều hướng mở dashboard
     DP->>CMS: GET /Home/Index
-    Note over CMS: Index(): đếm POI/Tour/Translation/Language (theo role); PlayLog tổng + POI có plays + group top 10 (server); Admin: DevicePresences + ngưỡng 20s; 5 tour mới
-    CMS->>DB: Query Pois/Tours/PoiTranslations/Languages/PlayLog/DevicePresences/Tours
-    DB-->>CMS: Aggregates + rows
-    CMS-->>DP: HTML + ViewBag (ô KPI + seed bảng thiết bị Admin)
+    Note over CMS: Index đếm POI Tour Translation Language theo role, PlayLog tổng và POI có plays và group top 10 server, Admin DevicePresences ngưỡng 20s, 5 tour mới
+    CMS->>DB: Query Pois Tours PoiTranslations Languages PlayLog DevicePresences Tours
+    DB-->>CMS: Aggregates và rows
+    CMS-->>DP: HTML kèm ViewBag ô KPI seed bảng thiết bị Admin
     DP->>DP: Render thẻ thống kê từ ViewBag
 
     par Sau DOMContentLoaded (client)
-        Note over DP,DB: [Biểu đồ lượt nghe — mọi role được phép]
+        Note over DP,DB: Biểu đồ lượt nghe mọi role được phép
         DP->>CMS: GET /api/cms-dashboard/poi-stats
-        CMS->>DB: PlayLog GroupBy tên POI (lọc theo role), Take(10)
+        CMS->>DB: PlayLog GroupBy tên POI lọc theo role Take 10
         DB-->>CMS: Rows top plays
-        CMS-->>DP: JSON success + data[]
-        DP->>DP: Khởi tạo Chart.js (bar)
+        CMS-->>DP: JSON success và data
+        DP->>DP: Khởi tạo Chart.js bar
 
     and Chỉ Admin
-        Note over DP,DB: [Thiết bị online — first paint]
+        Note over DP,DB: Thiết bị online first paint
         DP->>CMS: GET /api/cms-dashboard/device-status
-        CMS->>DB: DevicePresences (an toàn) + IsActive theo LastSeenUtc
+        CMS->>DB: DevicePresences an toàn IsActive theo LastSeenUtc
         DB-->>CMS: Danh sách thiết bị
-        CMS-->>DP: JSON onlineDevices + thresholdSeconds + data
-        DP->>DP: renderDevices() (số + bảng)
+        CMS-->>DP: JSON onlineDevices thresholdSeconds data
+        DP->>DP: renderDevices số và bảng
     end
 
-    loop Polling khi tab mở (Admin, mỗi 3 giây)
+    loop Polling khi tab mở Admin mỗi 3 giây
         DP->>CMS: GET /api/cms-dashboard/device-status
         CMS->>DB: Đọc lại DevicePresences
         DB-->>CMS: Rows cập nhật
         CMS-->>DP: JSON mới
-        DP->>DP: renderDevices()
+        DP->>DP: renderDevices
     end
 ```
 
