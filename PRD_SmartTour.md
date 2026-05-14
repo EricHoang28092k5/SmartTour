@@ -1112,48 +1112,62 @@ sequenceDiagram
     end
 ```
 
-### 12.31 Xem trang Dashboard CMS (load + song song + polling)
+### 12.31 Xem trang Dashboard CMS (tổng quan trang chủ điều khiển)
 
-Luồng này bám **cùng format** sequence mẫu (StreetFood-style): **khối `par`** cho các gọi song song sau khi trang đã có HTML, **khối `loop`** cho polling định kỳ; mũi tên nét liền = gọi/yêu cầu, nét đứt = trả dữ liệu/phản hồi. **Tham chiếu mã:** `SmartTourCMS/Controllers/HomeController.cs` (`Index`, `GetDashboardPoiStats`, `GetDeviceStatus`), `SmartTourCMS/Views/Home/Index.cshtml` (Chart.js + `fetch` + `setInterval` 3000 ms). **Vendor:** chỉ nhánh KPI (server) + `poi-stats` (client); không gọi `device-status` và không polling.
+**Phạm vi trang** (`/Home/Index`, view `SmartTourCMS/Views/Home/Index.cshtml`, logic `HomeController.Index` và hai route `api/cms-dashboard/*`): đây là **màn tổng quan** sau đăng nhập cho **Admin** và **Vendor**, không đi sâu từng truy vấn PlayLog hay heartbeat (đã có sequence riêng). **Giao diện dashboard không có khối Tour, “POI Tour”, hay danh sách lịch trình** — chỉ POI, bản dịch, lượt nghe, thiết bị và liên kết nhanh như màn hình.
+
+**Các khối chức năng trên dashboard (đủ theo UI và mã):**
+
+1. **Hàng KPI (thẻ nhỏ):** số **POI** đã duyệt theo quyền; số **bản dịch** đa ngôn ngữ; **tổng lượt nghe audio** (PlayLog); số **POI đã có ít nhất một lượt nghe**; **Admin thêm:** thẻ **thiết bị online** trong cửa sổ ngưỡng heartbeat (mặc định 20 giây, nhãn đồng bộ từ API khi refresh).
+2. **Biểu đồ cột:** “Thống kê lượt nghe Audio theo địa điểm” — gom **lượt nghe theo từng POI** (tên địa điểm trên trục hoành); client gọi API rồi vẽ **Chart.js**; phạm vi **Admin toàn hệ thống** hoặc **Vendor chỉ POI thuộc mình**. Đây **không** phải thống kê theo Tour hay tuyến tham quan.
+3. **Thao tác nhanh:** liên kết **Thêm địa điểm mới** (`/Poi/Create`); **Nâng cấp Premium** (`/Premium/Index`) cho Admin và Vendor; **Xem bản đồ nhiệt** (`/Heatmap/Index`) chỉ **Admin** — chỉ điều hướng, không gọi thêm API trong sequence tải dashboard.
+4. **Admin — bảng “Thiết bị đang sử dụng”:** cột thiết bị hoặc ID, IP, nền tảng, phiên bản app, lần cuối hoạt động UTC, badge trạng thái; ô KPI online và bảng được **làm tươi** định kỳ bằng JavaScript (chu kỳ **3 giây** trong code, khác với **20 giây** là ngưỡng coi là online).
+
+**Ghi chú triển khai (tách UI và code):** Trong `HomeController.Index` phía server còn có bước đếm **Tour**, **Language**, gán **chartData** và model tour cho view — **không** được `Index.cshtml` hiển thị trên dashboard hiện tại; sequence và mục (1)–(4) chỉ mô tả **những gì người dùng thấy**. Biểu đồ cột trên UI lấy qua **`/api/cms-dashboard/poi-stats`** (thống kê theo **POI**, tên endpoint có chữ `poi`, không liên quan Tour).
+
+**Phân quyền tóm tắt:** **Vendor:** bốn thẻ KPI đầu (POI, bản dịch, tổng lượt nghe, POI có lượt nghe), có **(2)** và **(3)**, không có thẻ online, không **(4)**. **Admin:** đủ **(1)**–**(4)**.
+
+**Tham chiếu sequence chi tiết:** lượt nghe và API `poi-stats` — **§12.7**; thiết bị online, `device-status`, heartbeat app — **§12.24** và **§12.25**.
+
+**Format sơ đồ (StreetFood-style):** `par` = sau khi có HTML, client gọi song song nhánh biểu đồ và nhánh thiết bị (chỉ Admin); `loop` = polling thiết bị; mũi tên liền = yêu cầu, đứt = phản hồi.
 
 ```mermaid
 sequenceDiagram
     actor U as "Staff Admin hoặc Vendor"
-    participant DP as "TrangDashboard (browser)"
-    participant CMS as "SmartTourCMS HomeController và route API"
+    participant DP as "TrangDashboard browser"
+    participant CMS as "SmartTourCMS HomeController cùng route API"
     participant DB as PostgreSQL
 
-    U->>DP: Điều hướng mở dashboard
+    U->>DP: Mở Bảng điều khiển
     DP->>CMS: GET /Home/Index
-    Note over CMS: Index đếm POI Tour Translation Language theo role, PlayLog tổng và POI có plays và group top 10 server, Admin DevicePresences ngưỡng 20s, 5 tour mới
-    CMS->>DB: Query Pois Tours PoiTranslations Languages PlayLog DevicePresences Tours
-    DB-->>CMS: Aggregates và rows
-    CMS-->>DP: HTML kèm ViewBag ô KPI seed bảng thiết bị Admin
-    DP->>DP: Render thẻ thống kê từ ViewBag
+    Note over CMS: Index nạp KPI theo role và dữ liệu nền cho khung trang Admin seed bảng thiết bị
+    CMS->>DB: Truy vấn tổng hợp phục vụ KPI và khung trang
+    DB-->>CMS: Dữ liệu tổng hợp
+    CMS-->>DP: HTML ViewBag thẻ KPI canvas biểu đồ cột thao tác nhanh bảng thiết bị Admin
+    DP->>DP: Vẽ thẻ KPI liên kết nhanh vùng chart và bảng seed từ server
 
-    par Sau DOMContentLoaded (client)
-        Note over DP,DB: Biểu đồ lượt nghe mọi role được phép
+    par Sau DOMContentLoaded
+        Note over DP,CMS: Thống kê lượt nghe theo địa điểm POI xem mục 12.7
         DP->>CMS: GET /api/cms-dashboard/poi-stats
-        CMS->>DB: PlayLog GroupBy tên POI lọc theo role Take 10
-        DB-->>CMS: Rows top plays
-        CMS-->>DP: JSON success và data
-        DP->>DP: Khởi tạo Chart.js bar
+        CMS->>DB: Gom lượt nghe theo tên địa điểm và quyền
+        DB-->>CMS: Bảng điểm theo địa điểm
+        CMS-->>DP: JSON cho Chart.js
+        DP->>DP: Vẽ biểu đồ cột
 
     and Chỉ Admin
-        Note over DP,DB: Thiết bị online first paint
+        Note over DP,CMS: Đồng bộ thiết bị xem mục 12.24
         DP->>CMS: GET /api/cms-dashboard/device-status
-        CMS->>DB: DevicePresences an toàn IsActive theo LastSeenUtc
-        DB-->>CMS: Danh sách thiết bị
-        CMS-->>DP: JSON onlineDevices thresholdSeconds data
-        DP->>DP: renderDevices số và bảng
+        CMS->>DB: Đọc trạng thái thiết bị
+        DB-->>CMS: Danh sách và cờ online
+        CMS-->>DP: JSON đồng bộ ô và bảng
+        DP->>DP: Cập nhật số online và badge hàng
     end
 
-    loop Polling khi tab mở Admin mỗi 3 giây
+    loop Ba giây một lần Admin
+        Note over DP,CMS: Cùng mục 12.24
         DP->>CMS: GET /api/cms-dashboard/device-status
-        CMS->>DB: Đọc lại DevicePresences
-        DB-->>CMS: Rows cập nhật
-        CMS-->>DP: JSON mới
-        DP->>DP: renderDevices
+        CMS-->>DP: JSON làm mới
+        DP->>DP: Vẽ lại bảng và số online
     end
 ```
 
