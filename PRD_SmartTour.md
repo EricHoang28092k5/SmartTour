@@ -2,15 +2,9 @@
 
 | Thuộc tính | Giá trị |
 | --- | --- |
-<<<<<<< HEAD
-| **Phiên bản tài liệu** | **7.8** |
+| **Phiên bản tài liệu** | **7.11** |
 | **Ngày cập nhật** | **2026-05-14** |
-| **Trạng thái** | Đồng bộ với mã nguồn repo (Geofence + **Bulk visit stress** trên `LoadTest/Index`; một cửa log file Geofence) |
-=======
-| **Phiên bản tài liệu** | **7.9** |
-| **Ngày cập nhật** | **2026-05-14** |
-| **Trạng thái** | **Bám sát** các luồng lõi đã triển khai (visit + worker, ví/MoMo, Premium CMS, Geofence simulator, POI Vendor + trừ ví). **Không** coi là đã liệt kê/đồng bộ từng endpoint hoặc từng sơ đồ UML với code: §**16** và bảng API được rà soát theo đợt (xem **7.9**); một số diagram UC/Sequence/Activity vẫn mang tính tổng quan. |
->>>>>>> 0c1c69f6003d9ff6a1d14b7ec7a99ece347b076f
+| **Trạng thái** | **Bám sát** các luồng lõi đã triển khai (visit + worker, ví/MoMo, Premium CMS, Geofence simulator, POI Vendor + trừ ví). **Không** coi là đã liệt kê/đồng bộ từng endpoint hoặc từng sơ đồ UML với code: §**16** và bảng API được rà soát theo đợt; một số diagram UC/Sequence/Activity vẫn mang tính tổng quan. |
 | **Mục đích** | Mô tả yêu cầu sản phẩm; bám sát chức năng đã triển khai và chuẩn hóa tài liệu để báo cáo đồ án. |
 
 ### Mục lục nhanh
@@ -611,10 +605,14 @@ flowchart TB
 ```
 
 ## 12. Sequence diagram
+
+Các khối `sequenceDiagram` dùng **`participant`** cho mọi vai (hình **hộp chữ nhật** thay cho stick figure của `actor`) và một dòng **`%%{init: ...}%%`** chung để nền hộp **tím nhạt** (lavender) và viền tương phản — gần với style UML mẫu (StreetFood).
+
 ### 12.1 Đăng nhập và phân quyền (Admin)
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#EDE7F6','actorBorder':'#B39DDB','actorTextColor':'#222222','primaryColor':'#EDE7F6','primaryBorderColor':'#B39DDB','secondaryColor':'#EDE7F6','tertiaryColor':'#F3EFFF'}}}%%
 sequenceDiagram
-    actor A as Admin
+    participant A as Admin
     participant CMS as CMS
     participant ID as Identity
     participant DB as PostgreSQL
@@ -629,8 +627,9 @@ sequenceDiagram
 Luồng **Vendor** trên CMS: sau form **Create**, hệ thống lưu **draft** vào session → trang **CreateConfirm** (phí `PoiCreation:FixedVendorCreateChargeVnd`, số dư ví) → **POST CreateConfirmPost** mở transaction: **`TryDebitAsync` (mã `poi_create`) trước**, chỉ khi trừ ví thành công mới **Insert `Poi`** rồi sinh translation + TTS + Cloudinary trong cùng transaction (đủ ví = “đã thanh toán phí” xong mới có bản ghi POI). **Admin** không qua ví: **POST Create** ghi `Poi` trực tiếp (không gọi `CreateTranslationsAndAudio` ngay trong action Create — khác Vendor).
 
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#EDE7F6','actorBorder':'#B39DDB','actorTextColor':'#222222','primaryColor':'#EDE7F6','primaryBorderColor':'#B39DDB','secondaryColor':'#EDE7F6','tertiaryColor':'#F3EFFF'}}}%%
 sequenceDiagram
-    actor U as Staff
+    participant U as Staff
     participant CMS as PoiController
     participant Wallet as VendorWalletService
     participant DB as PostgreSQL
@@ -672,8 +671,9 @@ sequenceDiagram
 
 ### 12.3 Sửa POI (Admin/Vendor)
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#EDE7F6','actorBorder':'#B39DDB','actorTextColor':'#222222','primaryColor':'#EDE7F6','primaryBorderColor':'#B39DDB','secondaryColor':'#EDE7F6','tertiaryColor':'#F3EFFF'}}}%%
 sequenceDiagram
-    actor U as Staff
+    participant U as Staff
     participant CMS as CMS
     participant DB as PostgreSQL
     U->>CMS: Submit Edit POI — PoiController.Edit(POST)
@@ -687,8 +687,9 @@ sequenceDiagram
 
 ### 12.4 Xóa POI (Admin/Vendor)
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#EDE7F6','actorBorder':'#B39DDB','actorTextColor':'#222222','primaryColor':'#EDE7F6','primaryBorderColor':'#B39DDB','secondaryColor':'#EDE7F6','tertiaryColor':'#F3EFFF'}}}%%
 sequenceDiagram
-    actor U as Staff
+    participant U as Staff
     participant CMS as CMS
     participant DB as PostgreSQL
     U->>CMS: Xác nhận xóa POI — PoiController.Delete(POST)
@@ -699,8 +700,9 @@ sequenceDiagram
 
 ### 12.5 Quản lý translation POI
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#EDE7F6','actorBorder':'#B39DDB','actorTextColor':'#222222','primaryColor':'#EDE7F6','primaryBorderColor':'#B39DDB','secondaryColor':'#EDE7F6','tertiaryColor':'#F3EFFF'}}}%%
 sequenceDiagram
-    actor U as Staff
+    participant U as Staff
     participant CMS as CMS
     participant DB as PostgreSQL
     U->>CMS: Mở trang Translation của POI — TranslationController.Index
@@ -713,8 +715,9 @@ sequenceDiagram
 
 ### 12.6 Generate/Regenerate audio
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#EDE7F6','actorBorder':'#B39DDB','actorTextColor':'#222222','primaryColor':'#EDE7F6','primaryBorderColor':'#B39DDB','secondaryColor':'#EDE7F6','tertiaryColor':'#F3EFFF'}}}%%
 sequenceDiagram
-    actor U as Staff
+    participant U as Staff
     participant CMS as CMS
     participant DB as PostgreSQL
     participant TTS as AzureSpeech
@@ -730,8 +733,9 @@ sequenceDiagram
 
 ### 12.7 Xem lượt nghe POI (Admin/Vendor)
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#EDE7F6','actorBorder':'#B39DDB','actorTextColor':'#222222','primaryColor':'#EDE7F6','primaryBorderColor':'#B39DDB','secondaryColor':'#EDE7F6','tertiaryColor':'#F3EFFF'}}}%%
 sequenceDiagram
-    actor U as Staff
+    participant U as Staff
     participant HomeController
     participant DB as PostgreSQL
     U->>HomeController: Mở dashboard/log plays — LogController.Plays / HomeController.Index
@@ -741,8 +745,9 @@ sequenceDiagram
 
 ### 12.8 Tìm kiếm POI (Admin)
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#EDE7F6','actorBorder':'#B39DDB','actorTextColor':'#222222','primaryColor':'#EDE7F6','primaryBorderColor':'#B39DDB','secondaryColor':'#EDE7F6','tertiaryColor':'#F3EFFF'}}}%%
 sequenceDiagram
-    actor U as Admin
+    participant U as Admin
     participant CMS as CMS
     participant DB as PostgreSQL
     U->>CMS: Nhập keyword POI — PoiController.Index(?search)
@@ -752,8 +757,9 @@ sequenceDiagram
 
 ### 12.9 Tìm kiếm thức ăn (Admin/Vendor)
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#EDE7F6','actorBorder':'#B39DDB','actorTextColor':'#222222','primaryColor':'#EDE7F6','primaryBorderColor':'#B39DDB','secondaryColor':'#EDE7F6','tertiaryColor':'#F3EFFF'}}}%%
 sequenceDiagram
-    actor U as Staff
+    participant U as Staff
     participant CMS as CMS
     participant DB as PostgreSQL
     U->>CMS: Nhập keyword Food — FoodController.Index(?search)
@@ -763,8 +769,9 @@ sequenceDiagram
 
 ### 12.10 Lọc thức ăn theo POI (Admin/Vendor)
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#EDE7F6','actorBorder':'#B39DDB','actorTextColor':'#222222','primaryColor':'#EDE7F6','primaryBorderColor':'#B39DDB','secondaryColor':'#EDE7F6','tertiaryColor':'#F3EFFF'}}}%%
 sequenceDiagram
-    actor U as Staff
+    participant U as Staff
     participant CMS as CMS
     participant DB as PostgreSQL
     U->>CMS: Chọn POI filter — FoodController.Index(?poiId)
@@ -774,8 +781,9 @@ sequenceDiagram
 
 ### 12.11 Xem Heatmap và Route (Admin)
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#EDE7F6','actorBorder':'#B39DDB','actorTextColor':'#222222','primaryColor':'#EDE7F6','primaryBorderColor':'#B39DDB','secondaryColor':'#EDE7F6','tertiaryColor':'#F3EFFF'}}}%%
 sequenceDiagram
-    actor U as Admin
+    participant U as Admin
     participant CMS as CMS
     participant API as SmartTourAPI
     participant DB as PostgreSQL
@@ -787,8 +795,9 @@ sequenceDiagram
 
 ### 12.12 Quản lý user hệ thống (Admin)
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#EDE7F6','actorBorder':'#B39DDB','actorTextColor':'#222222','primaryColor':'#EDE7F6','primaryBorderColor':'#B39DDB','secondaryColor':'#EDE7F6','tertiaryColor':'#F3EFFF'}}}%%
 sequenceDiagram
-    actor U as Admin
+    participant U as Admin
     participant CMS as CMS
     participant ID as Identity
     participant DB as PostgreSQL
@@ -800,8 +809,9 @@ sequenceDiagram
 
 ### 12.13 Quét QR để vào app (Traveler)
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#EDE7F6','actorBorder':'#B39DDB','actorTextColor':'#222222','primaryColor':'#EDE7F6','primaryBorderColor':'#B39DDB','secondaryColor':'#EDE7F6','tertiaryColor':'#F3EFFF'}}}%%
 sequenceDiagram
-    actor T as Traveler
+    participant T as Traveler
     participant APP as App
     participant QR as QrGatePage
     participant PREF as Preferences
@@ -817,8 +827,9 @@ sequenceDiagram
 
 ### 12.14 Xem POI trên map/list (Traveler)
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#EDE7F6','actorBorder':'#B39DDB','actorTextColor':'#222222','primaryColor':'#EDE7F6','primaryBorderColor':'#B39DDB','secondaryColor':'#EDE7F6','tertiaryColor':'#F3EFFF'}}}%%
 sequenceDiagram
-    actor T as Traveler
+    participant T as Traveler
     participant APP as App
     participant API as SmartTourAPI
     participant DB as PostgreSQL
@@ -830,8 +841,9 @@ sequenceDiagram
 
 ### 12.15 Nghe audio theo ngôn ngữ (Traveler)
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#EDE7F6','actorBorder':'#B39DDB','actorTextColor':'#222222','primaryColor':'#EDE7F6','primaryBorderColor':'#B39DDB','secondaryColor':'#EDE7F6','tertiaryColor':'#F3EFFF'}}}%%
 sequenceDiagram
-    actor T as Traveler
+    participant T as Traveler
     participant APP as App
     participant API as SmartTourAPI
     participant CACHE as LocalCache
@@ -847,8 +859,9 @@ sequenceDiagram
 
 ### 12.16 Dùng offline map/audio (Traveler)
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#EDE7F6','actorBorder':'#B39DDB','actorTextColor':'#222222','primaryColor':'#EDE7F6','primaryBorderColor':'#B39DDB','secondaryColor':'#EDE7F6','tertiaryColor':'#F3EFFF'}}}%%
 sequenceDiagram
-    actor T as Traveler
+    participant T as Traveler
     participant APP as App
     participant OF as OfflineStore
     T->>APP: Mất mạng — Connectivity changed
@@ -859,8 +872,9 @@ sequenceDiagram
 
 ### 12.17 Gửi playlog và route (Traveler)
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#EDE7F6','actorBorder':'#B39DDB','actorTextColor':'#222222','primaryColor':'#EDE7F6','primaryBorderColor':'#B39DDB','secondaryColor':'#EDE7F6','tertiaryColor':'#F3EFFF'}}}%%
 sequenceDiagram
-    actor T as Traveler
+    participant T as Traveler
     participant APP as App
     participant API as SmartTourAPI
     participant DB as PostgreSQL
@@ -872,8 +886,9 @@ sequenceDiagram
 
 ### 12.17b Gửi visit lượt ghé POI (Traveler — async ingestion)
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#EDE7F6','actorBorder':'#B39DDB','actorTextColor':'#222222','primaryColor':'#EDE7F6','primaryBorderColor':'#B39DDB','secondaryColor':'#EDE7F6','tertiaryColor':'#F3EFFF'}}}%%
 sequenceDiagram
-    actor T as Traveler
+    participant T as Traveler
     participant APP as App
     participant API as SmartTourAPI
     participant Q as VisitLogQueue
@@ -891,8 +906,9 @@ sequenceDiagram
 
 ### 12.18 Create Food (Admin/Vendor)
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#EDE7F6','actorBorder':'#B39DDB','actorTextColor':'#222222','primaryColor':'#EDE7F6','primaryBorderColor':'#B39DDB','secondaryColor':'#EDE7F6','tertiaryColor':'#F3EFFF'}}}%%
 sequenceDiagram
-    actor U as Staff
+    participant U as Staff
     participant CMS as CMS
     participant DB as PostgreSQL
     U->>CMS: Nhập form tạo Food — FoodController.Create(POST)
@@ -903,8 +919,9 @@ sequenceDiagram
 
 ### 12.19 Read Food (Admin/Vendor)
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#EDE7F6','actorBorder':'#B39DDB','actorTextColor':'#222222','primaryColor':'#EDE7F6','primaryBorderColor':'#B39DDB','secondaryColor':'#EDE7F6','tertiaryColor':'#F3EFFF'}}}%%
 sequenceDiagram
-    actor U as Staff
+    participant U as Staff
     participant CMS as CMS
     participant DB as PostgreSQL
     U->>CMS: Mở màn hình Food — FoodController.Index
@@ -914,8 +931,9 @@ sequenceDiagram
 
 ### 12.20 Update Food (Admin/Vendor)
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#EDE7F6','actorBorder':'#B39DDB','actorTextColor':'#222222','primaryColor':'#EDE7F6','primaryBorderColor':'#B39DDB','secondaryColor':'#EDE7F6','tertiaryColor':'#F3EFFF'}}}%%
 sequenceDiagram
-    actor U as Staff
+    participant U as Staff
     participant CMS as CMS
     participant DB as PostgreSQL
     U->>CMS: Sửa thông tin Food — FoodController.Edit(POST)
@@ -926,8 +944,9 @@ sequenceDiagram
 
 ### 12.21 Delete Food (Admin/Vendor)
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#EDE7F6','actorBorder':'#B39DDB','actorTextColor':'#222222','primaryColor':'#EDE7F6','primaryBorderColor':'#B39DDB','secondaryColor':'#EDE7F6','tertiaryColor':'#F3EFFF'}}}%%
 sequenceDiagram
-    actor U as Staff
+    participant U as Staff
     participant CMS as CMS
     participant DB as PostgreSQL
     U->>CMS: Bấm xóa Food — FoodController.Delete(POST)
@@ -938,8 +957,9 @@ sequenceDiagram
 
 ### 12.22 Xóa phiên QR trong Settings (Traveler)
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#EDE7F6','actorBorder':'#B39DDB','actorTextColor':'#222222','primaryColor':'#EDE7F6','primaryBorderColor':'#B39DDB','secondaryColor':'#EDE7F6','tertiaryColor':'#F3EFFF'}}}%%
 sequenceDiagram
-    actor T as Traveler
+    participant T as Traveler
     participant APP as SettingsPage
     participant PREF as Preferences
     T->>APP: Bấm xóa phiên QR — OnClearQrGateClicked
@@ -949,8 +969,9 @@ sequenceDiagram
 
 ### 12.23 Đổi ngôn ngữ app (Traveler)
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#EDE7F6','actorBorder':'#B39DDB','actorTextColor':'#222222','primaryColor':'#EDE7F6','primaryBorderColor':'#B39DDB','secondaryColor':'#EDE7F6','tertiaryColor':'#F3EFFF'}}}%%
 sequenceDiagram
-    actor T as Traveler
+    participant T as Traveler
     participant APP as SettingsPage
     participant PREF as Preferences
     participant REPO as PoiRepository
@@ -962,8 +983,9 @@ sequenceDiagram
 
 ### 12.24 Theo dõi thiết bị online trên CMS (Admin)
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#EDE7F6','actorBorder':'#B39DDB','actorTextColor':'#222222','primaryColor':'#EDE7F6','primaryBorderColor':'#B39DDB','secondaryColor':'#EDE7F6','tertiaryColor':'#F3EFFF'}}}%%
 sequenceDiagram
-    actor U as Admin
+    participant U as Admin
     participant CMS as CMS
     participant API as SmartTourAPI
     participant DB as PostgreSQL
@@ -979,8 +1001,9 @@ sequenceDiagram
 
 ### 12.25 App gửi heartbeat/offline (Traveler)
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#EDE7F6','actorBorder':'#B39DDB','actorTextColor':'#222222','primaryColor':'#EDE7F6','primaryBorderColor':'#B39DDB','secondaryColor':'#EDE7F6','tertiaryColor':'#F3EFFF'}}}%%
 sequenceDiagram
-    actor T as Traveler
+    participant T as Traveler
     participant APP as App
     participant API as SmartTourAPI
     participant DB as PostgreSQL
@@ -998,8 +1021,9 @@ sequenceDiagram
 
 ### 12.26 Vendor mua Premium bằng ví (CMS → Backend API)
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#EDE7F6','actorBorder':'#B39DDB','actorTextColor':'#222222','primaryColor':'#EDE7F6','primaryBorderColor':'#B39DDB','secondaryColor':'#EDE7F6','tertiaryColor':'#F3EFFF'}}}%%
 sequenceDiagram
-    actor V as Vendor
+    participant V as Vendor
     participant CMS as PremiumCMS
     participant API as VendorPremiumController
     participant PW as PremiumWalletPurchaseService
@@ -1014,6 +1038,7 @@ sequenceDiagram
 
 ### 12.27 Nhận IPN MoMo (API) — cập nhật đơn `VendorPremiumOrder`
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#EDE7F6','actorBorder':'#B39DDB','actorTextColor':'#222222','primaryColor':'#EDE7F6','primaryBorderColor':'#B39DDB','secondaryColor':'#EDE7F6','tertiaryColor':'#F3EFFF'}}}%%
 sequenceDiagram
     participant MOMO as MoMoGateway
     participant API as VendorPremiumController
@@ -1032,8 +1057,9 @@ sequenceDiagram
 
 ### 12.28 Xếp hàng tạo thanh toán MoMo và xử lý nền (nạp ví / POI premium qua API)
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#EDE7F6','actorBorder':'#B39DDB','actorTextColor':'#222222','primaryColor':'#EDE7F6','primaryBorderColor':'#B39DDB','secondaryColor':'#EDE7F6','tertiaryColor':'#F3EFFF'}}}%%
 sequenceDiagram
-    actor U as User
+    participant U as User
     participant CL as CMS Wallet hoặc client tích hợp
     participant API as VendorPremiumController
     participant Q as MoMoPaymentQueue
@@ -1067,8 +1093,9 @@ sequenceDiagram
 
 ### 12.29 CMS polling trạng thái đơn Premium và đối soát provider
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#EDE7F6','actorBorder':'#B39DDB','actorTextColor':'#222222','primaryColor':'#EDE7F6','primaryBorderColor':'#B39DDB','secondaryColor':'#EDE7F6','tertiaryColor':'#F3EFFF'}}}%%
 sequenceDiagram
-    actor U as Staff
+    participant U as Staff
     participant RET as Return/Checkout Page
     participant CMS as PremiumController
     participant API as VendorPremiumController
@@ -1091,8 +1118,9 @@ sequenceDiagram
 
 ### 12.30 Ghi nhận lượt nghe audio qua hàng đợi ingestion
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#EDE7F6','actorBorder':'#B39DDB','actorTextColor':'#222222','primaryColor':'#EDE7F6','primaryBorderColor':'#B39DDB','secondaryColor':'#EDE7F6','tertiaryColor':'#F3EFFF'}}}%%
 sequenceDiagram
-    actor APP as MobileApp
+    participant APP as MobileApp
     participant API as AnalyticsController
     participant ING as AudioListenIngestionService
     participant Q as ChannelQueue
@@ -1132,8 +1160,9 @@ sequenceDiagram
 **Format sơ đồ (StreetFood-style):** `par` = sau khi có HTML, client gọi song song nhánh biểu đồ và nhánh thiết bị (chỉ Admin); `loop` = polling thiết bị; mũi tên liền = yêu cầu, đứt = phản hồi.
 
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'actorBkg':'#EDE7F6','actorBorder':'#B39DDB','actorTextColor':'#222222','primaryColor':'#EDE7F6','primaryBorderColor':'#B39DDB','secondaryColor':'#EDE7F6','tertiaryColor':'#F3EFFF'}}}%%
 sequenceDiagram
-    actor U as "Staff Admin hoặc Vendor"
+    participant U as "Staff Admin hoặc Vendor"
     participant DP as "TrangDashboard browser"
     participant CMS as "SmartTourCMS HomeController cùng route API"
     participant DB as PostgreSQL
@@ -1787,6 +1816,7 @@ Luồng **B (DB)**: `POST /LoadTest/FireGeofenceVisit` hoặc **`POST /LoadTest/
 ## 22. Lịch sử phiên bản PRD
 | Phiên bản | Ngày | Nội dung cập nhật |
 | --- | --- | --- |
+| 7.11 | 2026-05-14 | **§12** toàn bộ `sequenceDiagram`: `actor` đổi thành **`participant`** (hình hộp như UML mẫu); mỗi khối thêm **`%%{init:...}%%`** nền tím nhạt; đoạn giới thiệu đầu mục **12**. |
 | 7.10 | 2026-05-14 | **Mermaid §7, §11, §12–§14:** bổ sung tên phương thức / endpoint / lớp dịch vụ sau từng luồng (nhãn cạnh `-->|...|` hoặc hậu tố ` — ...` trên message sequence); sửa trùng `participant` ở §12.4; chỉnh §12.7 theo `HomeController.GetDashboardPoiStats` (EF trực tiếp, không qua Backend API). |
 | 7.9 | 2026-05-14 | Làm rõ **trạng thái đồng bộ PRD ↔ code** (không cam kết 100% từng diagram/endpoint). Sửa **§16.1** (bỏ `GET /api/pois/{id}` không tồn tại; thêm `.../stats`). **§16.3** (`/api/routes/stats`, `/api/heatmap/{poiId}`). **§16.5** (tách Backend vs **CMS** `api/cms-dashboard/*`). **§16.6** (`POST .../status`). **§16.10** (Tours, Auth, script-requests, admin ops). **§4.2**, **Journey 1**, **§12.2/§13.2** (Vendor vs Admin tạo POI + ví). |
 | 7.8 | 2026-05-13 | **Ví vendor** (`vendor_wallets` / ledger), nạp MoMo `wallet_topup`, mua Premium trừ ví + **Admin áp gói không MoMo**; cấu hình **`MoMo:PackagePrice`**, **`PoiCreation:*`**; **`VisitLog.SpeedKmh`** / payload visit; **IPN** tại `POST /api/vendor/premium/momo-ipn`; cập nhật **§1.3–§4**, **§6**, **§8–§9.4**, **§12.26–12.28**, **§13.26–13.27**, **§15.2**, **§16.6–16.8**, **§17**, **§19**, **§21**; loại bỏ mô tả lỗi thời: CMS Premium form **không** còn tạo MoMo trực tiếp cho Vendor. |
