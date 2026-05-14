@@ -726,11 +726,11 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     actor U as Staff
-    participant CMS as CMS_Home_Log
+    participant HomeController
     participant DB as PostgreSQL
-    U->>CMS: Mở dashboard/log plays — LogController.Plays / HomeController.Index
-    CMS->>DB: GET /api/cms-dashboard/poi-stats (JSON) — HomeController.GetDashboardPoiStats → GroupBy PlayLog
-    DB-->>CMS: Data chart/table — Ok(data)
+    U->>HomeController: Mở dashboard/log plays — LogController.Plays / HomeController.Index
+    HomeController->>DB: GET /api/cms-dashboard/poi-stats (JSON) — HomeController.GetDashboardPoiStats → GroupBy PlayLog
+    DB-->>HomeController: Data chart/table — Ok(data)
 ```
 
 ### 12.8 Tìm kiếm POI (Admin)
