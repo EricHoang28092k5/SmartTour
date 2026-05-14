@@ -1,0 +1,24 @@
+section	order	step	file	method	line_range	notes_vi
+admin	1	U → CMS: POST Create (form)	SmartTourCMS/Controllers/PoiController.cs	Create	140-182	Validate model; upload ảnh bìa Cloudinary nếu có (156-160).
+admin	2	CMS → DB: Insert Poi (đã duyệt)	SmartTourCMS/Controllers/PoiController.cs	Create	223-226	_context.Pois.Add + SaveChanges; nhánh Admin (không vào nhánh Vendor 184-221).
+admin	3	CMS → U: Redirect danh sách	SmartTourCMS/Controllers/PoiController.cs	Create	226	RedirectToAction(Index). Không gọi CreateTranslationsAndAudio trong action Create.
+vendor_a	1	U → CMS: POST Create	SmartTourCMS/Controllers/PoiController.cs	Create	142-182	Chung validate/upload với Admin.
+vendor_a	2	CMS: Lưu draft session	SmartTourCMS/Controllers/PoiController.cs	Create	194-218	VendorPoiCreateDraft; Session.SetString (VendorPoiDraftSessionKey).
+vendor_a	3	CMS → U: Redirect CreateConfirm	SmartTourCMS/Controllers/PoiController.cs	Create	220	RedirectToAction(CreateConfirm).
+vendor_a	4	U → CMS: GET CreateConfirm	SmartTourCMS/Controllers/PoiController.cs	CreateConfirm	230-260	ReadVendorPoiDraft (380-393); hiển thị phí + số dư.
+vendor_a	5	Wallet: đọc số dư	SmartTourAPI/Services/VendorWalletService.cs	GetBalanceVndAsync	16-22	Gọi từ CreateConfirm dòng 251.
+vendor_b	1	U → CMS: POST CreateConfirmPost	SmartTourCMS/Controllers/PoiController.cs	CreateConfirmPost	265-277	Role Vendor; đọc draft session.
+vendor_b	2	EF execution strategy	SmartTourCMS/Controllers/PoiController.cs	CreateConfirmPost	288-339	CreateExecutionStrategy; ExecuteAsync bọc transaction.
+vendor_b	3	DB BeginTransaction	SmartTourCMS/Controllers/PoiController.cs	CreateConfirmPost	317	Sau khi tạo entity Poi trong RAM (293-315).
+vendor_b	4	Wallet TryDebit poi_create	SmartTourCMS/Controllers/PoiController.cs	CreateConfirmPost	318-323	TryDebitAsync(..., poi_create, saveImmediately: false).
+vendor_b	5	Wallet ghi DB	SmartTourAPI/Services/VendorWalletService.cs	TryDebitAsync	51-78	Giảm BalanceVnd; thêm VendorWalletLedgerEntry (DeltaVnd âm).
+vendor_b	6a	Không đủ ví Rollback	SmartTourCMS/Controllers/PoiController.cs	CreateConfirmPost	318-322	insufficient; RollbackAsync; return trong lambda.
+vendor_b	6b	Insert Poi	SmartTourCMS/Controllers/PoiController.cs	CreateConfirmPost	325-326	Add + SaveChanges để có Poi.Id.
+vendor_b	7	CreateTranslationsAndAudio	SmartTourCMS/Controllers/PoiController.cs	CreateTranslationsAndAudio	712-741	GetOrderedLanguagesAsync; vòng lặp BuildPoiTranslationAsync; AddRange.
+vendor_b	8	BuildPoiTranslationAsync	SmartTourCMS/Controllers/PoiController.cs	BuildPoiTranslationAsync	744-761	Dịch + GenerateAndUploadAudio → AudioUrl.
+vendor_b	9	TTS Azure	SmartTourAPI/Service/VoiceService.cs	GenerateAndUploadAudio	18-45	SpeechSynthesizer.SpeakTextAsync → MP3 bytes.
+vendor_b	10	Upload Cloudinary	SmartTourAPI/Service/VoiceService.cs	GenerateAndUploadAudio	47-62	RawUploadParams; folder smarttour_audios; SecureUrl.
+vendor_b	11	SaveChanges + Commit	SmartTourCMS/Controllers/PoiController.cs	CreateConfirmPost	329-331	Sau CreateTranslationsAndAudio; CommitAsync.
+vendor_b	12	Lỗi audio Rollback	SmartTourCMS/Controllers/PoiController.cs	CreateConfirmPost	333-350	catch: Rollback (336); TempData lỗi.
+vendor_b	13	Thiếu tiền sau lambda	SmartTourCMS/Controllers/PoiController.cs	CreateConfirmPost	353-356	Kiểm tra insufficient; TempData; redirect CreateConfirm.
+vendor_b	14	Xóa draft + Redirect Index	SmartTourCMS/Controllers/PoiController.cs	CreateConfirmPost	359-367	Session.Remove; TempData success/warning.

@@ -58,7 +58,7 @@ public static class MauiProgram
         // ── API ──
         builder.Services.AddHttpClient<ApiService>(client =>
         {
-            client.BaseAddress = new Uri("http://192.168.1.4:5165/");
+            client.BaseAddress = new Uri("http://172.20.10.3:5165/");
         });
 
         // ── Data / Repository ──

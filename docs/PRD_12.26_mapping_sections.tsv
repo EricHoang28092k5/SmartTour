@@ -1,0 +1,21 @@
+section	order	step	file	method	line_range	notes_vi
+ui	1	Vendor: chọn POI + gói, bấm Thanh toán bằng ví	SmartTourCMS/Views/Premium/Index.cshtml	Razor view (form)	35-91	POST tới Premium/CreatePayment; anti-forgery; radio packageCode; select poiId.
+cms_get	2	(Optional) GET Premium — hiển thị form + số dư ví	SmartTourCMS/Controllers/PremiumController	Index	35-64	Đọc POI vendor; BuildPackages (MoMo:PackagePrice); ViewBag.WalletBalanceVnd nếu role Vendor (61-62).
+cms_post	3	POST CreatePayment: validate gói + quyền POI	SmartTourCMS/Controllers/PremiumController	CreatePayment	69-114	Admin → nhánh áp DB trực tiếp (92-106), không gọi API ví. Vendor tiếp tục dưới.
+cms_post	4	Đọc cấu hình BackendApi (BaseUrl + InternalKey)	SmartTourCMS/Controllers/PremiumController	CreatePayment	109-114	ReadBackendApiSettings (326-333).
+cms_post	5	HttpClient POST …/purchase-premium-wallet-cms	SmartTourCMS/Controllers/PremiumController	CreatePayment	118-130	Header X-Internal-Key; body JSON poiId, vendorUserId, months, priceVnd.
+cms_post	6	Xử lý HTTP + JSON phản hồi	SmartTourCMS/Controllers/PremiumController	CreatePayment	130-152	TempData Error hoặc Success; redirect Premium/Index.
+api	1	POST purchase-premium-wallet-cms (AllowAnonymous)	SmartTourAPI/Controllers/VendorPremiumController	PurchasePremiumWithWalletFromCms	141-146	Validate dto PoiId, PriceVnd, VendorUserId.
+api	2	So khớp X-Internal-Key với Admin:ApiKey	SmartTourAPI/Controllers/VendorPremiumController	PurchasePremiumWithWalletFromCms	147-150	Bảo vệ endpoint CMS → API.
+api	3	Gọi TryPurchaseWithWalletAsync	SmartTourAPI/Controllers/VendorPremiumController	PurchasePremiumWithWalletFromCms	151	Inject PremiumWalletPurchaseService.
+api	4	Trả JSON success + balanceVnd	SmartTourAPI/Controllers/VendorPremiumController	PurchasePremiumWithWalletFromCms	152-154	Đọc lại số dư sau khi mua.
+pw	1	EF execution strategy + lambda	SmartTourAPI/Services/PremiumWalletPurchaseService	TryPurchaseWithWalletAsync	27-72	Bọc toàn bộ xử lý trong ExecuteAsync.
+pw	2	Load Poi + kiểm tra VendorId	SmartTourAPI/Services/PremiumWalletPurchaseService	TryPurchaseWithWalletAsync	30-41	Tracked entity từ DbContext.
+pw	3	Kiểm tra số dư (đọc ví)	SmartTourAPI/Services/PremiumWalletPurchaseService	TryPurchaseWithWalletAsync	43-48	GetBalanceVndAsync trước khi mở transaction.
+pw	4	BeginTransactionAsync	SmartTourAPI/Services/PremiumWalletPurchaseService	TryPurchaseWithWalletAsync	50	
+pw	5	TryDebitAsync (premium_purchase)	SmartTourAPI/Services/PremiumWalletPurchaseService	TryPurchaseWithWalletAsync	51-56	reference poi:{id}; saveImmediately: false.
+wallet	1	Trừ ví + ghi ledger	SmartTourAPI/Services/VendorWalletService	TryDebitAsync	51-78	Cập nhật VendorWallets + VendorWalletLedgerEntries; SaveChanges nếu saveImmediately.
+pw	6	Gia hạn Premium trên Poi	SmartTourAPI/Services/PremiumWalletPurchaseService	TryPurchaseWithWalletAsync	58-67	Months=0 → +7 ngày; else AddMonths (tối thiểu 1).
+pw	7	SaveChangesAsync + CommitAsync	SmartTourAPI/Services/PremiumWalletPurchaseService	TryPurchaseWithWalletAsync	69-70	Ghi DB Poi + ví + ledger trong transaction.
+pw	8	Kết quả tuple	SmartTourAPI/Services/PremiumWalletPurchaseService	TryPurchaseWithWalletAsync	74	(okBox, errBox) trả về controller.
+dto	DTO body JSON CMS	SmartTourAPI/Controllers/VendorPremiumController	CmsPurchasePremiumWalletRequest (class)	825-831	poiId, months, priceVnd, vendorUserId.

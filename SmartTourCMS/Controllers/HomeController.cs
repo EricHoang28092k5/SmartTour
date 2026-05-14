@@ -215,7 +215,7 @@ namespace SmartTourCMS.Controllers
                     .Select(d => new DeviceStatusViewModel
                     {
                         DeviceId = d.DeviceId,
-                        IpAddress = d.IpAddress+"ngu lon the",
+                        IpAddress = d.IpAddress,
                         DeviceModel = d.DeviceModel,
                         Platform = d.Platform,
                         OsVersion = d.OsVersion,
