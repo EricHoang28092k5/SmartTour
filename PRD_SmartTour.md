@@ -2,8 +2,8 @@
 
 | Thuộc tính | Giá trị |
 | --- | --- |
-| **Phiên bản tài liệu** | **7.7** |
-| **Ngày cập nhật** | **2026-05-12** |
+| **Phiên bản tài liệu** | **7.8** |
+| **Ngày cập nhật** | **2026-05-14** |
 | **Trạng thái** | Đồng bộ với mã nguồn repo (Geofence + **Bulk visit stress** trên `LoadTest/Index`; một cửa log file Geofence) |
 | **Mục đích** | Mô tả yêu cầu sản phẩm; bám sát chức năng đã triển khai và chuẩn hóa tài liệu để báo cáo đồ án. |
 
@@ -1077,6 +1077,51 @@ sequenceDiagram
     end
 ```
 
+### 12.31 Xem trang Dashboard CMS (load + song song + polling)
+
+Luồng này bám **cùng format** sequence mẫu (StreetFood-style): **khối `par`** cho các gọi song song sau khi trang đã có HTML, **khối `loop`** cho polling định kỳ; mũi tên nét liền = gọi/yêu cầu, nét đứt = trả dữ liệu/phản hồi. **Tham chiếu mã:** `SmartTourCMS/Controllers/HomeController.cs` (`Index`, `GetDashboardPoiStats`, `GetDeviceStatus`), `SmartTourCMS/Views/Home/Index.cshtml` (Chart.js + `fetch` + `setInterval` 3000 ms). **Vendor:** chỉ nhánh KPI (server) + `poi-stats` (client); không gọi `device-status` và không polling.
+
+```mermaid
+sequenceDiagram
+    actor U as "Staff Admin hoặc Vendor"
+    participant DP as "TrangDashboard (browser)"
+    participant CMS as "SmartTourCMS: HomeController + API route"
+    participant DB as PostgreSQL
+
+    U->>DP: Điều hướng mở dashboard
+    DP->>CMS: GET /Home/Index
+    Note over CMS: Index(): đếm POI/Tour/Translation/Language (theo role); PlayLog tổng + POI có plays + group top 10 (server); Admin: DevicePresences + ngưỡng 20s; 5 tour mới
+    CMS->>DB: Query Pois/Tours/PoiTranslations/Languages/PlayLog/DevicePresences/Tours
+    DB-->>CMS: Aggregates + rows
+    CMS-->>DP: HTML + ViewBag (ô KPI + seed bảng thiết bị Admin)
+    DP->>DP: Render thẻ thống kê từ ViewBag
+
+    par Sau DOMContentLoaded (client)
+        Note over DP,DB: [Biểu đồ lượt nghe — mọi role được phép]
+        DP->>CMS: GET /api/cms-dashboard/poi-stats
+        CMS->>DB: PlayLog GroupBy tên POI (lọc theo role), Take(10)
+        DB-->>CMS: Rows top plays
+        CMS-->>DP: JSON success + data[]
+        DP->>DP: Khởi tạo Chart.js (bar)
+
+    and Chỉ Admin
+        Note over DP,DB: [Thiết bị online — first paint]
+        DP->>CMS: GET /api/cms-dashboard/device-status
+        CMS->>DB: DevicePresences (an toàn) + IsActive theo LastSeenUtc
+        DB-->>CMS: Danh sách thiết bị
+        CMS-->>DP: JSON onlineDevices + thresholdSeconds + data
+        DP->>DP: renderDevices() (số + bảng)
+    end
+
+    loop Polling khi tab mở (Admin, mỗi 3 giây)
+        DP->>CMS: GET /api/cms-dashboard/device-status
+        CMS->>DB: Đọc lại DevicePresences
+        DB-->>CMS: Rows cập nhật
+        CMS-->>DP: JSON mới
+        DP->>DP: renderDevices()
+    end
+```
+
 ## 13. Activity diagram
 ### 13.1 Đăng nhập và phân quyền (Admin)
 ```mermaid
@@ -1654,6 +1699,7 @@ Luồng **B (DB)**: `POST /LoadTest/FireGeofenceVisit` hoặc **`POST /LoadTest/
 | Phiên bản | Ngày | Nội dung cập nhật |
 | --- | --- | --- |
 | 7.7 | 2026-05-12 | Đồng bộ PRD với **Bulk visit (stress)**: `POST /LoadTest/RunBulkVisit`, `SIM-BULK-###`, `MapClick`, phản hồi `httpStatusCounts` / `firstFailure`; cập nhật **§4.2**, **§16.9**, **§19**, **§21.1** (luồng B + bảng URL). |
+| 7.8 | 2026-05-14 | Thêm **§12.31** sequence “Xem trang Dashboard CMS” (format `par`/`loop` như mẫu UML, ánh xạ `Home/Index` + `poi-stats` + polling `device-status`). |
 | 7.6 | 2026-05-12 | Gộp UI log file: bỏ menu **Log queue (simulator)**; `AdminLogQueue/Simulator` → redirect Geofence `#gf-log-audio-panel`; xóa view `AdminLogQueue/Simulator.cshtml`; PRD §4.2 / §16.9 / §19 / §21 cập nhật. **Bổ sung §15.2 + §21.1:** layout full-width log + modal; bảng 21.1 thêm dòng redirect `AdminLogQueue/Simulator`; chỉnh mô tả `AdminLogQueue/Download`. |
 | 7.5 | 2026-05-12 | Đồng bộ PRD với mã đồ án hiện tại: **4.1** (cooldown 30s `GeofencingEngine` vs 5 phút `NarrationEngine`); **4.2** + **US-12**; **7** (CMS + proxy HttpClient); **9.4** (CMS simulator); **15**; **16.9** (bảng route CMS); **19**; **21**–**21.1** (hành vi + tham chiếu file). |
 | 5.0 | 2026-04-09 | Bản rút gọn để thuyết trình nhanh |

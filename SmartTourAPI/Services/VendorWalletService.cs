@@ -15,7 +15,9 @@ public class VendorWalletService
 
     public async Task<long> GetBalanceVndAsync(string vendorUserId, CancellationToken ct = default)
     {
+        // Nếu vendorUserId trống, trả về 0 thay vì ném lỗi để tránh lỗi không mong muốn ở caller.
         if (string.IsNullOrWhiteSpace(vendorUserId)) return 0;
+        //
         var row = await _db.VendorWallets.AsNoTracking()
             .FirstOrDefaultAsync(x => x.VendorUserId == vendorUserId, ct);
         return row?.BalanceVnd ?? 0;
@@ -50,8 +52,9 @@ public class VendorWalletService
     /// <summary>Trừ ví nếu đủ số dư. saveImmediately=false khi gọi trong transaction lớn hơn.</summary>
     public async Task<bool> TryDebitAsync(string vendorUserId, long amountVnd, string kind, string? reference, bool saveImmediately = true, CancellationToken ct = default)
     {
+        // Nếu vendorUserId trống hoặc amountVnd không hợp lệ, trả về false thay vì ném lỗi để caller dễ xử lý.
         if (string.IsNullOrWhiteSpace(vendorUserId) || amountVnd <= 0) return false;
-
+        // Lấy wallet, nếu chưa có thì tạo mới với số dư 0. Cách này giúp tránh lỗi không mong muốn ở caller khi vendorUserId chưa có wallet.
         var wallet = await _db.VendorWallets.FirstOrDefaultAsync(x => x.VendorUserId == vendorUserId, ct);
         if (wallet == null)
         {

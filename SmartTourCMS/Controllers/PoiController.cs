@@ -192,7 +192,7 @@ namespace SmartTourCMS.Controllers
                 }
 
                 var chargeVnd = GetFixedVendorPoiCreateChargeVnd(_configuration);
-
+                // lưu draf vào session để qua bước xác nhận, tránh mất công upload ảnh nếu chưa đủ tiền hoặc cancel
                 var draft = new VendorPoiCreateDraft
                 {
                     VendorUserId = user.Id,
@@ -216,7 +216,7 @@ namespace SmartTourCMS.Controllers
                 var json = JsonSerializer.Serialize(draft, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
                 HttpContext.Session.SetString(VendorPoiDraftSessionKey, json);
                 await HttpContext.Session.CommitAsync(HttpContext.RequestAborted);
-
+                // kt luu draf Redirect sang bước xác nhận để hiện số dư ví, phí tạo POI, và confirm trước khi thực sự tạo POI và trừ tiền.
                 return RedirectToAction(nameof(CreateConfirm));
             }
 
@@ -227,6 +227,7 @@ namespace SmartTourCMS.Controllers
         }
 
         [HttpGet]
+        // Bước xác nhận cuối cùng trước khi tạo POI thực tế và trừ tiền vendor.
         public async Task<IActionResult> CreateConfirm()
         {
             if (!User.IsInRole("Vendor")) return RedirectToAction(nameof(Create));
@@ -235,23 +236,25 @@ namespace SmartTourCMS.Controllers
 
             await HttpContext.Session.LoadAsync(HttpContext.RequestAborted);
             var draft = ReadVendorPoiDraft();
+            // Bảo đảm draft tồn tại và thuộc về đúng user, tránh trường hợp session bị lẫn hoặc bị tấn công.
             if (draft == null || !string.Equals(draft.VendorUserId, user.Id, StringComparison.Ordinal))
             {
                 TempData["Error"] = "Phiên xác nhận hết hạn. Vui lòng nhập lại thông tin POI.";
                 return RedirectToAction(nameof(Create));
             }
-
+            // Cập nhật phí tạo POI từ cấu hình để đảm bảo luôn đúng, tránh trường hợp vendor vào bước xác nhận rồi mới thay đổi cấu hình phí.
             var chargeVnd = GetFixedVendorPoiCreateChargeVnd(_configuration);
             draft.ChargeVnd = chargeVnd;
             draft.TotalTtsChars = 0;
             var json2 = JsonSerializer.Serialize(draft, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
             HttpContext.Session.SetString(VendorPoiDraftSessionKey, json2);
             await HttpContext.Session.CommitAsync(HttpContext.RequestAborted);
-
+            // Lấy số dư ví để hiển thị và so sánh với phí tạo POI.
             var balance = await _vendorWallet.GetBalanceVndAsync(user.Id);
             var minTop = long.TryParse(_configuration["PoiCreation:MinimumWalletTopUpVnd"], out var m) && m > 0 ? m : 20_000L;
             var vm = new PoiCreateConfirmViewModel
             {
+                // Hiển thị lại thông tin draft để user confirm, tránh trường hợp user vào bước xác nhận rồi mới thay đổi cấu hình phí hoặc số dư ví.
                 Draft = draft,
                 BalanceVnd = balance,
                 SufficientBalance = balance >= chargeVnd,
@@ -349,16 +352,18 @@ namespace SmartTourCMS.Controllers
                 TempData["Error"] = "Lỗi khi tạo POI: " + ex.Message;
                 return RedirectToAction(nameof(CreateConfirm));
             }
-
+            // Sau khi transaction hoàn tất, kiểm tra nếu bị thiếu audio thì vẫn coi như POI đã tạo thành công nhưng cảnh báo, còn nếu do lỗi trừ tiền thì coi như chưa tạo POI và hiện lỗi.
             if (insufficient[0])
             {
                 TempData["Error"] = $"Số dư ví không đủ (cần {chargeVnd:N0} VNĐ).";
+                // Do lỗi trừ tiền nên không chắc chắn được tình trạng POI, bắt buộc phải quay về bước tạo lại từ đầu để tránh rủi ro tạo POI mà không trừ được tiền.
                 return RedirectToAction(nameof(CreateConfirm));
             }
-
+            // Dù có lỗi tạo audio hay không, POI đã được tạo và trừ tiền thành công, nên vẫn coi là thành công nhưng cảnh báo nếu thiếu audio. Quan trọng là phải xóa draft trong session để tránh bị lẫn hoặc bị tấn công.
             HttpContext.Session.Remove(VendorPoiDraftSessionKey);
+            
             await HttpContext.Session.CommitAsync(HttpContext.RequestAborted);
-
+            //
             if (missingAudio[0] > 0)
                 TempData["AudioWarning"] = $"Đã trừ {chargeVnd:N0} VNĐ trong ví. Còn {missingAudio[0]} bản dịch chưa có audio — thử tạo lại audio sau.";
             else
