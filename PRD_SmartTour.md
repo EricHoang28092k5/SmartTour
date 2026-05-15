@@ -284,7 +284,7 @@ erDiagram
       double Lng
       datetime VisitTime
       int VisitType
-      double SpeedKmh nullable
+      double SpeedKmh
     }
 
     HEATMAP_ENTRY {
@@ -375,6 +375,8 @@ erDiagram
     ASPNET_USERS ||--o{ ASPNET_USER_LOGINS : has
     ASPNET_USERS ||--o{ ASPNET_USER_TOKENS : has
 ```
+
+*(Trong sơ đồ Mermaid `erDiagram` chỉ cho phép tối đa hai từ mỗi dòng thuộc tính; cột `SpeedKmh` trên `visit_logs` trong DB vẫn là **nullable** — xem mục 8.1 và 8.4.)*
 
 ### 8.4 Đặc tả CRUD chi tiết theo bảng
 | Bảng | Thêm (Create) | Sửa (Update) | Xóa (Delete) | Ai thao tác | Ghi chú |
