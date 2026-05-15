@@ -600,10 +600,10 @@ flowchart TB
     AD -->|PremiumController.CreatePayment| C17
     AD -->|PremiumController.PaymentReturn| C18
     AD -->|PremiumController.GetPaymentStatus| C19
-    AD -->|VendorPremiumController (queued payment worker)| C20
+    AD -->|VendorPremiumController — queued MoMo payment worker| C20
     AD -->|AudioListenIngestionWorker| C21
     V -->|PremiumController.GetPaymentStatus| C19
-    V -->|VendorPremiumController (queued payment worker)| C20
+    V -->|VendorPremiumController — queued MoMo payment worker| C20
 ```
 
 ## 12. Sequence diagram
